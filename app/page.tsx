@@ -8,14 +8,11 @@ export default function Home() {
       {/* 🧾 NEW: Short About/Intro for AdSense & SEO */}
       <div className="max-w-2xl text-gray-700 leading-relaxed mb-10">
         <p className="mb-3">
-          ToolCite is a lightweight collection of fast, free web tools made for
-          everyday tasks—no sign-ups or clutter. Each tool focuses on a single
-          job and loads quickly on desktop and mobile.
-        </p>
-        <p>
-          We’re starting with utilities like a Weather app and will keep adding
-          practical tools such as an Internet Speed Test and Unit Converter. If
-          you have a suggestion, we’d love to hear it as we continue to expand.
+          ToolCite Hub is a fast, free, and lightweight collection of intelligent web tools 
+  built for everyday tasks — no sign-ups, clutter, or downloads. Each tool is designed 
+  to do one job exceptionally well and load instantly on both desktop and mobile. 
+  From weather forecasts to productivity utilities, ToolCite Hub is steadily growing 
+  toward 100+ smart, browser-based tools made for simplicity, speed, and everyday usefulness.
         </p>
       </div>
 
