@@ -1,25 +1,12 @@
 import "./globals.css";
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-
-const inter = Inter({ subsets: ["latin"] });
+import Script from "next/script";
+import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "ToolCite – Free Online Tools Hub",
+  title: "ToolCite Hub — Free Smart Web Tools",
   description:
-    "ToolCite brings together simple, fast, and useful tools like Weather, Speed Test, BMI, and more — all in one clean interface.",
-  keywords: [
-    "online tools",
-    "toolcite",
-    "free utilities",
-    "internet speed test",
-    "weather app",
-    "bmi calculator",
-  ],
-  authors: [{ name: "ToolCite" }],
-  icons: {
-    icon: "/favicon.ico",
-  },
+    "ToolCite Hub is a growing collection of smart, free web tools built for speed and simplicity — from weather forecasts to productivity utilities, all in one place.",
+  metadataBase: new URL("https://toolcite.com"),
 };
 
 export default function RootLayout({
@@ -30,28 +17,34 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* ✅ Google AdSense Verification Code */}
-        <script
+        {/* Google AdSense Verification Script */}
+        <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4622190640183245"
           crossOrigin="anonymous"
-        ></script>
-
-        {/* ✅ Meta tags for SEO */}
-        <meta name="robots" content="index, follow" />
-        <meta name="theme-color" content="#2B47FF" />
-        <meta property="og:title" content="ToolCite – Smart Tools Hub" />
-        <meta
-          property="og:description"
-          content="A hub of online tools including weather, speed test, and more."
+          strategy="afterInteractive"
         />
-        <meta property="og:url" content="https://toolcite.com" />
-        <meta property="og:type" content="website" />
       </head>
+      <body className="min-h-screen flex flex-col bg-gradient-to-b from-blue-50 to-white text-gray-800">
+        <main className="flex-grow">{children}</main>
 
-      <body className={inter.className}>
-        {/* 🧠 All your pages and components render here */}
-        {children}
+        {/* Footer */}
+        <footer className="text-center text-gray-500 text-sm mt-12 py-6 border-t">
+          © {new Date().getFullYear()} ToolCite. Built by Bharat 💡 ·{" "}
+          <a
+            href="/privacy"
+            className="text-blue-600 hover:underline mx-1"
+          >
+            Privacy Policy
+          </a>
+          ·{" "}
+          <a
+            href="/terms"
+            className="text-blue-600 hover:underline mx-1"
+          >
+            Terms of Use
+          </a>
+        </footer>
       </body>
     </html>
   );
