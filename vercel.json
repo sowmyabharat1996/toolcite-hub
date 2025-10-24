@@ -1,4 +1,4 @@
-// vercel.json – Proxy existing tool subdomains → subpaths (Weather)
+
 {
 "rewrites": [
 { "source": "/weather", "destination": "https://weather.toolcite.com" },
