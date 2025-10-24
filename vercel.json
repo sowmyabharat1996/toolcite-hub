@@ -1,7 +1,12 @@
-
 {
-"rewrites": [
-{ "source": "/weather", "destination": "https://weather.toolcite.com" },
-{ "source": "/weather/(.*)", "destination": "https://weather.toolcite.com/$1" }
-]
+  "rewrites": [
+    {
+      "source": "/weather",
+      "destination": "https://weather-app-2-0-six.vercel.app"
+    },
+    {
+      "source": "/weather/:path*",
+      "destination": "https://weather-app-2-0-six.vercel.app/:path*"
+    }
+  ]
 }
