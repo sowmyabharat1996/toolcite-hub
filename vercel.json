@@ -1,12 +1,14 @@
 {
-  "rewrites": [
+  "redirects": [
     {
       "source": "/weather",
-      "destination": "https://weather-app-2-0-six.vercel.app"
+      "destination": "https://weather-app-2-0-six.vercel.app",
+      "permanent": false
     },
     {
       "source": "/weather/:path*",
-      "destination": "https://weather-app-2-0-six.vercel.app/:path*"
+      "destination": "https://weather-app-2-0-six.vercel.app/:path*",
+      "permanent": false
     }
   ]
 }
