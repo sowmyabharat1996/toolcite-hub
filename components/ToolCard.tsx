@@ -1,45 +1,77 @@
 // components/ToolCard.tsx
-import * as React from "react";
+"use client";
 
-type Props = {
-  href?: string;              // target url (internal or external)
-  label: string;              // visible label
-  icon?: React.ReactNode;     // optional icon (emoji / svg)
-  disabled?: boolean;         // for "Coming soon"
-  redirect?: boolean;         // true => use <a> full navigation (best for redirects)
+import { cn } from "./cn";
+
+export type ToolCardProps = {
+  title: string;
+  description: string;
+  emoji?: string;
+  href?: string;
+  disabled?: boolean;
+  onClick?: () => void;
 };
 
 export default function ToolCard({
-  href = "#",
-  label,
-  icon,
-  disabled,
-  redirect,
-}: Props) {
-  const base =
-    "block w-full rounded-2xl bg-white text-gray-900 shadow-md hover:shadow-lg " +
-    "px-5 py-4 text-base md:text-lg font-medium " +
-    "focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 " +
-    "active:scale-[.99] transition visited:text-inherit";
-  const off = "opacity-60 pointer-events-none";
+  title,
+  description,
+  emoji,
+  href,
+  disabled = false,
+  onClick,
+}: ToolCardProps) {
+  const content = (
+    <div
+      className={cn(
+        "group relative flex h-full w-full items-start gap-3 rounded-2xl border p-4 shadow-sm transition-all",
+        "bg-white/95 dark:bg-neutral-900/95 border-neutral-200 dark:border-neutral-800",
+        disabled
+          ? "opacity-60 cursor-not-allowed"
+          : "hover:shadow-md active:scale-[0.99]"
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-xl",
+          disabled
+            ? "border-neutral-200 bg-neutral-100 text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900"
+            : "border-neutral-200 bg-neutral-50 text-neutral-800 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100"
+        )}
+      >
+        {emoji ?? "🔧"}
+      </div>
 
-  // For redirected tools use a plain <a> to force full navigation (fixes mobile back tap).
-  if (redirect) {
-    return (
-      <a href={href} className={`${base} ${disabled ? off : ""}`} target="_self" rel="noopener">
-        <span className="inline-flex items-center gap-2">
-          {icon} <span>{label}</span>
-        </span>
-      </a>
-    );
-  }
-
-  // Default (non-clickable or you can later switch to Next Link for internal pages)
-  return (
-    <div className={`${base} ${disabled ? off : ""}`}>
-      <span className="inline-flex items-center gap-2">
-        {icon} <span>{label}</span>
-      </span>
+      <div className="flex flex-col">
+        <h3
+          className={cn(
+            "text-base font-semibold",
+            disabled ? "text-neutral-500" : "text-neutral-900 dark:text-neutral-100"
+          )}
+        >
+          {title}
+        </h3>
+        <p
+          className={cn(
+            "mt-1 text-sm",
+            disabled ? "text-neutral-400" : "text-neutral-600 dark:text-neutral-400"
+          )}
+        >
+          {description}
+        </p>
+      </div>
     </div>
+  );
+
+  if (disabled) return <div>{content}</div>;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      data-href={href}
+    >
+      {content}
+    </button>
   );
 }

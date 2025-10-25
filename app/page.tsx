@@ -4,25 +4,32 @@
 import ToolCard from "@/components/ToolCard";
 import { useSmartNav } from "@/components/useSmartNav";
 
+type Tool = {
+  title: string;
+  description: string;
+  emoji: string;
+  href?: string; // optional for "coming soon"
+  soon?: boolean;
+};
+
 export default function HomePage() {
   const { smartHref, onSmartNav } = useSmartNav();
 
-  const tools = [
+  const tools: Tool[] = [
     {
       title: "Weather App",
-      description:
-        "Live forecasts with offline fallback and responsive design.",
+      description: "Live forecasts with offline fallback and responsive design.",
       emoji: "🌤️",
-      href: "/tools/weather", // ✅ canonical path — no redirect bug
+      href: "/weather",
     },
     {
-      title: "Speed Test (Coming Soon)",
+      title: "Speed Test",
       description: "Measure your internet speed instantly in the browser.",
       emoji: "⚡",
-      soon: true,
+      href: "/speed",
     },
     {
-      title: "Unit Converter (Planned)",
+      title: "Unit Converter (Coming Soon)",
       description: "Convert units for length, weight, temperature, and more.",
       emoji: "📏",
       soon: true,
@@ -37,9 +44,9 @@ export default function HomePage() {
           ToolCite Hub
         </h1>
         <p className="mt-3 text-gray-700 dark:text-gray-300 leading-relaxed">
-          ToolCite Hub is a fast, free collection of smart web tools. No sign-ups,
-          no clutter — just quick, useful utilities that work on every device.
-          We’re steadily growing toward{" "}
+          ToolCite Hub is a fast, free collection of smart web tools — no sign-ups,
+          no clutter. Just quick, reliable utilities that work on every device.
+          We’re growing toward{" "}
           <span className="font-semibold text-blue-600 dark:text-blue-400">
             100+ tools
           </span>{" "}
@@ -47,7 +54,7 @@ export default function HomePage() {
         </p>
       </section>
 
-      {/* Tool Cards */}
+      {/* Tool Grid */}
       <section className="mx-auto max-w-2xl px-4 pb-20 grid gap-4 sm:grid-cols-2">
         {tools.map((tool) =>
           tool.soon ? (
@@ -64,14 +71,13 @@ export default function HomePage() {
               title={tool.title}
               description={tool.description}
               emoji={tool.emoji}
-              href={smartHref(tool.href)}
-              onClick={() => onSmartNav(tool.href)}
+              href={smartHref(tool.href!)}          // ✅ non-null assertion
+              onClick={() => onSmartNav(tool.href!)} // ✅ non-null assertion
             />
           )
         )}
       </section>
 
-      {/* Footer */}
       <footer className="pb-10 text-center text-sm text-gray-500 dark:text-gray-400">
         © {new Date().getFullYear()} ToolCite
       </footer>
