@@ -1,80 +1,82 @@
-// components/ToolCard.tsx
 "use client";
 
-import { cn } from "./cn";
+import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 
-export type ToolCardProps = {
-  title: string;
-  description: string;
-  emoji?: string;
+interface ToolCardProps {
   href?: string;
+  // Accept both title and label (either is fine)
+  title?: string;
+  label?: string;
+
+  description?: string;
+
+  // Accept both icon (ReactNode) and emoji (string/ReactNode)
+  icon?: ReactNode;
+  emoji?: string | ReactNode;
+
   disabled?: boolean;
-  onClick?: () => void;
-};
+  redirect?: boolean;
+}
 
+/**
+ * Backward-compatible ToolCard:
+ * - title or label
+ * - icon or emoji
+ * - safe hover handled in JSX (no @apply variants)
+ */
 export default function ToolCard({
-  title,
-  description,
-  emoji,
   href,
+  title,
+  label,
+  description,
+  icon,
+  emoji,
   disabled = false,
-  onClick,
+  redirect = false,
 }: ToolCardProps) {
-  const content = (
-    <div
-      className={cn(
-        "group relative flex h-full w-full items-start gap-3 rounded-2xl border p-4 shadow-sm transition-all",
-        "border-neutral-200 dark:border-neutral-800",
-        "bg-white/95 dark:bg-[#161616]/95",
-        disabled
-          ? "opacity-60 cursor-not-allowed"
-          : "hover:shadow-lg hover:scale-[1.01] active:scale-[0.99]"
-      )}
-    >
-      {/* Icon */}
-      <div
-        className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-xl transition-colors",
-          disabled
-            ? "border-neutral-200 bg-neutral-100 text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900"
-            : "border-neutral-200 bg-neutral-50 text-neutral-800 dark:border-neutral-700 dark:bg-[#1e1e1e] dark:text-neutral-100"
-        )}
-      >
-        {emoji ?? "🔧"}
-      </div>
+  const router = useRouter();
 
-      {/* Text */}
-      <div className="flex flex-col">
-        <h3
-          className={cn(
-            "text-base font-semibold",
-            disabled ? "text-neutral-500" : "text-neutral-900 dark:text-neutral-100"
-          )}
-        >
-          {title}
-        </h3>
-        <p
-          className={cn(
-            "mt-1 text-sm leading-snug",
-            disabled ? "text-neutral-400" : "text-neutral-600 dark:text-neutral-400"
-          )}
-        >
-          {description}
-        </p>
-      </div>
-    </div>
-  );
+  const heading = title ?? label ?? "";
+  const iconNode: ReactNode = icon ?? emoji ?? "🔧";
 
-  if (disabled) return <div>{content}</div>;
+  const handleClick = () => {
+    if (disabled) return;
+    if (redirect && href) {
+      // Mobile-safe redirect (forces a full navigation)
+      window.location.href = href;
+    } else if (href) {
+      router.push(href);
+    }
+  };
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl"
-      data-href={href}
+    <div
+      onClick={handleClick}
+      className={`card-hover cursor-pointer select-none p-5 sm:p-6 backdrop-blur-lg border rounded-2xl
+        ${
+          disabled
+            ? "bg-white/5 dark:bg-[#111]/60 border-neutral-800 cursor-not-allowed opacity-40"
+            : "bg-white/10 dark:bg-[#161616]/80 border-neutral-700 hover:border-blue-500 shadow-md hover:shadow-2xl hover:-translate-y-1 transition-transform duration-300 ease-in-out"
+        }`}
     >
-      {content}
-    </button>
+      <div className="flex items-center gap-3">
+        <div className={`text-2xl ${disabled ? "opacity-50" : "opacity-100"}`}>
+          {iconNode}
+        </div>
+
+        <div>
+          <h3 className={`text-lg font-semibold ${disabled ? "text-gray-400" : "text-white"}`}>
+            {heading}
+          </h3>
+
+          {description && (
+            <p className={`text-sm mt-1 ${disabled ? "text-gray-500" : "text-gray-400"}`}>
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

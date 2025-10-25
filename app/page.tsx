@@ -8,6 +8,7 @@ export default function HomePage() {
       description: "Live forecasts with offline fallback and responsive design.",
       icon: <FaCloudSun className="text-yellow-400 text-xl" />,
       href: "/weather",
+      soon: false,
     },
     {
       title: "Speed Test (Coming Soon)",
@@ -36,8 +37,7 @@ export default function HomePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-100 to-sky-200
-                     dark:from-[#0d0d0d] dark:to-[#1a1a1a] transition-colors duration-700">
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-100 to-sky-200 dark:from-[#0d0d0d] dark:to-[#1a1a1a] transition-colors duration-700">
       <section className="mx-auto max-w-3xl px-4 pt-14 pb-8 text-center">
         <h1 className="text-4xl md:text-5xl font-extrabold text-blue-700 dark:text-blue-400">
           ToolCite Hub
@@ -54,11 +54,11 @@ export default function HomePage() {
         {tools.map((tool) => (
           <ToolCard
             key={tool.title}
-            href={tool.href}
-            label={tool.title}             // NOTE: ToolCard expects `label`, not `title`
-            description={tool.description}
-            icon={tool.icon}
-            disabled={tool.soon}
+  href={tool.href}
+  title={tool.title}  // changed from label to title
+  description={tool.description}
+  icon={tool.icon}
+  disabled={tool.soon}
           />
         ))}
       </section>
