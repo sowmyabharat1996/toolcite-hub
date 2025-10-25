@@ -94,6 +94,7 @@ export default function HomePage() {
       <footer className="pb-10 text-center text-sm text-gray-500 dark:text-gray-400">
         © {new Date().getFullYear()} ToolCite
       </footer>
+      
     </main>
   );
 }
