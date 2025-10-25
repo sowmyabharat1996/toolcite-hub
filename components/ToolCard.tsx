@@ -25,7 +25,6 @@ export default function ToolCard({
       className={cn(
         "group relative flex h-full w-full items-start gap-3 rounded-2xl border p-4 shadow-sm transition-all",
         "border-neutral-200 dark:border-neutral-800",
-        // ✅ better dark background contrast
         "bg-white/95 dark:bg-[#161616]/95",
         disabled
           ? "opacity-60 cursor-not-allowed"

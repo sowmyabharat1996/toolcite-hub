@@ -3,7 +3,6 @@ import "./globals.css";
 import Script from "next/script";
 import type { Metadata, Viewport } from "next";
 
-// ✅ themeColor moved to correct `viewport` export
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
