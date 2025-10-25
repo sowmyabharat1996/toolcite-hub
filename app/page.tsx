@@ -6,37 +6,37 @@ export default function HomePage() {
     {
       title: "Weather App",
       description: "Live forecasts with offline fallback and responsive design.",
-      icon: <FaCloudSun className="text-yellow-400" />,
+      icon: <FaCloudSun className="text-yellow-400 text-xl" />,
       href: "/weather",
     },
     {
       title: "Speed Test (Coming Soon)",
       description: "Measure your internet speed instantly in the browser.",
-      icon: <FaBolt className="text-orange-400" />,
+      icon: <FaBolt className="text-orange-400 text-xl" />,
       soon: true,
     },
     {
       title: "Unit Converter (Coming Soon)",
       description: "Convert units for length, weight, temperature, and more.",
-      icon: <FaRuler className="text-green-400" />,
+      icon: <FaRuler className="text-green-400 text-xl" />,
       soon: true,
     },
     {
       title: "AI Text Summarizer (Coming Soon)",
       description: "Summarize long text or notes in seconds.",
-      icon: <FaBrain className="text-pink-400" />,
+      icon: <FaBrain className="text-pink-400 text-xl" />,
       soon: true,
     },
     {
       title: "Image Compressor (Coming Soon)",
       description: "Shrink images while keeping quality intact.",
-      icon: <FaCompress className="text-blue-400" />,
+      icon: <FaCompress className="text-blue-400 text-xl" />,
       soon: true,
     },
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-100 dark:from-[#0e0e0e] dark:to-[#1a1a1a] transition-colors duration-700">
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-100 to-sky-200 dark:from-[#0d0d0d] dark:to-[#1a1a1a] transition-colors duration-700">
       <section className="mx-auto max-w-3xl px-4 pt-14 pb-8 text-center">
         <h1 className="text-4xl md:text-5xl font-extrabold text-blue-700 dark:text-blue-400">
           ToolCite Hub
