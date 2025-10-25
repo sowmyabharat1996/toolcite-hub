@@ -1,45 +1,28 @@
 {
-  "name": "nextjs",
-  "version": "0.1.0",
+  "name": "toolcite-hub",
+  "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint"
   },
   "dependencies": {
-    "framer-motion": "^12.23.24",
-    "lucide-react": "^0.548.0",
-    "next": "^16.0.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-icons": "^5.5.0"
+    "lightningcss": "^1.25.1",
+    "next": "^14.2.33",
+    "postcss": "^8.4.38",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.0.0",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "description": "This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).",
-  "main": "index.js",
-  "directories": {
-    "lib": "lib"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sowmyabharat1996/toolcite-hub.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/sowmyabharat1996/toolcite-hub/issues"
-  },
-  "homepage": "https://github.com/sowmyabharat1996/toolcite-hub#readme"
+    "@tailwindcss/postcss": "^4.1.16",
+    "@types/node": "24.9.1",
+    "@types/react": "19.2.2",
+    "autoprefixer": "^10.4.21",
+    "lightningcss-win32-x64-msvc": "^1.30.2",
+    "typescript": "5.9.3"
+  }
 }

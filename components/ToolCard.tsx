@@ -1,63 +1,80 @@
+// components/ToolCard.tsx
 "use client";
 
-import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { cn } from "./cn";
 
-interface ToolCardProps {
+export type ToolCardProps = {
+  title: string;
+  description: string;
+  emoji?: string;
   href?: string;
-  title?: string;
-  label?: string;
-  description?: string;
-  icon?: ReactNode;
-  emoji?: string | ReactNode;
   disabled?: boolean;
-  redirect?: boolean;
-}
+  onClick?: () => void;
+};
 
 export default function ToolCard({
-  href,
   title,
-  label,
   description,
-  icon,
   emoji,
+  href,
   disabled = false,
-  redirect = false,
+  onClick,
 }: ToolCardProps) {
-  const router = useRouter();
-  const heading = title ?? label ?? "";
-  const iconNode: ReactNode = icon ?? emoji ?? "🔧";
-
-  const handleClick = () => {
-    if (disabled) return;
-    if (redirect && href) window.location.href = href;
-    else if (href) router.push(href);
-  };
-
-  return (
+  const content = (
     <div
-      onClick={handleClick}
-      className={`cursor-pointer select-none rounded-2xl p-5 sm:p-6 border backdrop-blur-lg
-        ${disabled
-          ? "bg-[#1a1a1a]/60 border-neutral-800 opacity-40 cursor-not-allowed"
-          : "bg-gradient-to-br from-[#141414]/90 to-[#0d0d0d]/90 border-neutral-700 hover:border-blue-500 hover:-translate-y-1 hover:shadow-[0_16px_30px_rgba(0,0,0,0.6)] transition-all duration-300"
-        }`}
+      className={cn(
+        "group relative flex h-full w-full items-start gap-3 rounded-2xl border p-4 shadow-sm transition-all",
+        "border-neutral-200 dark:border-neutral-800",
+        "bg-white/95 dark:bg-[#161616]/95",
+        disabled
+          ? "opacity-60 cursor-not-allowed"
+          : "hover:shadow-lg hover:scale-[1.01] active:scale-[0.99]"
+      )}
     >
-      <div className="flex items-center gap-3">
-        <div className={`text-2xl ${disabled ? "opacity-60" : "text-white"}`}>
-          {iconNode}
-        </div>
-        <div>
-          <h3 className={`text-lg font-semibold ${disabled ? "text-gray-500" : "text-white"}`}>
-            {heading}
-          </h3>
-          {description && (
-            <p className={`text-sm mt-1 ${disabled ? "text-gray-600" : "text-gray-400"}`}>
-              {description}
-            </p>
+      {/* Icon */}
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-xl transition-colors",
+          disabled
+            ? "border-neutral-200 bg-neutral-100 text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900"
+            : "border-neutral-200 bg-neutral-50 text-neutral-800 dark:border-neutral-700 dark:bg-[#1e1e1e] dark:text-neutral-100"
+        )}
+      >
+        {emoji ?? "🔧"}
+      </div>
+
+      {/* Text */}
+      <div className="flex flex-col">
+        <h3
+          className={cn(
+            "text-base font-semibold",
+            disabled ? "text-neutral-500" : "text-neutral-900 dark:text-neutral-100"
           )}
-        </div>
+        >
+          {title}
+        </h3>
+        <p
+          className={cn(
+            "mt-1 text-sm leading-snug",
+            disabled ? "text-neutral-400" : "text-neutral-600 dark:text-neutral-400"
+          )}
+        >
+          {description}
+        </p>
       </div>
     </div>
+  );
+
+  if (disabled) return <div>{content}</div>;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl"
+      data-href={href}
+    >
+      {content}
+    </button>
   );
 }

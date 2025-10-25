@@ -1,29 +1,42 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* High-contrast defaults and better focus styles */
+:root {
+  --ring: 0 0 0; /* used in cards via ring utilities */
+}
+
+*,
+*::before,
+*::after {
+  @apply box-border;
+}
+
 html, body {
-  background-color: #0b0b0b;
-  color: #e5e5e5;
+  @apply bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
 }
 
-/* Prevent transparent Tailwind colors from blending into black */
-[class*="bg-white"] {
-  background-color: rgba(255, 255, 255, 0.05) !important;
+a, button {
+  -webkit-tap-highlight-color: transparent;
 }
 
-[class*="bg-[#111]"] {
-  background-color: rgba(20, 20, 20, 0.7) !important;
+/* Make focus visible for keyboard users without the heavy default outline */
+:where(button, [role="button"], a):focus-visible {
+  @apply outline-none ring-2 ring-indigo-500;
 }
 
-/* Scrollbar aesthetic */
-::-webkit-scrollbar {
-  width: 8px;
+/* Utility for tight line clamp (if your Tailwind config has line-clamp plugin, great; if not, keep this) */
+.line-clamp-2{
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
 }
-::-webkit-scrollbar-thumb {
-  background: rgba(130, 130, 130, 0.4);
-  border-radius: 8px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(160, 160, 160, 0.7);
+
+/* Smooth card edges on mobile dark backgrounds */
+@media (prefers-color-scheme: dark){
+  .shadow-sm { box-shadow: 0 1px 2px rgb(0 0 0 / 0.2); }
+  .hover\:shadow-md:hover { box-shadow: 0 4px 10px rgb(0 0 0 / 0.3); }
 }
