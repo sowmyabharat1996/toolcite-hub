@@ -1,40 +1,44 @@
-import Link from "next/link";
+// app/page.tsx
+import ToolCard from "@/components/ToolCard";
 
 export default function Home() {
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-sky-50 to-blue-100 p-8 text-center">
-      <h1 className="text-5xl font-bold text-blue-700 mb-4">⚙️ ToolCite Hub</h1>
-
-      {/* 🧾 NEW: Short About/Intro for AdSense & SEO */}
-      <div className="max-w-2xl text-gray-700 leading-relaxed mb-10">
-        <p className="mb-3">
-          ToolCite Hub is a fast, free, and lightweight collection of intelligent web tools 
-  built for everyday tasks — no sign-ups, clutter, or downloads. Each tool is designed 
-  to do one job exceptionally well and load instantly on both desktop and mobile. 
-  From weather forecasts to productivity utilities, ToolCite Hub is steadily growing 
-  toward 100+ smart, browser-based tools made for simplicity, speed, and everyday usefulness.
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-100">
+      <section className="mx-auto max-w-xl px-4 pt-10 pb-8 text-center">
+        <h1 className="text-4xl md:text-5xl font-bold text-blue-700">ToolCite Hub</h1>
+        <p className="mt-3 text-gray-700">
+          ToolCite Hub is a fast, free collection of smart web tools. No sign-ups,
+          no clutter—just quick, useful utilities that work on every device. We’re
+          steadily growing toward 100+ tools designed for speed, simplicity and everyday
+          usefulness.
         </p>
-      </div>
+      </section>
 
-      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-        <Link
+      <section className="mx-auto max-w-xl px-4 pb-16 grid gap-4">
+        {/* LIVE tool → server redirect; use redirect to force full navigation */}
+        <ToolCard
           href="/weather"
-          className="p-6 bg-white rounded-2xl shadow-md hover:shadow-lg transition"
-        >
-          🌤️ <span className="font-semibold">Weather App</span>
-        </Link>
+          label="Weather App"
+          icon={<span aria-hidden>🌤️</span>}
+          redirect
+        />
 
-        <div className="p-6 bg-white rounded-2xl shadow-md opacity-90">
-          ⚡ <span className="font-semibold">Speed Test (Coming Soon)</span>
-        </div>
+        {/* Coming soon examples (visible but disabled) */}
+        <ToolCard
+          label="Speed Test (Coming Soon)"
+          icon={<span aria-hidden>⚡</span>}
+          disabled
+        />
 
-        <div className="p-6 bg-white rounded-2xl shadow-md opacity-90">
-          🔁 <span className="font-semibold">Unit Converter (Planned)</span>
-        </div>
-      </div>
+        <ToolCard
+          label="Unit Converter (Planned)"
+          icon={<span aria-hidden>📏</span>}
+          disabled
+        />
+      </section>
 
-      <footer className="mt-12 text-gray-500 text-sm">
-        © {new Date().getFullYear()} ToolCite. Built by Bharat 💡
+      <footer className="pb-10 text-center text-sm text-gray-500">
+        © {new Date().getFullYear()} ToolCite
       </footer>
     </main>
   );
