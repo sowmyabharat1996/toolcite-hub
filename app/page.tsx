@@ -1,98 +1,89 @@
 "use client";
 
-import { useState } from "react";
-import { motion } from "framer-motion";
 import ToolCard from "@/components/ToolCard";
-import { useSmartNav } from "@/components/useSmartNav";
+import { FaCloudSun, FaBolt, FaRuler, FaBrain, FaCompress } from "react-icons/fa";
 
 export default function HomePage() {
-  const { smartHref, onSmartNav } = useSmartNav();
-  const [query, setQuery] = useState("");
-
   const tools = [
     {
       title: "Weather App",
       description: "Live forecasts with offline fallback and responsive design.",
-      emoji: "🌤️",
+      emoji: <FaCloudSun className="text-yellow-400" />,
       href: "/weather",
+      soon: false,
     },
     {
-      title: "Speed Test",
+      title: "Speed Test (Coming Soon)",
       description: "Measure your internet speed instantly in the browser.",
-      emoji: "⚡",
+      emoji: <FaBolt className="text-orange-400" />,
+      href: "#",
       soon: true,
     },
     {
-      title: "Unit Converter",
+      title: "Unit Converter (Coming Soon)",
       description: "Convert units for length, weight, temperature, and more.",
-      emoji: "📏",
+      emoji: <FaRuler className="text-purple-400" />,
+      href: "#",
       soon: true,
     },
     {
-      title: "AI Text Summarizer",
+      title: "AI Text Summarizer (Coming Soon)",
       description: "Summarize long text or notes in seconds.",
-      emoji: "🧠",
+      emoji: <FaBrain className="text-pink-400" />,
+      href: "#",
       soon: true,
     },
     {
-      title: "Image Compressor",
+      title: "Image Compressor (Coming Soon)",
       description: "Shrink images while keeping quality intact.",
-      emoji: "🗜️",
+      emoji: <FaCompress className="text-indigo-400" />,
+      href: "#",
       soon: true,
     },
   ];
 
-  const filteredTools = tools.filter((t) =>
-    t.title.toLowerCase().includes(query.toLowerCase())
-  );
-
   return (
-    <main>
-      <section className="mx-auto max-w-2xl px-4 pt-10 pb-8 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold text-blue-500">
+    <main className="min-h-screen bg-gradient-to-b from-black via-[#0b0b0b] to-[#121212] text-gray-200 py-16 px-6">
+      <section className="max-w-5xl mx-auto text-center mb-14">
+        <h1 className="text-5xl sm:text-6xl font-extrabold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
           ToolCite Hub
         </h1>
-        <p className="mt-3 text-gray-400 leading-relaxed">
-          ToolCite Hub is a fast, free collection of smart web tools — no sign-ups,
-          no clutter. Just quick, reliable utilities that work on every device.
-          We’re growing toward{" "}
-          <span className="font-semibold text-blue-400">100+ tools</span> designed
-          for speed, simplicity, and everyday usefulness.
-        </p>
 
-        <input
-          type="text"
-          placeholder="Search tools..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="mt-6 w-full max-w-md mx-auto p-3 rounded-xl bg-neutral-900/70 text-white placeholder-gray-500 outline-none border border-neutral-700 focus:border-blue-500"
-        />
+        <p className="mt-6 text-lg sm:text-xl text-gray-400 leading-relaxed">
+          ToolCite Hub is a fast, free collection of smart web tools — no sign-ups, no clutter.{" "}
+          <br className="hidden sm:block" />
+          Just quick, reliable utilities that work on every device. We’re growing toward{" "}
+          <span className="text-blue-400 font-semibold">100+ tools</span>{" "}
+          designed for speed, simplicity, and everyday usefulness.
+        </p>
       </section>
 
-      <section className="mx-auto max-w-2xl px-4 pb-20 grid gap-4 sm:grid-cols-2">
-        {filteredTools.map((tool, i) => (
-          <motion.div
+      {/* === GRID OF TOOLS === */}
+      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
+        {tools.map((tool) => (
+          <ToolCard
             key={tool.title}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: i * 0.05 }}
-          >
-            <ToolCard
-              title={tool.title}
-              description={tool.description}
-              emoji={tool.emoji}
-              disabled={tool.soon}
-              href={tool.href ? smartHref(tool.href) : undefined}
-              onClick={
-                tool.href ? () => onSmartNav(tool.href!) : undefined
-              }
-            />
-          </motion.div>
+            label={tool.title}
+            description={tool.description}
+            icon={tool.emoji}
+            disabled={tool.soon}
+            href={tool.href}
+          />
         ))}
       </section>
 
-      <footer className="pb-10 text-center text-sm text-neutral-500">
-        © {new Date().getFullYear()} ToolCite
+      {/* === FOOTER === */}
+      <footer className="text-center text-gray-500 text-sm mt-20 border-t border-neutral-800 pt-6">
+        <p>
+          © {new Date().getFullYear()} ToolCite Hub. All rights reserved. •{" "}
+          <a href="/terms" className="hover:text-blue-400 transition-colors">
+            Terms
+          </a>{" "}
+          •{" "}
+          <a href="/privacy" className="hover:text-blue-400 transition-colors">
+            Privacy
+          </a>
+        </p>
       </footer>
     </main>
   );

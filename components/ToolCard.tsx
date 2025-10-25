@@ -1,70 +1,75 @@
 "use client";
 
-import { cn } from "./cn";
+import { useRouter } from "next/navigation";
+import { ReactNode } from "react";
 
-export type ToolCardProps = {
-  title: string;
-  description: string;
-  emoji?: string;
+interface ToolCardProps {
   href?: string;
+  label: string;
+  icon: ReactNode;
+  description?: string;
   disabled?: boolean;
-  onClick?: () => void;
-};
+  redirect?: boolean;
+}
 
+/**
+ * ToolCard — modern glassmorphic card.
+ * All rounded / hover / shadow handled inline (no @apply issues).
+ */
 export default function ToolCard({
-  title,
-  description,
-  emoji,
   href,
+  label,
+  icon,
+  description,
   disabled = false,
-  onClick,
+  redirect = false,
 }: ToolCardProps) {
-  const content = (
-    <div
-      className={cn(
-        "relative flex flex-col gap-3 rounded-2xl border border-neutral-800/60 p-4 backdrop-blur-md shadow-md card-hover",
-        "bg-white/10 dark:bg-[#161616]/80 text-neutral-100",
-        disabled
-          ? "opacity-60 cursor-not-allowed"
-          : "hover:shadow-xl hover:scale-[1.02] active:scale-[0.99]"
-      )}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-xl border text-xl",
-            disabled
-              ? "border-neutral-700 bg-neutral-900 text-neutral-500"
-              : "border-neutral-700 bg-neutral-950 text-neutral-100"
-          )}
-        >
-          {emoji ?? "🔧"}
-        </div>
+  const router = useRouter();
 
-        <h3 className="text-base font-semibold">
-          {title}
-          {disabled && (
-            <span className="ml-2 text-xs bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded-full">
-              Coming Soon
-            </span>
-          )}
-        </h3>
-      </div>
-
-      <p className="text-sm text-neutral-400 leading-snug">{description}</p>
-    </div>
-  );
-
-  if (disabled) return <div>{content}</div>;
+  const handleClick = () => {
+    if (disabled) return;
+    if (redirect && href) {
+      window.location.href = href; // Mobile-safe redirect
+    } else if (href) {
+      router.push(href);
+    }
+  };
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-left w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl"
-      data-href={href}
+    <div
+      onClick={handleClick}
+      className={`card-hover cursor-pointer select-none p-5 sm:p-6 backdrop-blur-lg border rounded-2xl
+        ${
+          disabled
+            ? "bg-white/5 dark:bg-[#111]/60 border-neutral-800 cursor-not-allowed opacity-40"
+            : "bg-white/10 dark:bg-[#161616]/80 border-neutral-700 hover:border-blue-500 shadow-md hover:shadow-2xl hover:-translate-y-1 transition-transform duration-300 ease-in-out"
+        }`}
     >
-      {content}
-    </button>
+      <div className="flex items-center gap-3">
+        <div className={`text-2xl ${disabled ? "opacity-50" : "opacity-100"}`}>
+          {icon}
+        </div>
+
+        <div>
+          <h3
+            className={`text-lg font-semibold ${
+              disabled ? "text-gray-400" : "text-white"
+            }`}
+          >
+            {label}
+          </h3>
+
+          {description && (
+            <p
+              className={`text-sm mt-1 ${
+                disabled ? "text-gray-500" : "text-gray-400"
+              }`}
+            >
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
