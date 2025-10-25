@@ -3,10 +3,11 @@ import "./globals.css";
 import Script from "next/script";
 import type { Metadata, Viewport } from "next";
 
+// ✅ Correct: themeColor moved to its own export
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
 };
 
@@ -34,15 +35,7 @@ export default function RootLayout({
         />
       </head>
 
-      <body
-        className="
-          min-h-dvh flex flex-col
-          bg-gradient-to-b from-blue-50 via-blue-100 to-white
-          dark:bg-gradient-to-b dark:from-[#000000] dark:via-[#0a0a0a] dark:to-[#121212]
-          text-gray-800 dark:text-neutral-100
-          transition-colors duration-500
-        "
-      >
+      <body className="min-h-dvh flex flex-col bg-gradient-to-b from-blue-50 to-white text-gray-800 dark:from-neutral-950 dark:to-neutral-900 dark:text-neutral-100 transition-colors duration-300">
         <main className="flex-grow mx-auto w-full max-w-6xl px-4 py-6">
           <header className="mb-6 flex items-center justify-between">
             <h1 className="text-2xl font-semibold tracking-tight">
@@ -52,7 +45,6 @@ export default function RootLayout({
               Smart • Fast • Reliable
             </p>
           </header>
-
           {children}
         </main>
 

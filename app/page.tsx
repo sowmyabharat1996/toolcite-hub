@@ -8,7 +8,7 @@ type Tool = {
   title: string;
   description: string;
   emoji: string;
-  href?: string; // optional if not yet live
+  href?: string; // optional for "coming soon"
   soon?: boolean;
 };
 
@@ -20,30 +20,18 @@ export default function HomePage() {
       title: "Weather App",
       description: "Live forecasts with offline fallback and responsive design.",
       emoji: "🌤️",
-      href: "/weather", // redirect handled by vercel.json
+      href: "/weather",
     },
     {
-      title: "Speed Test (Coming Soon)",
+      title: "Speed Test",
       description: "Measure your internet speed instantly in the browser.",
       emoji: "⚡",
-      soon: true, // ✅ not live yet
+      href: "/speed",
     },
     {
       title: "Unit Converter (Coming Soon)",
       description: "Convert units for length, weight, temperature, and more.",
       emoji: "📏",
-      soon: true,
-    },
-    {
-      title: "AI Text Summarizer (Coming Soon)",
-      description: "Summarize long text or notes in seconds.",
-      emoji: "🧠",
-      soon: true,
-    },
-    {
-      title: "Image Compressor (Coming Soon)",
-      description: "Shrink images while keeping quality intact.",
-      emoji: "🗜️",
       soon: true,
     },
   ];
@@ -66,7 +54,7 @@ export default function HomePage() {
         </p>
       </section>
 
-      {/* Tools Grid */}
+      {/* Tool Grid */}
       <section className="mx-auto max-w-2xl px-4 pb-20 grid gap-4 sm:grid-cols-2">
         {tools.map((tool) =>
           tool.soon ? (
@@ -75,7 +63,7 @@ export default function HomePage() {
               title={tool.title}
               description={tool.description}
               emoji={tool.emoji}
-              disabled // ✅ disables click
+              disabled
             />
           ) : (
             <ToolCard
@@ -83,18 +71,16 @@ export default function HomePage() {
               title={tool.title}
               description={tool.description}
               emoji={tool.emoji}
-              href={smartHref(tool.href!)}
-              onClick={() => onSmartNav(tool.href!)}
+              href={smartHref(tool.href!)}          // ✅ non-null assertion
+              onClick={() => onSmartNav(tool.href!)} // ✅ non-null assertion
             />
           )
         )}
       </section>
 
-      {/* Footer */}
       <footer className="pb-10 text-center text-sm text-gray-500 dark:text-gray-400">
         © {new Date().getFullYear()} ToolCite
       </footer>
-      
     </main>
   );
 }
