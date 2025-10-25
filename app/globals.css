@@ -1,30 +1,27 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Smooth animated gradient background */
+body {
+  background: linear-gradient(135deg, #000000, #0a0a0a, #121212);
+  background-size: 400% 400%;
+  animation: gradientFlow 30s ease infinite;
 }
 
-
-
-* { -webkit-tap-highlight-color: rgba(0,0,0,0); } 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Card floating animation */
+.card-hover {
+  @apply transition-transform duration-300 ease-out hover:-translate-y-1 hover:shadow-2xl;
 }
-

@@ -1,4 +1,3 @@
-// components/ToolCard.tsx
 "use client";
 
 import { cn } from "./cn";
@@ -23,45 +22,36 @@ export default function ToolCard({
   const content = (
     <div
       className={cn(
-        "group relative flex h-full w-full items-start gap-3 rounded-2xl border p-4 shadow-sm transition-all",
-        "border-neutral-200 dark:border-neutral-800",
-        "bg-white/95 dark:bg-[#161616]/95",
+        "relative flex flex-col gap-3 rounded-2xl border border-neutral-800/60 p-4 backdrop-blur-md shadow-md card-hover",
+        "bg-white/10 dark:bg-[#161616]/80 text-neutral-100",
         disabled
           ? "opacity-60 cursor-not-allowed"
-          : "hover:shadow-lg hover:scale-[1.01] active:scale-[0.99]"
+          : "hover:shadow-xl hover:scale-[1.02] active:scale-[0.99]"
       )}
     >
-      {/* Icon */}
-      <div
-        className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-xl transition-colors",
-          disabled
-            ? "border-neutral-200 bg-neutral-100 text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900"
-            : "border-neutral-200 bg-neutral-50 text-neutral-800 dark:border-neutral-700 dark:bg-[#1e1e1e] dark:text-neutral-100"
-        )}
-      >
-        {emoji ?? "🔧"}
+      <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            "flex h-10 w-10 items-center justify-center rounded-xl border text-xl",
+            disabled
+              ? "border-neutral-700 bg-neutral-900 text-neutral-500"
+              : "border-neutral-700 bg-neutral-950 text-neutral-100"
+          )}
+        >
+          {emoji ?? "🔧"}
+        </div>
+
+        <h3 className="text-base font-semibold">
+          {title}
+          {disabled && (
+            <span className="ml-2 text-xs bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded-full">
+              Coming Soon
+            </span>
+          )}
+        </h3>
       </div>
 
-      {/* Text */}
-      <div className="flex flex-col">
-        <h3
-          className={cn(
-            "text-base font-semibold",
-            disabled ? "text-neutral-500" : "text-neutral-900 dark:text-neutral-100"
-          )}
-        >
-          {title}
-        </h3>
-        <p
-          className={cn(
-            "mt-1 text-sm leading-snug",
-            disabled ? "text-neutral-400" : "text-neutral-600 dark:text-neutral-400"
-          )}
-        >
-          {description}
-        </p>
-      </div>
+      <p className="text-sm text-neutral-400 leading-snug">{description}</p>
     </div>
   );
 
@@ -71,7 +61,7 @@ export default function ToolCard({
     <button
       type="button"
       onClick={onClick}
-      className="text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl"
+      className="text-left w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl"
       data-href={href}
     >
       {content}

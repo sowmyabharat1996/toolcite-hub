@@ -1,7 +1,7 @@
-// app/layout.tsx
 import "./globals.css";
 import Script from "next/script";
 import type { Metadata, Viewport } from "next";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const viewport: Viewport = {
   themeColor: [
@@ -25,7 +25,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full scroll-smooth antialiased">
       <head>
-        {/* ✅ Google AdSense */}
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4622190640183245"
@@ -48,9 +47,12 @@ export default function RootLayout({
             <h1 className="text-2xl font-semibold tracking-tight">
               ToolCite <span className="font-normal text-gray-500">Hub</span>
             </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Smart • Fast • Reliable
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Smart • Fast • Reliable
+              </p>
+              <ThemeToggle />
+            </div>
           </header>
 
           {children}
