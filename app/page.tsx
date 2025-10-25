@@ -19,7 +19,7 @@ export default function HomePage() {
     {
       title: "Unit Converter (Coming Soon)",
       description: "Convert units for length, weight, temperature, and more.",
-      icon: <FaRuler className="text-green-400 text-xl" />,
+      icon: <FaRuler className="text-purple-400 text-xl" />,
       soon: true,
     },
     {
@@ -31,34 +31,37 @@ export default function HomePage() {
     {
       title: "Image Compressor (Coming Soon)",
       description: "Shrink images while keeping quality intact.",
-      icon: <FaCompress className="text-blue-400 text-xl" />,
+      icon: <FaCompress className="text-indigo-400 text-xl" />,
       soon: true,
     },
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-100 to-sky-200 dark:from-[#0d0d0d] dark:to-[#1a1a1a] transition-colors duration-700">
-      <section className="mx-auto max-w-3xl px-4 pt-14 pb-8 text-center">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-blue-700 dark:text-blue-400">
+    <main>
+      {/* Hero container centered like the screenshot */}
+      <section className="max-w-6xl mx-auto px-6 pt-16 pb-10 text-center">
+        <h1 className="text-5xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-blue-500">
           ToolCite Hub
         </h1>
-        <p className="mt-4 text-gray-700 dark:text-gray-300 text-lg leading-relaxed">
+
+        <p className="mt-6 text-gray-400 max-w-3xl mx-auto leading-relaxed">
           ToolCite Hub is a fast, free collection of smart web tools — no sign-ups, no clutter.
-          Just reliable utilities that work everywhere. We’re growing toward{" "}
-          <span className="font-semibold text-blue-700 dark:text-blue-400">100+ tools</span> built
-          for speed, simplicity, and everyday usefulness.
+          Just quick, reliable utilities that work on every device. We’re growing toward{" "}
+          <span className="text-blue-400 font-semibold">100+ tools</span> designed for speed,
+          simplicity, and everyday usefulness.
         </p>
       </section>
 
-      <section className="mx-auto max-w-3xl px-4 pb-20 grid sm:grid-cols-2 gap-5">
+      {/* Card grid centered, 2 columns on md, like your screenshot */}
+      <section className="max-w-6xl mx-auto px-6 pb-4 grid gap-6 md:grid-cols-2">
         {tools.map((tool) => (
           <ToolCard
             key={tool.title}
-  href={tool.href}
-  title={tool.title}  // changed from label to title
-  description={tool.description}
-  icon={tool.icon}
-  disabled={tool.soon}
+            title={tool.title}          // ToolCard now accepts title or label
+            description={tool.description}
+            icon={tool.icon}            // and icon or emoji
+            href={tool.href}
+            disabled={tool.soon}
           />
         ))}
       </section>
