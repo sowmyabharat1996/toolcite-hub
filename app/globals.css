@@ -2,50 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 🌌 Animated gradient background */
-body {
-  background: linear-gradient(135deg, #000000, #0a0a0a, #121212);
-  background-size: 400% 400%;
-  animation: gradientFlow 30s ease infinite;
-}
-
-@keyframes gradientFlow {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-/* ✅ SAFE: No @apply with colors or variants */
+/* Keep globals minimal. No colors, no backgrounds here. */
 @layer components {
+  /* base transition only (no hover/rounded/shadow variants here) */
   .card-hover {
     transition: transform 0.3s ease;
   }
 }
 
-/* 🌙 Smooth dark/light theme */
-html {
-  transition: color 0.5s ease, background-color 0.5s ease;
-}
-
-body {
-  transition: color 0.5s ease, background-color 0.5s ease;
-  color: #f5f5f5; /* neutral-100 manually written */
-}
-
-/* ✨ Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-}
+/* Optional: tidy scrollbar (safe) */
+::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(100, 100, 100, 0.4);
+  background-color: rgba(100,100,100,0.35);
   border-radius: 8px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(160, 160, 160, 0.6);
-}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(160,160,160,0.55); }

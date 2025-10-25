@@ -36,7 +36,8 @@ export default function HomePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-100 to-sky-200 dark:from-[#0d0d0d] dark:to-[#1a1a1a] transition-colors duration-700">
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-100 to-sky-200
+                     dark:from-[#0d0d0d] dark:to-[#1a1a1a] transition-colors duration-700">
       <section className="mx-auto max-w-3xl px-4 pt-14 pb-8 text-center">
         <h1 className="text-4xl md:text-5xl font-extrabold text-blue-700 dark:text-blue-400">
           ToolCite Hub
@@ -44,7 +45,7 @@ export default function HomePage() {
         <p className="mt-4 text-gray-700 dark:text-gray-300 text-lg leading-relaxed">
           ToolCite Hub is a fast, free collection of smart web tools — no sign-ups, no clutter.
           Just reliable utilities that work everywhere. We’re growing toward{" "}
-          <span className="font-semibold text-blue-600 dark:text-blue-400">100+ tools</span> built
+          <span className="font-semibold text-blue-700 dark:text-blue-400">100+ tools</span> built
           for speed, simplicity, and everyday usefulness.
         </p>
       </section>
@@ -54,7 +55,7 @@ export default function HomePage() {
           <ToolCard
             key={tool.title}
             href={tool.href}
-            label={tool.title}
+            label={tool.title}             // NOTE: ToolCard expects `label`, not `title`
             description={tool.description}
             icon={tool.icon}
             disabled={tool.soon}
