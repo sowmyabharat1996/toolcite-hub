@@ -63,9 +63,38 @@ export default function ColorPaletteGenerator() {
     );
   };
 
+  // --- Smooth Toast-based Copy (no browser alert) ---
   const copyHex = async (hex: string) => {
     await navigator.clipboard.writeText(hex);
-    alert(`Copied ${hex}`);
+
+    // Create toast
+    const toast = document.createElement("div");
+    toast.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
+        <span style="width:16px;height:16px;border-radius:4px;background:${hex};display:inline-block"></span>
+        <span>Copied ${hex.toUpperCase()}!</span>
+      </div>`;
+    toast.style.position = "fixed";
+    toast.style.bottom = "24px";
+    toast.style.left = "50%";
+    toast.style.transform = "translateX(-50%)";
+    toast.style.background = "#333";
+    toast.style.color = "#fff";
+    toast.style.padding = "8px 16px";
+    toast.style.borderRadius = "8px";
+    toast.style.fontSize = "14px";
+    toast.style.zIndex = "9999";
+    toast.style.opacity = "0";
+    toast.style.transition = "opacity 0.3s ease";
+    document.body.appendChild(toast);
+
+    // Fade in
+    requestAnimationFrame(() => (toast.style.opacity = "1"));
+
+    // Fade out
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 400);
+    }, 1500);
   };
 
   // --- Export / Download / Share ---
@@ -110,7 +139,26 @@ export default function ColorPaletteGenerator() {
       });
     } else {
       await navigator.clipboard.writeText(url);
-      alert("Link copied to clipboard!");
+      const toast = document.createElement("div");
+      toast.textContent = "Link copied to clipboard!";
+      toast.style.position = "fixed";
+      toast.style.bottom = "24px";
+      toast.style.left = "50%";
+      toast.style.transform = "translateX(-50%)";
+      toast.style.background = "#333";
+      toast.style.color = "#fff";
+      toast.style.padding = "8px 16px";
+      toast.style.borderRadius = "8px";
+      toast.style.fontSize = "14px";
+      toast.style.zIndex = "9999";
+      toast.style.opacity = "0";
+      toast.style.transition = "opacity 0.3s ease";
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => (toast.style.opacity = "1"));
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 400);
+      }, 1500);
     }
   };
 
@@ -129,7 +177,7 @@ export default function ColorPaletteGenerator() {
 
   return (
     <div className="max-w-5xl mx-auto p-6">
-      <h1 className="text-2xl font-semibold mb-2 text-center">
+      <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
         🎨 Color Palette Generator
       </h1>
       <p className="text-center text-gray-600 mb-6">
