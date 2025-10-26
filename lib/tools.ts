@@ -151,14 +151,29 @@ export const TOOLS: Tool[] = [
     status: "coming-soon",
     icon: "🔍",
   },
-  {
+{
     slug: "meta-og-generator",
     name: "Meta Tag & Open Graph Generator",
     category: "Developer & SEO",
-    description: "Generate SEO meta, OG and Twitter cards.",
-    keywords: ["meta tags", "open graph", "twitter cards", "seo"],
-    status: "coming-soon",
+    description: "Generate SEO titles, descriptions, OG/Twitter cards and preview them.",
+    keywords: ["meta tags", "open graph", "twitter cards", "seo", "og image"],
+    status: "live",
     icon: "⚙️",
+    longDescription:
+      "Create SEO-friendly meta tags with live Open Graph and Twitter Card previews. Copy a clean <head> snippet or download it as HTML.",
+    features: [
+      "Title & description with character counters",
+      "Open Graph & Twitter Card tags",
+      "Canonical URL, site name, author, theme color",
+      "Live social previews",
+      "Copy or download HTML snippet",
+    ],
+    howToSteps: [
+      "Fill in Title, Description, URL and Image.",
+      "Optionally set site/author, theme color and card type.",
+      "Review live OG/Twitter previews.",
+      "Copy the generated <head> snippet.",
+    ],
   },
   {
     slug: "speed-test",

@@ -19,6 +19,10 @@ const REGISTRY: Record<string, React.ComponentType<any>> = {
     ssr: false,
     loading: Loading,
   }),
+  "meta-og-generator": dynamic(() => import("@/components/tools/MetaOgGenerator"), {
+    ssr: false,
+    loading: Loading,
+  }),
   "regex-tester": dynamic(() => import("@/components/tools/RegexTester"), {
     ssr: false,
     loading: Loading,
