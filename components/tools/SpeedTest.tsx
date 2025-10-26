@@ -25,6 +25,7 @@ type Result = {
 export default function SpeedTest() {
   const [urlA, setUrlA] = useState("");
   const [urlB, setUrlB] = useState("");
+  const [compareMode, setCompareMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resultA, setResultA] = useState<Result | null>(null);
   const [resultB, setResultB] = useState<Result | null>(null);
@@ -68,6 +69,26 @@ export default function SpeedTest() {
     }
   }
 
+  async function runTest() {
+    if (!urlA) {
+      setError("Please enter a valid URL.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResultA(null);
+    setResultB(null);
+
+    const resA = await runTestFor(urlA);
+    if (resA) {
+      setResultA(resA);
+      saveHistory(resA);
+    }
+
+    setLoading(false);
+  }
+
   async function runCompareTest() {
     if (!urlA || !urlB) {
       setError("Please enter both URLs to compare.");
@@ -96,15 +117,8 @@ export default function SpeedTest() {
     return `${ms.toFixed(0)} ms`;
   }
 
-  function highlightFaster(a: number, b: number) {
-    if (a < b) return "text-green-600 font-semibold";
-    if (b < a) return "text-red-500";
-    return "";
-  }
-
   const connection = (navigator as any)?.connection || {};
 
-  // --- Chart data for comparison ---
   const compareData =
     resultA && resultB
       ? [
@@ -119,36 +133,54 @@ export default function SpeedTest() {
   return (
     <div className="max-w-5xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-2">
-        Website Speed Test & Comparison Tool
+        Website Speed Test – Free Online Tool
       </h1>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Compare two websites side-by-side. All performance metrics are measured
-        locally in your browser.
+        Analyze website load performance, TTFB, and connection metrics — all measured locally in your browser.
       </p>
 
-      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+      {/* Compare Mode Toggle */}
+      <div className="flex items-center gap-3 mb-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={compareMode}
+            onChange={() => setCompareMode(!compareMode)}
+          />
+          <span className="text-sm font-medium">🔄 Enable Compare Mode</span>
+        </label>
+      </div>
+
+      {/* Inputs */}
+      <div
+        className={`grid gap-3 ${
+          compareMode ? "sm:grid-cols-2" : "sm:grid-cols-1"
+        } mb-4`}
+      >
         <input
           type="text"
-          placeholder="https://siteA.com"
+          placeholder="https://example.com"
           value={urlA}
           onChange={(e) => setUrlA(e.target.value)}
           className="px-4 py-2 border rounded-md dark:bg-neutral-900 dark:border-neutral-700"
         />
-        <input
-          type="text"
-          placeholder="https://siteB.com"
-          value={urlB}
-          onChange={(e) => setUrlB(e.target.value)}
-          className="px-4 py-2 border rounded-md dark:bg-neutral-900 dark:border-neutral-700"
-        />
+        {compareMode && (
+          <input
+            type="text"
+            placeholder="https://compare.com"
+            value={urlB}
+            onChange={(e) => setUrlB(e.target.value)}
+            className="px-4 py-2 border rounded-md dark:bg-neutral-900 dark:border-neutral-700"
+          />
+        )}
       </div>
 
       <button
-        onClick={runCompareTest}
-        disabled={loading || !urlA || !urlB}
+        onClick={compareMode ? runCompareTest : runTest}
+        disabled={loading || !urlA || (compareMode && !urlB)}
         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
       >
-        {loading ? "Testing..." : "Run Comparison"}
+        {loading ? "Testing..." : compareMode ? "Run Comparison" : "Run Test"}
       </button>
 
       {error && (
@@ -157,138 +189,108 @@ export default function SpeedTest() {
         </div>
       )}
 
-      {(resultA || resultB) && (
-        <div className="grid md:grid-cols-2 gap-6 mt-8">
-          {[resultA, resultB].map((r, i) =>
-            r ? (
-              <div
-                key={i}
-                className="rounded-xl border p-4 bg-white/70 dark:bg-neutral-900/60"
-              >
-                <h2 className="text-lg font-semibold mb-2">{r.url}</h2>
+      {/* Results */}
+      {compareMode ? (
+        (resultA || resultB) && (
+          <>
+            <div className="grid md:grid-cols-2 gap-6 mt-8">
+              {[resultA, resultB].map((r, i) =>
+                r ? (
+                  <div
+                    key={i}
+                    className="rounded-xl border p-4 bg-white/70 dark:bg-neutral-900/60"
+                  >
+                    <h2 className="text-lg font-semibold mb-2">{r.url}</h2>
+                    <table className="w-full text-sm border-collapse">
+                      <tbody>
+                        <tr><td className="py-1 text-gray-600">TTFB:</td><td>{formatMs(r.ttfb)}</td></tr>
+                        <tr><td className="py-1 text-gray-600">DOM Loaded:</td><td>{formatMs(r.domLoad)}</td></tr>
+                        <tr><td className="py-1 text-gray-600">Total Load:</td><td>{formatMs(r.totalLoad)}</td></tr>
+                        <tr><td className="py-1 text-gray-600">Fetch Time:</td><td>{formatMs(r.fetchTime)}</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div key={i} className="text-gray-500 italic">
+                    No data for Site {i === 0 ? "A" : "B"}
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* ✅ Comparison Summary */}
+            {resultA && resultB && (
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-2">Comparison Summary</h3>
                 <table className="w-full text-sm border-collapse">
                   <tbody>
-                    <tr>
-                      <td className="py-1 text-gray-600">DNS Lookup:</td>
-                      <td>{formatMs(r.dns)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1 text-gray-600">Connection Time:</td>
-                      <td>{formatMs(r.connect)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1 text-gray-600">TTFB:</td>
-                      <td>{formatMs(r.ttfb)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1 text-gray-600">DOM Loaded:</td>
-                      <td>{formatMs(r.domLoad)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1 text-gray-600">Total Load:</td>
-                      <td>{formatMs(r.totalLoad)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1 text-gray-600">Fetch Time:</td>
-                      <td>{formatMs(r.fetchTime)}</td>
-                    </tr>
+                    {[
+                      ["DNS Lookup", resultA.dns, resultB.dns],
+                      ["TTFB", resultA.ttfb, resultB.ttfb],
+                      ["DOM Loaded", resultA.domLoad, resultB.domLoad],
+                      ["Total Load", resultA.totalLoad, resultB.totalLoad],
+                      ["Fetch Time", resultA.fetchTime, resultB.fetchTime],
+                    ].map(([label, a, b], i) => (
+                      <tr key={i} className="border-t">
+                        <td className="py-2 text-gray-600">{label}:</td>
+                        <td className="py-2 text-right">
+                          {(() => {
+                            if (!a || !b) return "—";
+                            if (a === b)
+                              return <span className="text-gray-500">Same speed</span>;
+                            return a < b ? (
+                              <span className="text-green-600 font-semibold">Site A faster</span>
+                            ) : (
+                              <span className="text-red-500 font-semibold">Site B faster</span>
+                            );
+                          })()}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div key={i} className="text-gray-500 italic">
-                No data for Site {i === 0 ? "A" : "B"}
-              </div>
-            )
-          )}
-        </div>
-      )}
+            )}
 
-      {resultA && resultB && (
-        <>
-          <div className="mt-6 rounded-lg border p-4 bg-blue-50 dark:bg-blue-900/20">
-            <h3 className="text-lg font-semibold mb-3">
-              Comparison Summary
-            </h3>
-            <table className="text-sm w-full">
+            {/* Comparison Chart */}
+            {resultA && resultB && (
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-2">Visual Comparison (A vs B)</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={compareData}>
+                    <XAxis dataKey="metric" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="siteA" fill="#3b82f6" name={`Site A (${resultA.url})`} />
+                    <Bar dataKey="siteB" fill="#f97316" name={`Site B (${resultB.url})`} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        resultA && (
+          <div className="mt-8 rounded-xl border p-4 bg-white/70 dark:bg-neutral-900/60">
+            <h2 className="text-lg font-semibold mb-2">{resultA.url}</h2>
+            <table className="w-full text-sm border-collapse">
               <tbody>
-                <tr>
-                  <td className="py-1">DNS Lookup:</td>
-                  <td className={highlightFaster(resultA.dns, resultB.dns)}>
-                    {resultA.dns < resultB.dns
-                      ? "Site A faster"
-                      : "Site B faster"}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-1">TTFB:</td>
-                  <td className={highlightFaster(resultA.ttfb, resultB.ttfb)}>
-                    {resultA.ttfb < resultB.ttfb
-                      ? "Site A faster"
-                      : "Site B faster"}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-1">DOM Loaded:</td>
-                  <td
-                    className={highlightFaster(resultA.domLoad, resultB.domLoad)}
-                  >
-                    {resultA.domLoad < resultB.domLoad
-                      ? "Site A faster"
-                      : "Site B faster"}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-1">Total Load:</td>
-                  <td
-                    className={highlightFaster(
-                      resultA.totalLoad,
-                      resultB.totalLoad
-                    )}
-                  >
-                    {resultA.totalLoad < resultB.totalLoad
-                      ? "Site A faster"
-                      : "Site B faster"}
-                  </td>
-                </tr>
+                <tr><td className="py-1 text-gray-600">TTFB:</td><td>{formatMs(resultA.ttfb)}</td></tr>
+                <tr><td className="py-1 text-gray-600">DOM Loaded:</td><td>{formatMs(resultA.domLoad)}</td></tr>
+                <tr><td className="py-1 text-gray-600">Total Load:</td><td>{formatMs(resultA.totalLoad)}</td></tr>
+                <tr><td className="py-1 text-gray-600">Fetch Time:</td><td>{formatMs(resultA.fetchTime)}</td></tr>
               </tbody>
             </table>
           </div>
-
-          {/* --- Dual Comparison Chart --- */}
-          <div className="mt-8">
-            <h3 className="text-lg font-semibold mb-2">
-              Visual Comparison (A vs B)
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={compareData}>
-                <XAxis dataKey="metric" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar
-                  dataKey="siteA"
-                  fill="#3b82f6"
-                  name={`Site A (${resultA.url})`}
-                />
-                <Bar
-                  dataKey="siteB"
-                  fill="#f97316"
-                  name={`Site B (${resultB.url})`}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </>
+        )
       )}
 
       {/* History Chart */}
       {history.length > 0 && (
         <div className="mt-10">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold">
-              Recent Performance Summary
-            </h3>
+            <h3 className="text-lg font-semibold">Recent Performance Summary</h3>
             <button
               onClick={() => {
                 localStorage.removeItem("speedTestHistory");
@@ -309,7 +311,6 @@ export default function SpeedTest() {
               <Bar dataKey="totalLoad" fill="#3b82f6" name="Total Load (ms)" />
               <Bar dataKey="domLoad" fill="#10b981" name="DOM Load (ms)" />
               <Bar dataKey="ttfb" fill="#f59e0b" name="TTFB (ms)" />
-              <Bar dataKey="fetchTime" fill="#ef4444" name="Fetch Time (ms)" />
             </BarChart>
           </ResponsiveContainer>
         </div>
