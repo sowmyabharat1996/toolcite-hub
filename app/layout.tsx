@@ -2,6 +2,7 @@
 import "./globals.css";
 import Script from "next/script";
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 
 export const viewport: Viewport = {
   themeColor: [
@@ -10,38 +11,81 @@ export const viewport: Viewport = {
   ],
 };
 
+// ✅ Robust, site-wide defaults (tool pages will override via generateMetadata)
 export const metadata: Metadata = {
-  title: "ToolCite Hub — Free Smart Web Tools",
-  description:
-    "ToolCite Hub is a growing collection of smart, free web tools built for speed and simplicity — from weather forecasts to productivity utilities, all in one place.",
   metadataBase: new URL("https://toolcite.com"),
+  title: {
+    default: "ToolCite – Free AI, Document & Dev Tools",
+    template: "%s | ToolCite",
+  },
+  description:
+    "ToolCite is a growing collection of fast, free tools for AI productivity, documents, and developer/SEO workflows.",
+  alternates: { canonical: "/" }, // homepage canonical; tool pages inherit from metadataBase
+  openGraph: {
+    type: "website",
+    siteName: "ToolCite",
+    url: "https://toolcite.com",
+    title: "ToolCite – Free AI, Document & Dev Tools",
+    description:
+      "Fast, free web tools built for speed and simplicity — from weather to AI & SEO utilities.",
+    images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "ToolCite" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    creator: "@yourhandle", // <-- update if you have one
+  },
+  // Optional: Google site verification if you use HTML tag method
+  // verification: { google: "YOUR-GSC-HTML-TAG-CODE" },
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/app-192.png",
+  },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+// ✅ Font: zero CLS, display=swap
+const inter = Inter({ subsets: ["latin"], display: "swap" });
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full scroll-smooth antialiased">
       <head>
-        {/* ✅ Google AdSense */}
+        {/* ✅ AdSense */}
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4622190640183245"
           crossOrigin="anonymous"
           strategy="afterInteractive"
         />
+        {/* (Optional) GA4 – replace G-XXXX and uncomment if you want GA here globally */}
+        {/*
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"
+          strategy="afterInteractive"
+        />
+        <Script id="ga4" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-XXXX', { anonymize_ip: true });
+          `}
+        </Script>
+        */}
+        {/* (Optional) Microsoft Clarity */}
+        {/*
+        <Script id="clarity" strategy="afterInteractive">{`
+          (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+          t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+          y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window, document, "clarity", "script", "YOUR_ID");
+        `}</Script>
+        */}
       </head>
 
       <body
-        className="
-          min-h-dvh flex flex-col
+        className={`${inter.className} min-h-dvh flex flex-col
           bg-gradient-to-b from-blue-50 via-blue-100 to-white
           dark:bg-gradient-to-b dark:from-[#000000] dark:via-[#0a0a0a] dark:to-[#121212]
-          text-gray-800 dark:text-neutral-100
-          transition-colors duration-500
-        "
+          text-gray-800 dark:text-neutral-100 transition-colors duration-500`}
       >
         <main className="flex-grow mx-auto w-full max-w-6xl px-4 py-6">
           <header className="mb-6 flex items-center justify-between">

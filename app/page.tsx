@@ -1,51 +1,18 @@
-// app/page.tsx
 "use client";
 
+import Link from "next/link";
 import ToolCard from "@/components/ToolCard";
 import { useSmartNav } from "@/components/useSmartNav";
-
-type Tool = {
-  title: string;
-  description: string;
-  emoji: string;
-  href?: string; // optional if not yet live
-  soon?: boolean;
-};
+import { TOOLS } from "@/lib/tools";
 
 export default function HomePage() {
   const { smartHref, onSmartNav } = useSmartNav();
 
-  const tools: Tool[] = [
-    {
-      title: "Weather App",
-      description: "Live forecasts with offline fallback and responsive design.",
-      emoji: "🌤️",
-      href: "/weather", // redirect handled by vercel.json
-    },
-    {
-      title: "Speed Test (Coming Soon)",
-      description: "Measure your internet speed instantly in the browser.",
-      emoji: "⚡",
-      soon: true, // ✅ not live yet
-    },
-    {
-      title: "Unit Converter (Coming Soon)",
-      description: "Convert units for length, weight, temperature, and more.",
-      emoji: "📏",
-      soon: true,
-    },
-    {
-      title: "AI Text Summarizer (Coming Soon)",
-      description: "Summarize long text or notes in seconds.",
-      emoji: "🧠",
-      soon: true,
-    },
-    {
-      title: "Image Compressor (Coming Soon)",
-      description: "Shrink images while keeping quality intact.",
-      emoji: "🗜️",
-      soon: true,
-    },
+  // Groups in the order you want to show them
+  const groups = [
+    { title: "AI Productivity & Content", key: "AI Productivity & Content" as const },
+    { title: "Document & File Utilities", key: "Document & File" as const },
+    { title: "Developer & SEO Tools", key: "Developer & SEO" as const },
   ];
 
   return (
@@ -59,35 +26,57 @@ export default function HomePage() {
           ToolCite Hub is a fast, free collection of smart web tools — no sign-ups,
           no clutter. Just quick, reliable utilities that work on every device.
           We’re growing toward{" "}
-          <span className="font-semibold text-blue-600 dark:text-blue-400">
-            100+ tools
-          </span>{" "}
+          <span className="font-semibold text-blue-600 dark:text-blue-400">100+ tools</span>{" "}
           designed for speed, simplicity, and everyday usefulness.
         </p>
       </section>
 
-      {/* Tools Grid */}
-      <section className="mx-auto max-w-2xl px-4 pb-20 grid gap-4 sm:grid-cols-2">
-        {tools.map((tool) =>
-          tool.soon ? (
-            <ToolCard
-              key={tool.title}
-              title={tool.title}
-              description={tool.description}
-              emoji={tool.emoji}
-              disabled // ✅ disables click
-            />
-          ) : (
-            <ToolCard
-              key={tool.title}
-              title={tool.title}
-              description={tool.description}
-              emoji={tool.emoji}
-              href={smartHref(tool.href!)}
-              onClick={() => onSmartNav(tool.href!)}
-            />
-          )
-        )}
+      {/* Tools by Category */}
+      <section className="mx-auto w-full max-w-6xl px-4 pb-20 space-y-10">
+        {groups.map((g) => {
+          const items = TOOLS.filter((t) => t.category === g.key);
+
+          if (items.length === 0) return null;
+
+          return (
+            <div key={g.key}>
+              <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-gray-200">
+                {g.title}
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {items.map((t) => {
+                  const href = `/tools/${t.slug}`;
+                  const comingSoon = t.status !== "live";
+
+                  return comingSoon ? (
+                    <ToolCard
+                      key={t.slug}
+                      title={`${t.name} (Coming Soon)`}
+                      description={t.description}
+                      emoji={t.icon ?? "🔧"}
+                      disabled
+                    />
+                  ) : (
+                    <ToolCard
+                      key={t.slug}
+                      title={t.name}
+                      description={t.description}
+                      emoji={t.icon ?? "🔧"}
+                      href={smartHref(href)}
+                      onClick={() => onSmartNav(href)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Optional: expose Weather if it's NOT in the TOOLS registry */}
+        {/* Remove this block if you added "weather" into TOOLS. */}
+        <div className="hidden">
+          <Link href="/weather" aria-label="Weather App" />
+        </div>
       </section>
 
       {/* Footer */}
