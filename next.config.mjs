@@ -10,7 +10,6 @@ const nextConfig = {
     imageSizes: [16, 32, 48, 64, 96],
   },
 
-  // Keep false if LightningCSS noise is distracting; flip to true once clean.
   experimental: { optimizeCss: false },
 
   async headers() {
@@ -36,19 +35,8 @@ const nextConfig = {
 
   async redirects() {
     return [
-      // Canonicalize www → apex
-      {
-        source: '/:path*',
-        has: [{ type: 'host', value: 'www.toolcite.com' }],
-        destination: 'https://toolcite.com/:path*',
-        permanent: true,
-      },
-      // Old weather route → new tools route
-      {
-        source: '/weather',
-        destination: '/tools/weather',
-        permanent: true,
-      },
+      // keep ONLY app-level path redirects (no host-based rule here)
+      { source: '/weather', destination: '/tools/weather', permanent: true },
     ];
   },
 };
