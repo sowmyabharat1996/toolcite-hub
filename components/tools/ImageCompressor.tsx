@@ -1,14 +1,27 @@
 "use client";
 
-import React, { useRef, useState, useMemo } from "react";
+import React, { useMemo, useRef, useState } from "react";
 
 type OutFormat = "image/jpeg" | "image/webp" | "image/png";
 
+// Small helper to prettify sizes
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 KB";
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(2)} MB`;
+}
+
 export default function ImageCompressor() {
   const fileInput = useRef<HTMLInputElement | null>(null);
+
   const [file, setFile] = useState<File | null>(null);
   const [imgURL, setImgURL] = useState<string>("");
+
   const [compressedURL, setCompressedURL] = useState<string>("");
+  const [compressedBlob, setCompressedBlob] = useState<Blob | null>(null);
+
   const [quality, setQuality] = useState<number>(0.8);
   const [maxW, setMaxW] = useState<number>(1600);
   const [maxH, setMaxH] = useState<number>(1600);
@@ -19,18 +32,22 @@ export default function ImageCompressor() {
     () => (file ? Math.round(file.size / 1024) : 0),
     [file]
   );
-  const compressedKB = useMemo(() => {
-    if (!compressedURL) return 0;
-    // rough estimate from data URL length
-    const len = Math.ceil((compressedURL.length * 3) / 4);
-    return Math.round(len / 1024);
-  }, [compressedURL]);
+  const compressedKB = useMemo(
+    () => (compressedBlob ? Math.round(compressedBlob.size / 1024) : 0),
+    [compressedBlob]
+  );
+  const savedPct = useMemo(() => {
+    if (!origKB || !compressedKB) return null;
+    const pct = Math.max(0, Math.round(((origKB - compressedKB) / origKB) * 100));
+    return pct;
+  }, [origKB, compressedKB]);
 
   async function handleFile(f: File) {
     setFile(f);
     const url = URL.createObjectURL(f);
     setImgURL(url);
     setCompressedURL("");
+    setCompressedBlob(null);
   }
 
   async function onSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -46,7 +63,6 @@ export default function ImageCompressor() {
     const canvas = document.createElement("canvas");
     let { width, height } = img;
 
-    // Preserve aspect ratio
     const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
     width = Math.round(width * ratio);
     height = Math.round(height * ratio);
@@ -70,7 +86,6 @@ export default function ImageCompressor() {
 
       const canvas = drawScaled(img, maxW, maxH);
 
-      // PNG ignores quality in most browsers, but we keep the option unified
       const blob: Blob | null = await new Promise((resolve) =>
         canvas.toBlob(
           (b) => resolve(b),
@@ -83,6 +98,9 @@ export default function ImageCompressor() {
         alert("Failed to compress image.");
         return;
       }
+
+      setCompressedBlob(blob);
+      if (compressedURL) URL.revokeObjectURL(compressedURL);
       const outUrl = URL.createObjectURL(blob);
       setCompressedURL(outUrl);
     } finally {
@@ -91,7 +109,7 @@ export default function ImageCompressor() {
   }
 
   function download() {
-    if (!compressedURL) return;
+    if (!compressedBlob) return;
     const a = document.createElement("a");
     const ext =
       format === "image/jpeg" ? "jpg" : format === "image/webp" ? "webp" : "png";
@@ -104,6 +122,7 @@ export default function ImageCompressor() {
     setFile(null);
     setImgURL("");
     setCompressedURL("");
+    setCompressedBlob(null);
     if (fileInput.current) fileInput.current.value = "";
   }
 
@@ -121,13 +140,16 @@ export default function ImageCompressor() {
               onChange={onSelect}
               className="block w-full text-sm"
             />
+            {file && (
+              <div className="mt-1 text-xs text-gray-500">
+                {file.name} — {origKB} KB
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Max width (px)
-              </label>
+              <label className="block text-sm font-medium mb-1">Max width (px)</label>
               <input
                 type="number"
                 min={64}
@@ -137,9 +159,7 @@ export default function ImageCompressor() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Max height (px)
-              </label>
+              <label className="block text-sm font-medium mb-1">Max height (px)</label>
               <input
                 type="number"
                 min={64}
@@ -152,7 +172,10 @@ export default function ImageCompressor() {
 
           <div>
             <label className="block text-sm font-medium mb-1">
-              Quality {format !== "image/png" ? `(${Math.round(quality * 100)}%)` : "(ignored for PNG)"}
+              Quality{" "}
+              {format !== "image/png"
+                ? `(${Math.round(quality * 100)}%)`
+                : "(ignored for PNG)"}
             </label>
             <input
               type="range"
@@ -189,15 +212,13 @@ export default function ImageCompressor() {
             </button>
             <button
               onClick={download}
-              disabled={!compressedURL}
+              disabled={!compressedBlob}
               className="rounded-lg border px-4 py-2 disabled:opacity-50"
+              title={compressedBlob ? `Download ${formatBytes(compressedBlob.size)}` : "Download"}
             >
-              Download
+              {compressedBlob ? `Download (${formatBytes(compressedBlob.size)})` : "Download"}
             </button>
-            <button
-              onClick={resetAll}
-              className="ml-auto rounded-lg border px-3 py-2"
-            >
+            <button onClick={resetAll} className="ml-auto rounded-lg border px-3 py-2">
               Reset
             </button>
           </div>
@@ -227,11 +248,26 @@ export default function ImageCompressor() {
 
           <div>
             <div className="text-sm font-medium mb-2">
-              Compressed {compressedKB ? `— ${compressedKB} KB` : ""}
+              {compressedBlob ? (
+                <>
+                  Compressed — {formatBytes(compressedBlob.size)}{" "}
+                  {savedPct !== null && (
+                    <span className="text-green-600 dark:text-green-400">
+                      (−{savedPct}%)
+                    </span>
+                  )}
+                </>
+              ) : (
+                "Compressed"
+              )}
             </div>
             <div className="aspect-square rounded-lg bg-white dark:bg-neutral-800 grid place-items-center overflow-hidden">
               {compressedURL ? (
-                <img src={compressedURL} alt="compressed" className="object-contain max-h-full" />
+                <img
+                  src={compressedURL}
+                  alt="compressed"
+                  className="object-contain max-h-full"
+                />
               ) : (
                 <span className="text-sm text-gray-500">Run “Compress” to preview</span>
               )}
