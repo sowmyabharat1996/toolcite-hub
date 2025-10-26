@@ -1,30 +1,60 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
-type Color = { hex: string; locked: boolean };
-
-function randomHex(): string {
-  return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
-}
+type Color = {
+  hex: string;
+  locked: boolean;
+};
 
 export default function ColorPaletteGenerator() {
+  const [baseColor, setBaseColor] = useState("#06A92F");
   const [palette, setPalette] = useState<Color[]>([
-    { hex: "#3B82F6", locked: false },
-    { hex: "#10B981", locked: false },
-    { hex: "#F59E0B", locked: false },
-    { hex: "#EF4444", locked: false },
-    { hex: "#8B5CF6", locked: false },
+    { hex: "#000000", locked: false },
+    { hex: "#06A92F", locked: false },
+    { hex: "#20CA5F", locked: false },
+    { hex: "#46E96F", locked: false },
+    { hex: "#67098F", locked: false },
   ]);
-  const [baseColor, setBaseColor] = useState("#3B82F6");
-  const [copied, setCopied] = useState<string | null>(null);
+
+  // --- Utilities ---
+  const randomHex = () =>
+    "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+
+  const generateFromBase = () => {
+    const shades = Array.from({ length: 5 }, (_, i) => ({
+      hex: shadeColor(baseColor, i * 20 - 40),
+      locked: palette[i]?.locked || false,
+    }));
+    setPalette((prev) =>
+      shades.map((c, i) => (prev[i]?.locked ? prev[i] : c))
+    );
+  };
 
   const regenerate = () => {
     setPalette((prev) =>
-      prev.map((c) =>
-        c.locked ? c : { hex: randomHex(), locked: false }
-      )
+      prev.map((c) => (c.locked ? c : { ...c, hex: randomHex() }))
     );
+  };
+
+  const shadeColor = (color: string, percent: number) => {
+    const f = parseInt(color.slice(1), 16);
+    const t = percent < 0 ? 0 : 255;
+    const p = Math.abs(percent) / 100;
+    const R = f >> 16;
+    const G = (f >> 8) & 0x00ff;
+    const B = f & 0x0000ff;
+    const newColor =
+      "#" +
+      (
+        0x1000000 +
+        (Math.round((t - R) * p) + R) * 0x10000 +
+        (Math.round((t - G) * p) + G) * 0x100 +
+        (Math.round((t - B) * p) + B)
+      )
+        .toString(16)
+        .slice(1);
+    return newColor;
   };
 
   const toggleLock = (index: number) => {
@@ -33,82 +63,140 @@ export default function ColorPaletteGenerator() {
     );
   };
 
-  const copyColor = async (hex: string) => {
+  const copyHex = async (hex: string) => {
     await navigator.clipboard.writeText(hex);
-    setCopied(hex);
-    setTimeout(() => setCopied(null), 1200);
+    alert(`Copied ${hex}`);
   };
 
-  const generateFromBase = () => {
-    const base = baseColor.replace("#", "");
-    const baseNum = parseInt(base, 16);
-    const newPalette = Array.from({ length: 5 }).map((_, i) => {
-      const offset = (i - 2) * 0x202020;
-      const newColor = Math.max(0, Math.min(0xffffff, baseNum + offset));
-      return {
-        hex: "#" + newColor.toString(16).padStart(6, "0"),
-        locked: false,
-      };
-    });
-    setPalette(newPalette);
+  // --- Export / Download / Share ---
+  const exportPalette = async (type: "json" | "png") => {
+    if (type === "json") {
+      const blob = new Blob([JSON.stringify(palette, null, 2)], {
+        type: "application/json",
+      });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "palette.json";
+      link.click();
+    } else if (type === "png") {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const sw = 120,
+        sh = 120;
+      canvas.width = palette.length * sw;
+      canvas.height = sh;
+      palette.forEach((c, i) => {
+        ctx.fillStyle = c.hex;
+        ctx.fillRect(i * sw, 0, sw, sh);
+      });
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = "palette.png";
+      link.click();
+    }
   };
+
+  const sharePalette = async () => {
+    const hexes = palette.map((p) => p.hex).join(",");
+    const url = `${window.location.origin}/tools/color-palette-generator?colors=${encodeURIComponent(
+      hexes
+    )}`;
+
+    if (navigator.share) {
+      await navigator.share({
+        title: "My Color Palette",
+        text: "Check out my color palette!",
+        url,
+      });
+    } else {
+      await navigator.clipboard.writeText(url);
+      alert("Link copied to clipboard!");
+    }
+  };
+
+  // --- Auto-load shared palettes via ?colors= ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const colorsParam = params.get("colors");
+    if (colorsParam) {
+      const colors = colorsParam.split(",").map((hex) => ({
+        hex,
+        locked: false,
+      }));
+      setPalette(colors);
+    }
+  }, []);
 
   return (
-    <div className="max-w-5xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-2">Color Palette Generator</h1>
-      <p className="text-gray-600 dark:text-gray-400 mb-6">
+    <div className="max-w-5xl mx-auto p-6">
+      <h1 className="text-2xl font-semibold mb-2 text-center">
+        🎨 Color Palette Generator
+      </h1>
+      <p className="text-center text-gray-600 mb-6">
         Generate palettes and shades from a base color or random selection.
-        Click any swatch to copy the hex code. Lock colors to keep them during regeneration.
+        Click any swatch to copy the hex code. Lock colors to keep them during
+        regeneration.
       </p>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      {/* Controls */}
+      <div className="flex flex-wrap justify-center gap-3 mb-6">
         <input
           type="color"
           value={baseColor}
           onChange={(e) => setBaseColor(e.target.value)}
-          className="w-full sm:w-32 h-10 rounded-md cursor-pointer"
+          className="w-24 h-10 rounded-md cursor-pointer border border-gray-300"
         />
         <button
           onClick={generateFromBase}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
         >
           Generate from Base
         </button>
         <button
           onClick={regenerate}
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
         >
           Randomize Palette
         </button>
+
+        {/* Export / Share */}
+        <button
+          onClick={() => exportPalette("json")}
+          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition"
+        >
+          Export JSON
+        </button>
+        <button
+          onClick={() => exportPalette("png")}
+          className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition"
+        >
+          Download PNG
+        </button>
+        <button
+          onClick={sharePalette}
+          className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 transition"
+        >
+          Share Link
+        </button>
       </div>
 
-      {/* Palette Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      {/* Palette */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
         {palette.map((c, i) => (
           <div
             key={i}
-            className="relative rounded-lg overflow-hidden shadow-sm transition-transform hover:scale-[1.03]"
+            className="rounded-xl shadow-sm cursor-pointer transition transform hover:scale-105"
+            style={{ backgroundColor: c.hex }}
+            onClick={() => copyHex(c.hex)}
           >
-            <div
-              className="h-28 cursor-pointer transition-all"
-              style={{ backgroundColor: c.hex }}
-              onClick={() => copyColor(c.hex)}
-            />
-            <div className="flex justify-between items-center px-2 py-1 bg-white dark:bg-neutral-800 text-xs font-medium">
-              <span
-                className={`cursor-pointer select-none ${
-                  copied === c.hex ? "text-green-500" : "text-gray-700 dark:text-gray-200"
-                }`}
-                onClick={() => copyColor(c.hex)}
-              >
-                {copied === c.hex ? "Copied!" : c.hex.toUpperCase()}
-              </span>
+            <div className="p-2 bg-white/90 rounded-b-xl text-center text-sm">
+              <div className="font-mono">{c.hex.toUpperCase()}</div>
               <button
-                onClick={() => toggleLock(i)}
-                title={c.locked ? "Unlock" : "Lock"}
-                className={`text-sm ${
-                  c.locked ? "text-yellow-500" : "text-gray-400 hover:text-gray-600"
-                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleLock(i);
+                }}
+                className="mt-1 text-xs text-gray-500"
               >
                 {c.locked ? "🔒" : "🔓"}
               </button>
@@ -117,9 +205,9 @@ export default function ColorPaletteGenerator() {
         ))}
       </div>
 
-      <div className="mt-8 text-xs text-gray-500 dark:text-gray-400">
+      <p className="text-center text-gray-500 text-sm">
         Tip: You can mix locked and random colors for unique combinations.
-      </div>
+      </p>
     </div>
   );
 }
