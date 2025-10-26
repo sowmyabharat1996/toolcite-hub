@@ -1,9 +1,14 @@
 // lib/tools.ts
 
+export type ToolCategory =
+  | "AI Productivity & Content"
+  | "Document & File"
+  | "Developer & SEO";
+
 export type Tool = {
   slug: string;
   name: string;
-  category: "AI Productivity & Content" | "Document & File" | "Developer & SEO";
+  category: ToolCategory;
   description: string;
   keywords: string[];
   status?: "live" | "coming-soon";
@@ -34,13 +39,7 @@ export const TOOLS: Tool[] = [
     name: "AI Note-Taking",
     category: "AI Productivity & Content",
     description: "Capture structured notes from web inputs & meetings.",
-    keywords: [
-      "ai notes",
-      "meeting notes",
-      "note taker",
-      "transcript notes",
-      "web clipper notes",
-    ],
+    keywords: ["ai notes", "meeting notes", "note taker", "transcript notes"],
     status: "coming-soon",
     icon: "📝",
   },
@@ -49,13 +48,7 @@ export const TOOLS: Tool[] = [
     name: "AI Writing Assistant",
     category: "AI Productivity & Content",
     description: "Generate blog posts, emails, and ad copy.",
-    keywords: [
-      "ai writer",
-      "copy generator",
-      "blog writing",
-      "email writer",
-      "ad copy maker",
-    ],
+    keywords: ["ai writer", "copy generator", "blog writing", "email writer"],
     status: "coming-soon",
     icon: "✍️",
   },
@@ -67,8 +60,8 @@ export const TOOLS: Tool[] = [
     keywords: [
       "plagiarism checker",
       "content humanizer",
-      "ai detector bypass",
       "similarity check",
+      "ai detector bypass",
     ],
     status: "coming-soon",
     icon: "🧩",
@@ -123,12 +116,7 @@ export const TOOLS: Tool[] = [
     name: "Online Image Compressor",
     category: "Document & File",
     description: "Compress images while keeping quality.",
-    keywords: [
-      "image compressor",
-      "reduce image size",
-      "compress png",
-      "compress jpg",
-    ],
+    keywords: ["image compressor", "reduce image size", "compress png", "compress jpg"],
     status: "coming-soon",
     icon: "🗜️",
   },
@@ -137,12 +125,7 @@ export const TOOLS: Tool[] = [
     name: "Batch File Converter (CSV ↔ JSON ↔ Excel)",
     category: "Document & File",
     description: "Batch-convert between CSV/JSON/XLSX.",
-    keywords: [
-      "csv to json",
-      "json to csv",
-      "excel to csv",
-      "batch converter",
-    ],
+    keywords: ["csv to json", "json to csv", "excel to csv", "batch converter"],
     status: "coming-soon",
     icon: "🔁",
   },
@@ -152,7 +135,7 @@ export const TOOLS: Tool[] = [
     category: "Document & File",
     description: "Create customizable QR codes.",
     keywords: ["qr generator", "make qr", "qr code creator", "download qr"],
-    status: "coming-soon", // flip to "live" after you add the component
+    status: "live", // ⬅️ first live utility after Weather
     icon: "🔳",
   },
 
@@ -187,13 +170,7 @@ export const TOOLS: Tool[] = [
     name: "Website Speed Test",
     category: "Developer & SEO",
     description: "Measure client-side speed metrics instantly.",
-    keywords: [
-      "speed test",
-      "pagespeed",
-      "web vitals",
-      "performance test",
-      "lighthouse",
-    ],
+    keywords: ["speed test", "pagespeed", "web vitals", "performance test"],
     status: "coming-soon",
     icon: "⚡",
   },
