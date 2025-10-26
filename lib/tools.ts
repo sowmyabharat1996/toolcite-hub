@@ -1,54 +1,53 @@
 // lib/tools.ts
 
-export type ToolCategory =
-  | "AI Productivity & Content"
-  | "Document & File"
-  | "Developer & SEO";
+export type ToolStatus = "live" | "coming-soon";
 
 export type Tool = {
-  slug: string;
-  name: string;
-  category: ToolCategory;
-  description: string;
-  keywords: string[];
-  status?: "live" | "coming-soon";
-  icon?: string; // emoji or short label
+  slug: string;                 // URL segment: /tools/[slug]
+  name: string;                 // Display name
+  category: "AI Productivity & Content" | "Document & File" | "Developer & SEO";
+  description: string;          // Short marketing line (used in cards/SEO)
+  keywords: string[];           // For SEO metadata
+  status: ToolStatus;           // "live" | "coming-soon"
+  icon: string;                 // Emoji for quick identity
 };
 
+// --- Optional category order (used in UIs) ---
+export const CATEGORY_ORDER: Array<Tool["category"]> = [
+  "AI Productivity & Content",
+  "Document & File",
+  "Developer & SEO",
+];
+
+// --- Master list of tools ---
+// Note: You already shipped Weather, QR Code Generator, and Image Compressor.
+// Regex Tester is included as live below. Everything else is “coming-soon” for now.
 export const TOOLS: Tool[] = [
-  // ───────────────────────────────────────────────────────────────
-  // AI Productivity & Content
-  // ───────────────────────────────────────────────────────────────
+  // ========== AI PRODUCTIVITY & CONTENT ==========
   {
     slug: "ai-summarizer",
     name: "AI Summarizer",
     category: "AI Productivity & Content",
     description: "Summarize chat, PDFs, webpages, or videos instantly.",
-    keywords: [
-      "ai summarizer",
-      "pdf summary",
-      "webpage summary",
-      "video summary",
-      "text summary online",
-    ],
+    keywords: ["ai summary", "summarizer", "pdf summary", "youtube summary"],
     status: "coming-soon",
     icon: "🧠",
   },
   {
-    slug: "ai-note-taking",
-    name: "AI Note-Taking",
+    slug: "ai-note-taker",
+    name: "AI Note-Taking Tool",
     category: "AI Productivity & Content",
     description: "Capture structured notes from web inputs & meetings.",
-    keywords: ["ai notes", "meeting notes", "note taker", "transcript notes"],
+    keywords: ["ai notes", "meeting notes", "web notes"],
     status: "coming-soon",
-    icon: "📝",
+    icon: "🗒️",
   },
   {
     slug: "ai-writing-assistant",
     name: "AI Writing Assistant",
     category: "AI Productivity & Content",
     description: "Generate blog posts, emails, and ad copy.",
-    keywords: ["ai writer", "copy generator", "blog writing", "email writer"],
+    keywords: ["ai writing", "content generator", "email writer", "ad copy"],
     status: "coming-soon",
     icon: "✍️",
   },
@@ -57,43 +56,37 @@ export const TOOLS: Tool[] = [
     name: "Plagiarism Checker / Humanizer",
     category: "AI Productivity & Content",
     description: "Detect similarity and humanize tone.",
-    keywords: [
-      "plagiarism checker",
-      "content humanizer",
-      "similarity check",
-      "ai detector bypass",
-    ],
+    keywords: ["plagiarism", "detector", "humanizer", "ai detection"],
     status: "coming-soon",
-    icon: "🧩",
+    icon: "🧬",
   },
   {
     slug: "grammar-spell-checker",
     name: "Grammar & Spell Checker",
     category: "AI Productivity & Content",
     description: "Fix grammar, punctuation, and style.",
-    keywords: ["grammar check", "spell check", "proofreading", "style checker"],
+    keywords: ["grammar checker", "spell check", "proofreading"],
     status: "coming-soon",
     icon: "✅",
   },
+  // You preferred Weather to live under this bucket:
   {
     slug: "weather",
     name: "Weather App",
     category: "AI Productivity & Content",
     description: "Live forecasts with offline fallback and responsive design.",
-    keywords: ["weather", "forecast", "local weather", "hourly weather"],
+    keywords: ["weather", "forecast", "local weather"],
     status: "live",
     icon: "🌤️",
   },
 
-  // ───────────────────────────────────────────────────────────────
-  // Document & File Utilities
-  // ───────────────────────────────────────────────────────────────
+  // ========== DOCUMENT & FILE ==========
   {
     slug: "pdf-to-word-excel",
     name: "PDF to Word/Excel Converter",
     category: "Document & File",
     description: "Convert PDF to DOCX or XLSX in seconds.",
-    keywords: ["pdf to word", "pdf to excel", "convert pdf", "pdf converter"],
+    keywords: ["pdf to word", "pdf to excel", "convert pdf"],
     status: "coming-soon",
     icon: "📄",
   },
@@ -102,76 +95,63 @@ export const TOOLS: Tool[] = [
     name: "Image Background Remover",
     category: "Document & File",
     description: "Remove image backgrounds automatically.",
-    keywords: [
-      "remove background",
-      "bg remover",
-      "background eraser",
-      "transparent background",
-    ],
+    keywords: ["remove background", "bg remover", "transparent background"],
     status: "coming-soon",
     icon: "🎯",
   },
   {
-  slug: "image-compressor",
-  name: "Online Image Compressor",
-  category: "Document & File",
-  description: "Compress images while keeping quality.",
-  keywords: ["image compressor","reduce image size","compress png","compress jpg"],
-  status: "live", // ⬅️ flip
-  icon: "🗜️",
-},
-
+    slug: "image-compressor",
+    name: "Online Image Compressor",
+    category: "Document & File",
+    description: "Compress images while keeping quality.",
+    keywords: ["image compressor", "compress png", "compress jpg", "reduce image size"],
+    status: "live",
+    icon: "🗜️",
+  },
   {
     slug: "batch-file-converter",
     name: "Batch File Converter (CSV ↔ JSON ↔ Excel)",
     category: "Document & File",
     description: "Batch-convert between CSV/JSON/XLSX.",
-    keywords: ["csv to json", "json to csv", "excel to csv", "batch converter"],
+    keywords: ["csv to json", "json to csv", "excel to csv", "batch convert"],
     status: "coming-soon",
-    icon: "🔁",
+    icon: "🔄",
   },
   {
     slug: "qr-code-generator",
     name: "Free QR Code Generator",
     category: "Document & File",
     description: "Create customizable QR codes.",
-    keywords: ["qr generator", "make qr", "qr code creator", "download qr"],
-    status: "live", // ⬅️ first live utility after Weather
-    icon: "🔳",
+    keywords: ["qr code generator", "make qr", "download qr", "qr svg"],
+    status: "live",
+    icon: "🧾",
   },
 
-  // ───────────────────────────────────────────────────────────────
-  // Developer & SEO Tools
-  // ───────────────────────────────────────────────────────────────
+  // ========== DEVELOPER & SEO ==========
   {
-    slug: "keyword-research",
+    slug: "keyword-research-basic",
     name: "Keyword Research (Basic)",
     category: "Developer & SEO",
     description: "Find seed keywords and autosuggest ideas.",
-    keywords: ["keyword tool", "seo keywords", "keyword ideas", "search volume"],
+    keywords: ["keyword research", "seo keywords", "autosuggest"],
     status: "coming-soon",
-    icon: "🔎",
+    icon: "🔍",
   },
   {
     slug: "meta-og-generator",
     name: "Meta Tag & Open Graph Generator",
     category: "Developer & SEO",
     description: "Generate SEO meta, OG and Twitter cards.",
-    keywords: [
-      "meta generator",
-      "open graph tags",
-      "twitter card",
-      "meta title description",
-    ],
+    keywords: ["meta tags", "open graph", "twitter cards", "seo"],
     status: "coming-soon",
-    icon: "🔖",
+    icon: "⚙️",
   },
   {
-    slug: "website-speed-test",
+    slug: "speed-test",
     name: "Website Speed Test",
     category: "Developer & SEO",
     description: "Measure client-side speed metrics instantly.",
-    keywords: ["speed test", "pagespeed", "web vitals", "performance test"],
+    keywords: ["speed test", "page speed", "lcp", "core web vitals"],
     status: "coming-soon",
     icon: "⚡",
   },
@@ -190,7 +170,25 @@ export const TOOLS: Tool[] = [
     category: "Developer & SEO",
     description: "Test regex patterns live with matches.",
     keywords: ["regex tester", "regular expression", "regex matches", "test regex"],
-    status: "coming-soon",
+    status: "live", // make live
     icon: "🧪",
   },
 ];
+
+// --- Helpers (used by pages/sitemap/home) ---
+
+export function getToolBySlug(slug: string): Tool | undefined {
+  return TOOLS.find((t) => t.slug === slug);
+}
+
+export function getToolsByCategory(cat: Tool["category"]): Tool[] {
+  return TOOLS.filter((t) => t.category === cat);
+}
+
+// Live-first sort inside categories (used by home grid if desired)
+export function sortLiveFirst(tools: Tool[]): Tool[] {
+  return [...tools].sort((a, b) => {
+    if (a.status === b.status) return a.name.localeCompare(b.name);
+    return a.status === "live" ? -1 : 1;
+  });
+}
