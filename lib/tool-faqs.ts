@@ -12,10 +12,12 @@ export const TOOL_FAQS: Record<string, { q: string; a: string }[]> = {
 ],
 
 "regex-tester": [
-  { q: "What do regex flags mean?", a: "i = ignore case, g = global (find all), m = multiline, s = dotAll, u = unicode, y = sticky." },
-  { q: "Why no matches?", a: "Check your pattern, flags, and whether you need the global flag (g) to find all matches." },
-  { q: "Does this run locally?", a: "Yes, all regex testing happens in your browser." },
-],
+    { q: "Is the regex tester free to use?", a: "Yes, 100% free and runs locally in your browser." },
+    { q: "Does it support Unicode classes like \\p{L}?", a: "Yes. Turn on the 'u' flag to enable Unicode properties such as \\p{L}, \\p{N}, etc." },
+    { q: "What do the flags i g m s u y do?", a: "i: ignore case, g: global, m: multiline anchors, s: dot matches newline, u: Unicode, y: sticky." },
+    { q: "Is my text uploaded to a server?", a: "No. All matching happens client-side for privacy." },
+    { q: "Why is my large input slow?", a: "Very large text can be heavy. The app debounces evaluation and softly warns above ~200k characters." },
+  ],
 
   "qr-code-generator": [
     { q: "Are QR codes free to generate?", a: "Yes, and you can download PNG, JPG, WEBP, or SVG." },

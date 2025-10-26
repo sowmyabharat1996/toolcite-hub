@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /* ---------------------------------------------------------
    Types & helpers
@@ -9,20 +9,20 @@ import React, { useEffect, useMemo, useState } from "react";
 type FlagKey = "i" | "g" | "m" | "s" | "u" | "y";
 
 type Preset = {
-  id: string;      // unique id
-  label: string;   // display name
+  id: string;
+  label: string;
   pattern: string;
   flags: string;
   sample: string;
   note?: string;
-  // built-in presets are not editable/deletable; custom ones are
   builtIn?: boolean;
 };
 
 const STORAGE_KEY = "regexTester.customPresets.v1";
+const MAX_SOFT = 200_000; // show warning
+const MAX_HARD = 250_000; // hard trim
 
-function uniqueId() {
-  // modern browsers have crypto.randomUUID
+function uid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     // @ts-ignore
     return crypto.randomUUID();
@@ -67,122 +67,57 @@ function highlightMatches(text: string, re: RegExp | null) {
   return parts;
 }
 
+function debounce<T>(fn: (v: T) => void, ms = 150) {
+  let t: any;
+  return (v: T) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(v), ms);
+  };
+}
+
+function prettyBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB"];
+  let u = -1;
+  do {
+    n = n / 1024;
+    u++;
+  } while (n >= 1024 && u < units.length - 1);
+  return `${Math.round(n)} ${units[u]}`;
+}
+
 /* ---------------------------------------------------------
-   Built-in Presets
+   Built-in presets (same as before)
 --------------------------------------------------------- */
 
 const BUILT_IN: Preset[] = [
-  {
-    id: "emails",
-    label: "Emails (user + domain)",
-    pattern: String.raw`([\w.+-]+)@([\w-]+\.[\w.-]+)`,
-    flags: "g",
-    sample: `Emails:
+  { id: "emails", label: "Emails (user + domain)", pattern: String.raw`([\w.+-]+)@([\w-]+\.[\w.-]+)`, flags: "g", sample: `Emails:
 hello@example.com
 admin@test.io
 invalid@@nope
-jane.doe+news@sub.mail.co.uk`,
-    builtIn: true,
-  },
-  {
-    id: "urls",
-    label: "URLs (http/https w/ optional path)",
-    pattern: String.raw`https?:\/\/([\w.-]+)(\/[^\s]*)?`,
-    flags: "g",
-    sample: `See https://toolcite.com and http://example.org/docs/index.html
-Also ftp://nope.com should not match.`,
-    builtIn: true,
-  },
-  {
-    id: "hex",
-    label: "Hex Colors (#RGB or #RRGGBB)",
-    pattern: String.raw`#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b`,
-    flags: "g",
-    sample: `Colors: #fff, #1e90ff, #ABC, #12345 (bad), #12FG34 (bad)`,
-    builtIn: true,
-  },
-  {
-    id: "iso-dates",
-    label: "Dates (YYYY-MM-DD)",
-    pattern: String.raw`(\d{4})-(\d{2})-(\d{2})`,
-    flags: "g",
-    sample: `Releases: 2024-12-31, 2025-01-01, 24-1-1 (bad)`,
-    builtIn: true,
-  },
-  {
-    id: "ipv4-basic",
-    label: "IPv4 (basic; not strict)",
-    pattern: String.raw`\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b`,
-    flags: "g",
-    sample: `Servers: 192.168.1.7, 10.0.0.1, 256.1.1.1 (bad but will match)`,
-    builtIn: true,
-  },
-  {
-    id: "hashtags",
-    label: "Hashtags",
-    pattern: String.raw`#([A-Za-z0-9_]+)`,
-    flags: "g",
-    sample: `Tags: #ToolCite #regex #v2_update #bad-char!`,
-    builtIn: true,
-  },
-  {
-    id: "todo-lines",
-    label: "Multiline anchors (TODO lines)",
-    pattern: String.raw`^TODO:(.*)$`,
-    flags: "gm",
-    sample: `DONE: ship QR tool
+jane.doe+news@sub.mail.co.uk`, builtIn: true },
+  { id: "urls", label: "URLs (http/https w/ optional path)", pattern: String.raw`https?:\/\/([\w.-]+)(\/[^\s]*)?`, flags: "g", sample: `See https://toolcite.com and http://example.org/docs/index.html
+Also ftp://nope.com should not match.`, builtIn: true },
+  { id: "hex", label: "Hex Colors (#RGB or #RRGGBB)", pattern: String.raw`#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b`, flags: "g", sample: `Colors: #fff, #1e90ff, #ABC, #12345 (bad), #12FG34 (bad)`, builtIn: true },
+  { id: "iso-dates", label: "Dates (YYYY-MM-DD)", pattern: String.raw`(\d{4})-(\d{2})-(\d{2})`, flags: "g", sample: `Releases: 2024-12-31, 2025-01-01, 24-1-1 (bad)`, builtIn: true },
+  { id: "ipv4-basic", label: "IPv4 (basic; not strict)", pattern: String.raw`\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b`, flags: "g", sample: `Servers: 192.168.1.7, 10.0.0.1, 256.1.1.1 (bad but will match)`, builtIn: true },
+  { id: "hashtags", label: "Hashtags", pattern: String.raw`#([A-Za-z0-9_]+)`, flags: "g", sample: `Tags: #ToolCite #regex #v2_update #bad-char!`, builtIn: true },
+  { id: "todo-lines", label: "Multiline anchors (TODO lines)", pattern: String.raw`^TODO:(.*)$`, flags: "gm", sample: `DONE: ship QR tool
 TODO: add regex tester
 TODO: docs for image compressor
-NOTE: later`,
-    builtIn: true,
-  },
-  {
-    id: "dotall-block",
-    label: "DotAll block (BEGIN…END)",
-    pattern: String.raw`BEGIN([\s\S]*?)END`,
-    flags: "g",
-    sample: `BEGIN
+NOTE: later`, builtIn: true },
+  { id: "dotall-block", label: "DotAll block (BEGIN…END)", pattern: String.raw`BEGIN([\s\S]*?)END`, flags: "g", sample: `BEGIN
 block A
 END
-BEGIN block B END`,
-    builtIn: true,
-  },
-  {
-    id: "exact-word",
-    label: "Exact word (\\bcat\\b)",
-    pattern: String.raw`\bcat\b`,
-    flags: "g",
-    sample: `cat scatter catalog catty dog-cat`,
-    builtIn: true,
-  },
-  {
-    id: "unicode-words",
-    label: "Unicode letters (\\p{L}+)",
-    pattern: String.raw`\p{L}+`,
-    flags: "gu",
-    sample: `café Москва 東京 cafe`,
-    builtIn: true,
-  },
-  {
-    id: "phones",
-    label: "Phones (optional country + groups)",
-    pattern: String.raw`(?:\+(\d{1,3})\s*)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})`,
-    flags: "g",
-    sample: `Call +1 415-555-2671 or (212) 555 9034 or 305.555.1200.`,
-    builtIn: true,
-  },
-  {
-    id: "sticky",
-    label: "Sticky vs Global (\\d+ with y)",
-    pattern: String.raw`\d+`,
-    flags: "y",
-    sample: `12 345 67`,
-    builtIn: true,
-  },
+BEGIN block B END`, builtIn: true },
+  { id: "exact-word", label: "Exact word (\\bcat\\b)", pattern: String.raw`\bcat\b`, flags: "g", sample: `cat scatter catalog catty dog-cat`, builtIn: true },
+  { id: "unicode-words", label: "Unicode letters (\\p{L}+)", pattern: String.raw`\p{L}+`, flags: "gu", sample: `café Москва 東京 cafe`, builtIn: true },
+  { id: "phones", label: "Phones (optional country + groups)", pattern: String.raw`(?:\+(\d{1,3})\s*)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})`, flags: "g", sample: `Call +1 415-555-2671 or (212) 555 9034 or 305.555.1200.`, builtIn: true },
+  { id: "sticky", label: "Sticky vs Global (\\d+ with y)", pattern: String.raw`\d+`, flags: "y", sample: `12 345 67`, builtIn: true },
 ];
 
 /* ---------------------------------------------------------
-   Storage helpers for custom presets
+   Storage helpers
 --------------------------------------------------------- */
 
 function loadCustom(): Preset[] {
@@ -207,29 +142,27 @@ function saveCustom(list: Preset[]) {
 
 export default function RegexTester() {
   const [customPresets, setCustomPresets] = useState<Preset[]>([]);
-  const [presetId, setPresetId] = useState<string>(BUILT_IN[1].id); // default "urls"
+  const [presetId, setPresetId] = useState<string>(BUILT_IN[1].id); // default: URLs
+  const [statusMsg, setStatusMsg] = useState<string>("");
 
-  const allPresets = useMemo<Preset[]>(
-    () => [...BUILT_IN, ...customPresets],
-    [customPresets]
-  );
-
+  const allPresets = useMemo(() => [...BUILT_IN, ...customPresets], [customPresets]);
   const selected = allPresets.find((p) => p.id === presetId) ?? BUILT_IN[1];
 
   const [pattern, setPattern] = useState<string>(selected.pattern);
   const [flags, setFlags] = useState<string>(selected.flags);
   const [sample, setSample] = useState<string>(selected.sample);
-
   const [nameInput, setNameInput] = useState<string>(selected.label);
   const [saveAsNew, setSaveAsNew] = useState<boolean>(false);
   const [importError, setImportError] = useState<string>("");
 
-  // Load custom presets on mount
-  useEffect(() => {
-    setCustomPresets(loadCustom());
-  }, []);
+  // Refs for shortcuts
+  const patternRef = useRef<HTMLInputElement>(null);
+  const sampleRef = useRef<HTMLTextAreaElement>(null);
 
-  // Apply selected preset immediately
+  // Load custom presets
+  useEffect(() => setCustomPresets(loadCustom()), []);
+
+  // Apply selected preset
   useEffect(() => {
     setPattern(selected.pattern);
     setFlags(selected.flags);
@@ -238,40 +171,94 @@ export default function RegexTester() {
     setSaveAsNew(false);
   }, [presetId]); // eslint-disable-line
 
-  // Regex and matches
-  const { re, error } = useMemo(() => buildRegex(pattern, flags), [pattern, flags]);
-  const parts = useMemo(() => highlightMatches(sample, error ? null : re), [sample, re, error]);
+  // Soft/hard sample guard
+  const [softWarn, setSoftWarn] = useState<boolean>(false);
+  useEffect(() => {
+    const len = sample.length;
+    setSoftWarn(len > MAX_SOFT);
+    if (len > MAX_HARD) {
+      setSample((s) => s.slice(0, MAX_HARD));
+    }
+  }, [sample]);
+
+  // Debounced compute
+  const [debounced, setDebounced] = useState({ pattern, flags, sample });
+  useEffect(() => {
+    const doSet = debounce<typeof debounced>((v) => setDebounced(v), 150);
+    doSet({ pattern, flags, sample });
+  }, [pattern, flags, sample]);
+
+  const t0 = performance.now();
+  const { re, error } = useMemo(
+    () => buildRegex(debounced.pattern, debounced.flags),
+    [debounced.pattern, debounced.flags]
+  );
+  const parts = useMemo(
+    () => highlightMatches(debounced.sample, error ? null : re),
+    [debounced.sample, re, error]
+  );
   const matches = useMemo(() => {
     if (error || !re) return [];
     const out: string[][] = [];
     if (!re.global) {
-      const m = sample.match(re);
+      const m = debounced.sample.match(re);
       if (m) out.push([...m]);
     } else {
       re.lastIndex = 0;
       let m: RegExpExecArray | null;
-      while ((m = re.exec(sample))) {
+      while ((m = re.exec(debounced.sample))) {
         out.push([...m]);
         if (m[0].length === 0) re.lastIndex++;
       }
     }
     return out;
-  }, [re, sample, error]);
+  }, [re, debounced.sample, error]);
+  const t1 = performance.now();
+  const ms = Math.max(0, Math.round(t1 - t0));
 
   // Flag toggler
-  const toggleFlag = (f: FlagKey) => {
-    setFlags((curr) =>
-      curr.includes(f) ? curr.replace(f, "") : (curr + f).split("").filter(Boolean).join("")
-    );
-  };
-  const flagDefs: { k: FlagKey; label: string; tip: string }[] = [
-    { k: "i", label: "i", tip: "Ignore case" },
-    { k: "g", label: "g", tip: "Global (find all)" },
-    { k: "m", label: "m", tip: "Multiline (^ and $)" },
-    { k: "s", label: "s", tip: "DotAll (dot matches newline)" },
-    { k: "u", label: "u", tip: "Unicode" },
-    { k: "y", label: "y", tip: "Sticky" },
-  ];
+  const toggleFlag = (f: FlagKey) =>
+    setFlags((curr) => (curr.includes(f) ? curr.replace(f, "") : (curr + f).split("").join("")));
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Focus pattern with '/'
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement | null;
+        const typingInField =
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            (target as any).isContentEditable);
+        if (!typingInField) {
+          e.preventDefault();
+          patternRef.current?.focus();
+        }
+      }
+
+      // Run: Ctrl/Cmd + Enter (no-op here because it’s already debounced)
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        setStatusMsg("Re-ran pattern");
+        setTimeout(() => setStatusMsg(""), 800);
+      }
+
+      // Cycle presets: Alt + Up/Down
+      if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        const idx = allPresets.findIndex((p) => p.id === presetId);
+        if (idx >= 0) {
+          const next =
+            e.key === "ArrowDown"
+              ? (idx + 1) % allPresets.length
+              : (idx - 1 + allPresets.length) % allPresets.length;
+          setPresetId(allPresets[next].id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [presetId, allPresets]);
 
   /* ---------- Custom preset actions ---------- */
 
@@ -281,7 +268,7 @@ export default function RegexTester() {
   function handleSavePreset() {
     const label = (nameInput || "").trim() || "My regex preset";
     const next: Preset = {
-      id: saveAsNew || isBuiltIn ? uniqueId() : selected.id,
+      id: saveAsNew || isBuiltIn ? uid() : selected.id,
       label,
       pattern,
       flags,
@@ -336,7 +323,7 @@ export default function RegexTester() {
         if (!Array.isArray(parsed)) throw new Error("Invalid file format");
         const cleaned: Preset[] = parsed
           .map((p: any) => ({
-            id: typeof p.id === "string" ? p.id : uniqueId(),
+            id: typeof p.id === "string" ? p.id : uid(),
             label: String(p.label || "Imported preset"),
             pattern: String(p.pattern || ""),
             flags: String(p.flags || ""),
@@ -345,7 +332,6 @@ export default function RegexTester() {
           }))
           .filter((p: Preset) => p.pattern.length > 0);
 
-        // merge by id (replace if existing)
         setCustomPresets((prev) => {
           const map = new Map<string, Preset>();
           [...prev, ...cleaned].forEach((p) => map.set(p.id, p));
@@ -358,6 +344,37 @@ export default function RegexTester() {
       }
     };
     reader.readAsText(file);
+  }
+
+  // Copy helpers
+  function copyMatches(fmt: "csv" | "tsv" | "lines" = "csv") {
+    const sep = fmt === "csv" ? "," : fmt === "tsv" ? "\t" : "\n";
+    const text =
+      matches.length === 0
+        ? ""
+        : matches
+            .map((m) =>
+              fmt === "lines"
+                ? m[0]
+                : [m[0], ...m.slice(1)].map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep)
+            )
+            .join("\n");
+    navigator.clipboard.writeText(text);
+    setStatusMsg("Copied matches");
+    setTimeout(() => setStatusMsg(""), 800);
+  }
+
+  function copyGroupsOnly(fmt: "csv" | "tsv" = "csv") {
+    const sep = fmt === "csv" ? "," : "\t";
+    const text =
+      matches.length === 0
+        ? ""
+        : matches
+            .map((m) => (m.length > 1 ? m.slice(1).map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep) : ""))
+            .join("\n");
+    navigator.clipboard.writeText(text);
+    setStatusMsg("Copied groups");
+    setTimeout(() => setStatusMsg(""), 800);
   }
 
   return (
@@ -413,11 +430,7 @@ export default function RegexTester() {
 
           <div className="flex items-center gap-3 text-sm">
             <label className="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={saveAsNew}
-                onChange={(e) => setSaveAsNew(e.target.checked)}
-              />
+              <input type="checkbox" checked={saveAsNew} onChange={(e) => setSaveAsNew(e.target.checked)} />
               Save as new (duplicate)
             </label>
 
@@ -433,10 +446,7 @@ export default function RegexTester() {
 
           {/* Import / Export */}
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <button
-              onClick={exportPresets}
-              className="rounded border px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800"
-            >
+            <button onClick={exportPresets} className="rounded border px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800">
               Export custom presets
             </button>
             <label className="rounded border px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800">
@@ -462,6 +472,7 @@ export default function RegexTester() {
           <div className="flex items-center gap-2">
             <span className="rounded border px-2 py-1 bg-white/60 dark:bg-neutral-800">/</span>
             <input
+              ref={patternRef}
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
               spellCheck={false}
@@ -484,17 +495,7 @@ export default function RegexTester() {
                 key={f}
                 onClick={() => toggleFlag(f)}
                 title={
-                  f === "i"
-                    ? "Ignore case"
-                    : f === "g"
-                    ? "Global"
-                    : f === "m"
-                    ? "Multiline"
-                    : f === "s"
-                    ? "DotAll"
-                    : f === "u"
-                    ? "Unicode"
-                    : "Sticky"
+                  f === "i" ? "Ignore case" : f === "g" ? "Global" : f === "m" ? "Multiline" : f === "s" ? "DotAll" : f === "u" ? "Unicode" : "Sticky"
                 }
                 className={`rounded border px-2 py-1 text-sm ${
                   flags.includes(f) ? "bg-blue-600 text-white" : "bg-white/60 dark:bg-neutral-800"
@@ -504,29 +505,27 @@ export default function RegexTester() {
               </button>
             ))}
           </div>
-          {error && (
-            <p className="mt-2 text-sm text-red-600 dark:text-red-400">⚠️ {error}</p>
-          )}
+          {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">⚠️ {error}</p>}
         </div>
 
         {/* Sample text */}
         <div>
           <label className="block text-sm font-medium mb-1">Test Text</label>
           <textarea
+            ref={sampleRef}
             value={sample}
             onChange={(e) => setSample(e.target.value)}
             rows={10}
             className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
             placeholder="Paste text to test…"
           />
+          <div className="mt-1 text-xs text-gray-500">
+            Size: {prettyBytes(sample.length)} {softWarn && <span className="text-amber-600">• Large input may be slower.</span>}
+          </div>
         </div>
 
         <div className="text-xs text-gray-500">
-          Tips: Use <code className="font-mono">g</code> to highlight all matches;{" "}
-          <code className="font-mono">m</code> for multi-line anchors;{" "}
-          <code className="font-mono">s</code> makes <code className="font-mono">.</code> match
-          newlines; <code className="font-mono">u</code> enables Unicode classes like{" "}
-          <code className="font-mono">\\p&#123;L&#125;</code>.
+          Tips: `/` focuses pattern • <kbd>Ctrl/⌘ + Enter</kbd> re-runs • <kbd>Alt + ↑/↓</kbd> cycles presets • Use <code className="font-mono">g</code> to find all matches.
         </div>
       </div>
 
@@ -547,10 +546,33 @@ export default function RegexTester() {
           </div>
         </div>
 
-        <div>
-          <div className="text-sm font-medium mb-2">
-            Matches {matches.length ? `(${matches.length})` : ""}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-600">
+            {error
+              ? "Invalid regex"
+              : `Matches: ${matches.length} • Groups: ${
+                  matches.reduce((n, m) => n + Math.max(0, m.length - 1), 0)
+                } • ${ms} ms`}
+            {statusMsg && <span className="ml-2 text-gray-500">— {statusMsg}</span>}
           </div>
+          <div className="flex gap-2">
+            <button onClick={() => copyMatches("csv")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+              Copy matches (CSV)
+            </button>
+            <button onClick={() => copyMatches("tsv")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+              TSV
+            </button>
+            <button onClick={() => copyMatches("lines")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+              Lines
+            </button>
+            <button onClick={() => copyGroupsOnly("csv")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+              Copy groups
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-sm font-medium mb-2">Matches {matches.length ? `(${matches.length})` : ""}</div>
           {matches.length ? (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm border">
@@ -563,15 +585,10 @@ export default function RegexTester() {
                 </thead>
                 <tbody>
                   {matches.map((m, idx) => (
-                    <tr
-                      key={idx}
-                      className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800"
-                    >
+                    <tr key={idx} className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800">
                       <td className="px-2 py-1 border text-center">{idx + 1}</td>
                       <td className="px-2 py-1 border font-mono break-all">{m[0]}</td>
-                      <td className="px-2 py-1 border font-mono break-all">
-                        {m.slice(1).length ? m.slice(1).join(" | ") : "—"}
-                      </td>
+                      <td className="px-2 py-1 border font-mono break-all">{m.slice(1).length ? m.slice(1).join(" | ") : "—"}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -2,26 +2,34 @@
 
 export type ToolStatus = "live" | "coming-soon";
 
+export type ToolCategory =
+  | "AI Productivity & Content"
+  | "Document & File"
+  | "Developer & SEO";
+
 export type Tool = {
   slug: string;                 // URL segment: /tools/[slug]
   name: string;                 // Display name
-  category: "AI Productivity & Content" | "Document & File" | "Developer & SEO";
-  description: string;          // Short marketing line (used in cards/SEO)
-  keywords: string[];           // For SEO metadata
+  category: ToolCategory;       // One of the categories above
+  description: string;          // Short marketing line (cards/SEO)
+  keywords: string[];           // For SEO metadata and discovery
   status: ToolStatus;           // "live" | "coming-soon"
-  icon: string;                 // Emoji for quick identity
+  icon: string;                 // Emoji for visual identity
+
+  // --- Optional content for richer pages/SEO (used where available) ---
+  longDescription?: string;     // 1–3 sentence overview for tool page
+  features?: string[];          // Bulleted feature list
+  howToSteps?: string[];        // Step-by-step usage bullets
 };
 
-// --- Optional category order (used in UIs) ---
-export const CATEGORY_ORDER: Array<Tool["category"]> = [
+// Category order for navigation/sections
+export const CATEGORY_ORDER: ToolCategory[] = [
   "AI Productivity & Content",
   "Document & File",
   "Developer & SEO",
 ];
 
-// --- Master list of tools ---
-// Note: You already shipped Weather, QR Code Generator, and Image Compressor.
-// Regex Tester is included as live below. Everything else is “coming-soon” for now.
+// Master list of tools
 export const TOOLS: Tool[] = [
   // ========== AI PRODUCTIVITY & CONTENT ==========
   {
@@ -69,12 +77,13 @@ export const TOOLS: Tool[] = [
     status: "coming-soon",
     icon: "✅",
   },
-  // You preferred Weather to live under this bucket:
+  // You preferred Weather in this bucket
   {
     slug: "weather",
     name: "Weather App",
     category: "AI Productivity & Content",
-    description: "Live forecasts with offline fallback and responsive design.",
+    description:
+      "Live forecasts with offline fallback and responsive design.",
     keywords: ["weather", "forecast", "local weather"],
     status: "live",
     icon: "🌤️",
@@ -104,7 +113,12 @@ export const TOOLS: Tool[] = [
     name: "Online Image Compressor",
     category: "Document & File",
     description: "Compress images while keeping quality.",
-    keywords: ["image compressor", "compress png", "compress jpg", "reduce image size"],
+    keywords: [
+      "image compressor",
+      "compress png",
+      "compress jpg",
+      "reduce image size",
+    ],
     status: "live",
     icon: "🗜️",
   },
@@ -169,23 +183,45 @@ export const TOOLS: Tool[] = [
     name: "Regular Expression Tester",
     category: "Developer & SEO",
     description: "Test regex patterns live with matches.",
-    keywords: ["regex tester", "regular expression", "regex matches", "test regex"],
-    status: "live", // make live
+    keywords: [
+      "regex tester",
+      "regular expression",
+      "regex matches",
+      "test regex",
+    ],
+    status: "live",
     icon: "🧪",
+
+    // Extra SEO/content fields used on the tool page
+    longDescription:
+      "Use this free online regex tester to quickly validate patterns, preview highlighted matches, and inspect capture groups. Supports common flags (i, g, m, s, u, y), built-in presets (emails, URLs, hex colors, dates) and custom presets with local storage.",
+    features: [
+      "Live matching with highlighted preview",
+      "Capture groups table and copy buttons",
+      "Built-in presets + save custom presets",
+      "Keyboard shortcuts and debounced evaluation",
+      "Privacy-first: runs locally in your browser",
+    ],
+    howToSteps: [
+      "Choose a preset or type your own pattern.",
+      "Toggle flags (i, g, m, s, u, y) as needed.",
+      "Paste test text and review highlighted matches.",
+      "Copy matches or groups as CSV/TSV/lines.",
+    ],
   },
 ];
 
-// --- Helpers (used by pages/sitemap/home) ---
+// ---------- Helpers (pages/sitemap/home can import these) ----------
 
 export function getToolBySlug(slug: string): Tool | undefined {
   return TOOLS.find((t) => t.slug === slug);
 }
 
-export function getToolsByCategory(cat: Tool["category"]): Tool[] {
+export function getToolsByCategory(cat: ToolCategory): Tool[] {
   return TOOLS.filter((t) => t.category === cat);
 }
 
-// Live-first sort inside categories (used by home grid if desired)
+// Live-first sort inside categories (keep names alpha inside same status)
 export function sortLiveFirst(tools: Tool[]): Tool[] {
   return [...tools].sort((a, b) => {
     if (a.status === b.status) return a.name.localeCompare(b.name);
