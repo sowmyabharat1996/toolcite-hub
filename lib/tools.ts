@@ -199,14 +199,36 @@ export const TOOLS: Tool[] = [
   ],
  }, 
   {
-    slug: "color-palette-generator",
-    name: "Color Palette Generator",
-    category: "Developer & SEO",
-    description: "Generate palettes and shades from a seed.",
-    keywords: ["color palette", "hex colors", "palette generator", "color tool"],
-    status: "coming-soon",
-    icon: "🎨",
-  },
+  slug: "color-palette-generator",
+  name: "Color Palette Generator",
+  category: "Developer & SEO",
+  description: "Generate color palettes and shades from a seed color or random selection.",
+  keywords: [
+    "color palette",
+    "palette generator",
+    "hex colors",
+    "color shades",
+    "color scheme tool"
+  ],
+  status: "live",
+  icon: "🎨",
+  longDescription:
+    "Create beautiful color palettes instantly. Choose a base color or randomize one, then lock your favorite swatches while generating new combinations. Copy hex codes with a single click — perfect for designers, developers, and creators.",
+  features: [
+    "Random and base color generation",
+    "Lock and unlock individual colors",
+    "Copy hex codes with one click",
+    "Smooth transitions and responsive grid layout",
+    "Privacy-friendly — works fully offline in your browser",
+  ],
+  howToSteps: [
+    "Pick a base color or start with the default palette.",
+    "Click 'Generate from Base' or 'Randomize Palette' to create colors.",
+    "Click a color swatch to copy its hex code.",
+    "Use the lock icon to keep specific colors during regeneration.",
+  ],
+},
+
   {
     slug: "regex-tester",
     name: "Regular Expression Tester",

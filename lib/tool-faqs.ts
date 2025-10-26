@@ -40,6 +40,30 @@ export const TOOL_FAQS: Record<string, { q: string; a: string }[]> = {
     a: "No. The test runs completely client-side — nothing is uploaded or stored.",
   },
 ],
+"color-palette-generator": [
+  {
+    q: "Is the Color Palette Generator free to use?",
+    a: "Yes — it’s completely free and works fully offline in your browser with no data upload.",
+  },
+  {
+    q: "How can I generate color palettes?",
+    a: "You can either pick a base color or click 'Randomize Palette' to instantly generate a new set of colors.",
+  },
+  {
+    q: "Can I lock colors while generating new ones?",
+    a: "Yes. Click the lock icon under any color swatch to keep it fixed while refreshing the rest of the palette.",
+  },
+  {
+    q: "How do I copy a color code?",
+    a: "Just click a color swatch or its hex code — it copies instantly to your clipboard.",
+  },
+  {
+    q: "Does this tool store my data?",
+    a: "No. All palette generation and copying happens locally inside your browser for complete privacy.",
+  },
+],
+
+
   "qr-code-generator": [
     { q: "Are QR codes free to generate?", a: "Yes, and you can download PNG, JPG, WEBP, or SVG." },
     { q: "Can I change colors?", a: "Yes — pick foreground and background colors, and set margin/size." },
