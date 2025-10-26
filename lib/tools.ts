@@ -112,14 +112,15 @@ export const TOOLS: Tool[] = [
     icon: "🎯",
   },
   {
-    slug: "image-compressor",
-    name: "Online Image Compressor",
-    category: "Document & File",
-    description: "Compress images while keeping quality.",
-    keywords: ["image compressor", "reduce image size", "compress png", "compress jpg"],
-    status: "coming-soon",
-    icon: "🗜️",
-  },
+  slug: "image-compressor",
+  name: "Online Image Compressor",
+  category: "Document & File",
+  description: "Compress images while keeping quality.",
+  keywords: ["image compressor","reduce image size","compress png","compress jpg"],
+  status: "live", // ⬅️ flip
+  icon: "🗜️",
+},
+
   {
     slug: "batch-file-converter",
     name: "Batch File Converter (CSV ↔ JSON ↔ Excel)",
