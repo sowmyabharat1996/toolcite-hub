@@ -40,6 +40,13 @@ export const TOOL_FAQS: Record<string, { q: string; a: string }[]> = {
     a: "No. The test runs completely client-side — nothing is uploaded or stored.",
   },
 ],
+"keyword-research-basic": [
+  { q: "Is this keyword tool free?", a: "Yes, it runs fully in your browser — no login or API keys needed." },
+  { q: "Does it use live Google data?", a: "This version uses offline simulated suggestions for instant results." },
+  { q: "Can I export keyword ideas?", a: "Yes, export all results as CSV or copy them to clipboard instantly." },
+  { q: "Is my keyword data stored?", a: "No, all generation happens locally in your browser for privacy." },
+],
+
 "color-palette-generator": [
   {
     q: "Is the Color Palette Generator free to use?",

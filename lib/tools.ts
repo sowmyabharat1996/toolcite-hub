@@ -142,15 +142,33 @@ export const TOOLS: Tool[] = [
   },
 
   // ========== DEVELOPER & SEO ==========
-  {
-    slug: "keyword-research-basic",
-    name: "Keyword Research (Basic)",
-    category: "Developer & SEO",
-    description: "Find seed keywords and autosuggest ideas.",
-    keywords: ["keyword research", "seo keywords", "autosuggest"],
-    status: "coming-soon",
-    icon: "🔍",
-  },
+{
+  slug: "keyword-research-basic",
+  name: "Keyword Research (Basic)",
+  category: "Developer & SEO",
+  description: "Find seed keywords and autosuggest ideas instantly from popular platforms.",
+  keywords: ["keyword research", "seo keywords", "autosuggest", "keyword ideas", "content topics"],
+  status: "live",
+  icon: "🔍",
+  longDescription:
+    "Generate keyword ideas instantly from simulated Google, YouTube, Bing, and Amazon autosuggest data — all processed locally for privacy. Perfect for quick SEO ideation without any API or login requirements.",
+  features: [
+    "Instant offline keyword generation based on your seed keyword",
+    "Simulated autosuggest results from Google, YouTube, Bing, and Amazon",
+    "Copy individual or all keywords to clipboard",
+    "Export results as a CSV file",
+    "Share a link with your saved keyword seed",
+    "100% client-side — no data sent anywhere",
+  ],
+  howToSteps: [
+    "Enter your base or seed keyword (e.g., 'electric cars') in the input box.",
+    "Click 'Generate Keywords' to see autosuggest ideas from multiple platforms.",
+    "Click on any keyword to copy it instantly.",
+    "Use 'Copy All' or 'Export CSV' for bulk download.",
+    "Share your keyword seed with others using the 'Share Link' button.",
+  ],
+},
+
 {
     slug: "meta-og-generator",
     name: "Meta Tag & Open Graph Generator",
@@ -176,59 +194,14 @@ export const TOOLS: Tool[] = [
     ],
   },
   {
-  slug: "speed-test",
-  name: "Website Speed Test",
-  category: "Developer & SEO",
-  description: "Analyze website load performance, TTFB, and connection metrics.",
-  keywords: ["website speed test", "page load time", "ttfb test", "performance metrics"],
-  status: "live",
-  icon: "⚡",
-  longDescription:
-    "Quickly measure a website’s load speed, DNS lookup, TTFB, DOM load, and total render time directly in your browser. Runs locally with no external calls.",
-  features: [
-    "Instant client-side performance test",
-    "TTFB, DOM Load, and Total Load time metrics",
-    "Network info (type, bandwidth, latency)",
-    "Private and offline — no data sent anywhere",
-  ],
-  howToSteps: [
-    "Enter a website URL (with or without https://).",
-    "Click 'Run Test' to analyze load metrics.",
-    "View DNS, TTFB, DOM Load, and Total Load times.",
-    "Compare different sites for speed optimization.",
-  ],
- }, 
-  {
-  slug: "color-palette-generator",
-  name: "Color Palette Generator",
-  category: "Developer & SEO",
-  description: "Generate color palettes and shades from a seed color or random selection.",
-  keywords: [
-    "color palette",
-    "palette generator",
-    "hex colors",
-    "color shades",
-    "color scheme tool"
-  ],
-  status: "live",
-  icon: "🎨",
-  longDescription:
-    "Create beautiful color palettes instantly. Choose a base color or randomize one, then lock your favorite swatches while generating new combinations. Copy hex codes with a single click — perfect for designers, developers, and creators.",
-  features: [
-    "Random and base color generation",
-    "Lock and unlock individual colors",
-    "Copy hex codes with one click",
-    "Smooth transitions and responsive grid layout",
-    "Privacy-friendly — works fully offline in your browser",
-  ],
-  howToSteps: [
-    "Pick a base color or start with the default palette.",
-    "Click 'Generate from Base' or 'Randomize Palette' to create colors.",
-    "Click a color swatch to copy its hex code.",
-    "Use the lock icon to keep specific colors during regeneration.",
-  ],
-},
-
+    slug: "color-palette-generator",
+    name: "Color Palette Generator",
+    category: "Developer & SEO",
+    description: "Generate palettes and shades from a seed.",
+    keywords: ["color palette", "hex colors", "palette generator", "color tool"],
+    status: "coming-soon",
+    icon: "🎨",
+  },
   {
     slug: "regex-tester",
     name: "Regular Expression Tester",

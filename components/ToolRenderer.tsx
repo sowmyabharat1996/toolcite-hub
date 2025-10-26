@@ -25,6 +25,7 @@ const REGISTRY: Record<string, React.ComponentType<any>> = {
   }),
   "speed-test": dynamic(() => import("@/components/tools/SpeedTest"), { ssr: false, loading: Loading }),
   "color-palette-generator": dynamic(() => import("@/components/tools/ColorPaletteGenerator"), { ssr: false, loading: Loading }),
+  "keyword-research-basic": dynamic(() => import("@/components/tools/KeywordResearch"), { ssr: false, loading: Loading }),
 
 
   "regex-tester": dynamic(() => import("@/components/tools/RegexTester"), {
