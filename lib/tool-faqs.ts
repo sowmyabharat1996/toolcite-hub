@@ -19,6 +19,14 @@ export const TOOL_FAQS: Record<string, { q: string; a: string }[]> = {
     { q: "Why is my large input slow?", a: "Very large text can be heavy. The app debounces evaluation and softly warns above ~200k characters." },
   ],
 
+"meta-og-generator": [
+    { q: "What are Open Graph tags?", a: "OG tags help social platforms like Facebook, LinkedIn, and Slack render rich previews with title, description, and image." },
+    { q: "Do I need Twitter-specific tags?", a: "Twitter reads OG tags, but adding Twitter Card tags ensures consistent previews across devices and card types." },
+    { q: "Where do I paste these tags?", a: "Place the generated <meta> tags inside the <head> of your HTML page." },
+    { q: "Can I test previews?", a: "Yes—use this tool’s live previews and external debuggers like Facebook Sharing Debugger and Twitter Card Validator." },
+    { q: "Is my data stored?", a: "No. Everything runs locally in your browser." },
+  ],
+
   "qr-code-generator": [
     { q: "Are QR codes free to generate?", a: "Yes, and you can download PNG, JPG, WEBP, or SVG." },
     { q: "Can I change colors?", a: "Yes — pick foreground and background colors, and set margin/size." },
