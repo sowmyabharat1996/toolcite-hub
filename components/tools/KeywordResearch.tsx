@@ -24,7 +24,7 @@ export default function KeywordResearch() {
   const [isStickyVisible, setStickyVisible] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [secondsAgo, setSecondsAgo] = useState(0);
-  const [refreshing, setRefreshing] = useState(false); // for 🔄 animation
+  const [refreshing, setRefreshing] = useState(false);
 
   const prevMetricsRef = useRef({
     avgDifficulty: 0,
@@ -87,7 +87,7 @@ export default function KeywordResearch() {
   const generateSuggestions = async () => {
     if (!seed.trim()) return;
     setLoading(true);
-    setRefreshing(true); // start spinning 🔄
+    setRefreshing(true);
     await new Promise((r) => setTimeout(r, 500));
     const data = SOURCES.map((src) => ({
       source: src,
@@ -97,10 +97,10 @@ export default function KeywordResearch() {
     setLoading(false);
     setLastUpdated(new Date());
     setSecondsAgo(0);
-    setTimeout(() => setRefreshing(false), 1500); // stop spin after 1.5s
+    setTimeout(() => setRefreshing(false), 1500);
   };
 
-  // --- Auto-increment "Last Updated Xs ago" ---
+  // --- Timer update ---
   useEffect(() => {
     if (!lastUpdated) return;
     const interval = setInterval(() => {
@@ -110,7 +110,7 @@ export default function KeywordResearch() {
     return () => clearInterval(interval);
   }, [lastUpdated]);
 
-  // --- Toast Helper ---
+  // --- Toast helper ---
   const showToast = (msg: string) => {
     const toast = document.createElement("div");
     toast.textContent = msg;
@@ -136,7 +136,7 @@ export default function KeywordResearch() {
     }, 1500);
   };
 
-  // --- Export / Copy ---
+  // --- Export / Copy / Share ---
   const exportCSV = () => {
     const all = suggestions.flatMap((s) =>
       s.keywords.map((k) => `${s.source},${k.text},${k.difficulty},${k.intent}`)
@@ -169,6 +169,7 @@ export default function KeywordResearch() {
     showToast("Shareable link copied!");
   };
 
+  // --- Color helpers ---
   const difficultyColor = (score: number) =>
     score < 34 ? "bg-green-500" : score < 67 ? "bg-yellow-500" : "bg-red-500";
 
@@ -182,7 +183,7 @@ export default function KeywordResearch() {
     }
   };
 
-  // --- Filtering + metrics ---
+  // --- Filtering & Metrics ---
   const filteredSuggestions = suggestions.map((s) => ({
     ...s,
     keywords: s.keywords.filter(
@@ -199,7 +200,6 @@ export default function KeywordResearch() {
       total > 0
         ? Math.round(all.reduce((sum, k) => sum + k.difficulty, 0) / total)
         : 0;
-
     const intentCount = all.reduce(
       (acc, k) => {
         acc[k.intent] = (acc[k.intent] || 0) + 1;
@@ -207,11 +207,10 @@ export default function KeywordResearch() {
       },
       {} as Record<string, number>
     );
-
     return { total, avgDifficulty, intentCount };
   }, [filteredSuggestions]);
 
-  // --- Trend detection ---
+  // --- Trend logic ---
   const [trends, setTrends] = useState<{
     difficultyTrend: "up" | "down" | "flat";
     intentTrend: Record<string, "up" | "down" | "flat">;
@@ -245,10 +244,8 @@ export default function KeywordResearch() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [metrics.total]);
 
-  // --- Animated icons ---
   const trendIcon = (trend: "up" | "down" | "flat") => {
-    const base =
-      "ml-1 inline-block animate-fade-float text-lg transition-transform duration-500 ease-in-out";
+    const base = "ml-1 inline-block animate-fade-float text-lg";
     if (trend === "up") return <span className={`${base} text-red-500`}>📈</span>;
     if (trend === "down") return <span className={`${base} text-green-500`}>📉</span>;
     return <span className={`${base} text-gray-400`}>⏸️</span>;
@@ -263,16 +260,19 @@ export default function KeywordResearch() {
           50% { opacity: 1; transform: translateY(-2px) scale(1.05); }
           100% { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .animate-fade-float {
-          animation: fadeFloat 0.8s ease;
-        }
+        .animate-fade-float { animation: fadeFloat 0.8s ease; }
+
         @keyframes spinRefresh {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
-        .spin-once {
-          animation: spinRefresh 1.2s ease-in-out;
+        .spin-once { animation: spinRefresh 1.2s ease-in-out; }
+
+        @keyframes tooltipFade {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
+        .tooltip-anim { animation: tooltipFade 0.25s ease forwards; }
       `}</style>
 
       <h1 className="text-2xl font-semibold mb-2 text-center">🔍 Keyword Research (Basic)</h1>
@@ -312,15 +312,11 @@ export default function KeywordResearch() {
         <div
           className={`${
             isStickyVisible
-              ? "fixed top-0 left-0 w-full backdrop-blur-md bg-white/80 shadow-md border-b border-gray-200 z-50 transition-all duration-300"
+              ? "fixed top-0 left-0 w-full backdrop-blur-md bg-white/80 shadow-md border-b border-gray-200 z-50"
               : ""
           }`}
         >
-          <div
-            className={`grid sm:grid-cols-2 md:grid-cols-5 gap-4 text-center max-w-6xl mx-auto p-3 ${
-              isStickyVisible ? "py-3" : "bg-gray-50 rounded-xl p-4 mb-8"
-            }`}
-          >
+          <div className="grid sm:grid-cols-2 md:grid-cols-5 gap-4 text-center max-w-6xl mx-auto p-3 bg-gray-50 rounded-xl mb-8">
             <div>
               <p className="text-sm text-gray-500">Total Keywords</p>
               <p className="text-xl font-semibold">{metrics.total}</p>
@@ -349,11 +345,26 @@ export default function KeywordResearch() {
             ))}
             <div className="hidden md:block">
               <p className="text-sm text-gray-500">Last Updated</p>
-              <p className="text-lg font-semibold text-gray-600 flex items-center justify-center gap-2">
-                <span>
-                  {secondsAgo < 2 ? "Just now" : `${secondsAgo}s ago`}
+              <p
+                className="text-lg font-semibold text-gray-600 flex items-center justify-center gap-2 cursor-pointer"
+                onClick={() => showToast("Last refreshed when new data was generated")}
+              >
+                <span>{secondsAgo < 2 ? "Just now" : `${secondsAgo}s ago`}</span>
+                {/* 🔄 Refresh Icon + Tooltip */}
+                <span className="relative group">
+                  <span
+                    className={`${refreshing ? "spin-once" : ""} cursor-pointer`}
+                    role="img"
+                    aria-label="refresh"
+                  >
+                    🔄
+                  </span>
+                  <span
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-gray-800 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap tooltip-anim"
+                  >
+                    Last refreshed when new data was generated
+                  </span>
                 </span>
-                <span className={`${refreshing ? "spin-once" : ""}`}>🔄</span>
               </p>
             </div>
           </div>
@@ -388,9 +399,7 @@ export default function KeywordResearch() {
                         style={{ width: `${k.difficulty}%` }}
                       ></div>
                     </div>
-                    <div
-                      className={`mt-1 inline-block text-[11px] px-2 py-0.5 rounded-full ${intentColor(k.intent)}`}
-                    >
+                    <div className={`mt-1 inline-block text-[11px] px-2 py-0.5 rounded-full ${intentColor(k.intent)}`}>
                       {k.intent}
                     </div>
                   </li>
