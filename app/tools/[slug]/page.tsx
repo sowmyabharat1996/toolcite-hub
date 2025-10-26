@@ -8,7 +8,7 @@ import { TOOL_FAQS } from "@/lib/tool-faqs";
 import ToolRenderer from "@/components/ToolRenderer";
 
 // Keep this list in sync with the keys inside components/ToolRenderer.tsx REGISTRY
-const AVAILABLE_COMPONENTS = ["qr-code-generator"] as const;
+const AVAILABLE_COMPONENTS = ["qr-code-generator", "image-compressor"] as const; 
 const hasComponent = (slug: string) =>
   (AVAILABLE_COMPONENTS as readonly string[]).includes(slug);
 
