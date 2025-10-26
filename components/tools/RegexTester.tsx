@@ -1,11 +1,36 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+
+/* ---------------------------------------------------------
+   Types & helpers
+--------------------------------------------------------- */
 
 type FlagKey = "i" | "g" | "m" | "s" | "u" | "y";
 
+type Preset = {
+  id: string;      // unique id
+  label: string;   // display name
+  pattern: string;
+  flags: string;
+  sample: string;
+  note?: string;
+  // built-in presets are not editable/deletable; custom ones are
+  builtIn?: boolean;
+};
+
+const STORAGE_KEY = "regexTester.customPresets.v1";
+
+function uniqueId() {
+  // modern browsers have crypto.randomUUID
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    // @ts-ignore
+    return crypto.randomUUID();
+  }
+  return "id_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+
 function buildRegex(pattern: string, flags: string) {
-  // Validate flags: remove invalid/duplicates
   const valid = Array.from(new Set(flags.split("").filter((f) => "igmsuy".includes(f)))).join("");
   try {
     return { re: new RegExp(pattern, valid), error: "" };
@@ -26,44 +51,196 @@ function highlightMatches(text: string, re: RegExp | null) {
       { text: text.slice(i + m[0].length), hit: false },
     ];
   }
-
   const parts: { text: string; hit: boolean }[] = [];
   let last = 0;
-  let match: RegExpExecArray | null;
-
-  // Reset lastIndex for global runs
   re.lastIndex = 0;
+  let match: RegExpExecArray | null;
   while ((match = re.exec(text))) {
     const start = match.index ?? 0;
     const end = start + match[0].length;
     if (start > last) parts.push({ text: text.slice(last, start), hit: false });
     parts.push({ text: text.slice(start, end), hit: true });
     last = end;
-
-    // Avoid infinite loops on zero-width matches
-    if (match[0].length === 0) re.lastIndex++;
+    if (match[0].length === 0) re.lastIndex++; // avoid infinite loop
   }
   if (last < text.length) parts.push({ text: text.slice(last), hit: false });
   return parts;
 }
 
-export default function RegexTester() {
-  const [pattern, setPattern] = useState<string>("(\\w+)@(\\w+\\.\\w+)");
-  const [flags, setFlags] = useState<string>("g");
-  const [sample, setSample] = useState<string>(
-    `Emails:
+/* ---------------------------------------------------------
+   Built-in Presets
+--------------------------------------------------------- */
+
+const BUILT_IN: Preset[] = [
+  {
+    id: "emails",
+    label: "Emails (user + domain)",
+    pattern: String.raw`([\w.+-]+)@([\w-]+\.[\w.-]+)`,
+    flags: "g",
+    sample: `Emails:
 hello@example.com
 admin@test.io
 invalid@@nope
-Name: Jane
-`
+jane.doe+news@sub.mail.co.uk`,
+    builtIn: true,
+  },
+  {
+    id: "urls",
+    label: "URLs (http/https w/ optional path)",
+    pattern: String.raw`https?:\/\/([\w.-]+)(\/[^\s]*)?`,
+    flags: "g",
+    sample: `See https://toolcite.com and http://example.org/docs/index.html
+Also ftp://nope.com should not match.`,
+    builtIn: true,
+  },
+  {
+    id: "hex",
+    label: "Hex Colors (#RGB or #RRGGBB)",
+    pattern: String.raw`#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b`,
+    flags: "g",
+    sample: `Colors: #fff, #1e90ff, #ABC, #12345 (bad), #12FG34 (bad)`,
+    builtIn: true,
+  },
+  {
+    id: "iso-dates",
+    label: "Dates (YYYY-MM-DD)",
+    pattern: String.raw`(\d{4})-(\d{2})-(\d{2})`,
+    flags: "g",
+    sample: `Releases: 2024-12-31, 2025-01-01, 24-1-1 (bad)`,
+    builtIn: true,
+  },
+  {
+    id: "ipv4-basic",
+    label: "IPv4 (basic; not strict)",
+    pattern: String.raw`\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b`,
+    flags: "g",
+    sample: `Servers: 192.168.1.7, 10.0.0.1, 256.1.1.1 (bad but will match)`,
+    builtIn: true,
+  },
+  {
+    id: "hashtags",
+    label: "Hashtags",
+    pattern: String.raw`#([A-Za-z0-9_]+)`,
+    flags: "g",
+    sample: `Tags: #ToolCite #regex #v2_update #bad-char!`,
+    builtIn: true,
+  },
+  {
+    id: "todo-lines",
+    label: "Multiline anchors (TODO lines)",
+    pattern: String.raw`^TODO:(.*)$`,
+    flags: "gm",
+    sample: `DONE: ship QR tool
+TODO: add regex tester
+TODO: docs for image compressor
+NOTE: later`,
+    builtIn: true,
+  },
+  {
+    id: "dotall-block",
+    label: "DotAll block (BEGIN…END)",
+    pattern: String.raw`BEGIN([\s\S]*?)END`,
+    flags: "g",
+    sample: `BEGIN
+block A
+END
+BEGIN block B END`,
+    builtIn: true,
+  },
+  {
+    id: "exact-word",
+    label: "Exact word (\\bcat\\b)",
+    pattern: String.raw`\bcat\b`,
+    flags: "g",
+    sample: `cat scatter catalog catty dog-cat`,
+    builtIn: true,
+  },
+  {
+    id: "unicode-words",
+    label: "Unicode letters (\\p{L}+)",
+    pattern: String.raw`\p{L}+`,
+    flags: "gu",
+    sample: `café Москва 東京 cafe`,
+    builtIn: true,
+  },
+  {
+    id: "phones",
+    label: "Phones (optional country + groups)",
+    pattern: String.raw`(?:\+(\d{1,3})\s*)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})`,
+    flags: "g",
+    sample: `Call +1 415-555-2671 or (212) 555 9034 or 305.555.1200.`,
+    builtIn: true,
+  },
+  {
+    id: "sticky",
+    label: "Sticky vs Global (\\d+ with y)",
+    pattern: String.raw`\d+`,
+    flags: "y",
+    sample: `12 345 67`,
+    builtIn: true,
+  },
+];
+
+/* ---------------------------------------------------------
+   Storage helpers for custom presets
+--------------------------------------------------------- */
+
+function loadCustom(): Preset[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function saveCustom(list: Preset[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+/* ---------------------------------------------------------
+   Component
+--------------------------------------------------------- */
+
+export default function RegexTester() {
+  const [customPresets, setCustomPresets] = useState<Preset[]>([]);
+  const [presetId, setPresetId] = useState<string>(BUILT_IN[1].id); // default "urls"
+
+  const allPresets = useMemo<Preset[]>(
+    () => [...BUILT_IN, ...customPresets],
+    [customPresets]
   );
 
+  const selected = allPresets.find((p) => p.id === presetId) ?? BUILT_IN[1];
+
+  const [pattern, setPattern] = useState<string>(selected.pattern);
+  const [flags, setFlags] = useState<string>(selected.flags);
+  const [sample, setSample] = useState<string>(selected.sample);
+
+  const [nameInput, setNameInput] = useState<string>(selected.label);
+  const [saveAsNew, setSaveAsNew] = useState<boolean>(false);
+  const [importError, setImportError] = useState<string>("");
+
+  // Load custom presets on mount
+  useEffect(() => {
+    setCustomPresets(loadCustom());
+  }, []);
+
+  // Apply selected preset immediately
+  useEffect(() => {
+    setPattern(selected.pattern);
+    setFlags(selected.flags);
+    setSample(selected.sample);
+    setNameInput(selected.label);
+    setSaveAsNew(false);
+  }, [presetId]); // eslint-disable-line
+
+  // Regex and matches
   const { re, error } = useMemo(() => buildRegex(pattern, flags), [pattern, flags]);
-
   const parts = useMemo(() => highlightMatches(sample, error ? null : re), [sample, re, error]);
-
-  // Collect matches + groups for the table preview
   const matches = useMemo(() => {
     if (error || !re) return [];
     const out: string[][] = [];
@@ -81,12 +258,12 @@ Name: Jane
     return out;
   }, [re, sample, error]);
 
+  // Flag toggler
   const toggleFlag = (f: FlagKey) => {
     setFlags((curr) =>
       curr.includes(f) ? curr.replace(f, "") : (curr + f).split("").filter(Boolean).join("")
     );
   };
-
   const flagDefs: { k: FlagKey; label: string; tip: string }[] = [
     { k: "i", label: "i", tip: "Ignore case" },
     { k: "g", label: "g", tip: "Global (find all)" },
@@ -96,10 +273,190 @@ Name: Jane
     { k: "y", label: "y", tip: "Sticky" },
   ];
 
+  /* ---------- Custom preset actions ---------- */
+
+  const isBuiltIn = selected.builtIn === true;
+  const isCustom = !isBuiltIn;
+
+  function handleSavePreset() {
+    const label = (nameInput || "").trim() || "My regex preset";
+    const next: Preset = {
+      id: saveAsNew || isBuiltIn ? uniqueId() : selected.id,
+      label,
+      pattern,
+      flags,
+      sample,
+      builtIn: false,
+    };
+
+    setCustomPresets((prev) => {
+      let list: Preset[];
+      if (!saveAsNew && isCustom) {
+        list = prev.map((p) => (p.id === selected.id ? next : p));
+      } else {
+        list = [...prev, next];
+      }
+      saveCustom(list);
+      return list;
+    });
+
+    setPresetId(next.id);
+    setSaveAsNew(false);
+  }
+
+  function handleDeletePreset() {
+    if (!isCustom) return;
+    setCustomPresets((prev) => {
+      const list = prev.filter((p) => p.id !== selected.id);
+      saveCustom(list);
+      return list;
+    });
+    setPresetId(BUILT_IN[1].id);
+  }
+
+  function exportPresets() {
+    const data = JSON.stringify(customPresets, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "regex-custom-presets.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function importPresets(file: File) {
+    setImportError("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        if (!Array.isArray(parsed)) throw new Error("Invalid file format");
+        const cleaned: Preset[] = parsed
+          .map((p: any) => ({
+            id: typeof p.id === "string" ? p.id : uniqueId(),
+            label: String(p.label || "Imported preset"),
+            pattern: String(p.pattern || ""),
+            flags: String(p.flags || ""),
+            sample: String(p.sample || ""),
+            builtIn: false,
+          }))
+          .filter((p: Preset) => p.pattern.length > 0);
+
+        // merge by id (replace if existing)
+        setCustomPresets((prev) => {
+          const map = new Map<string, Preset>();
+          [...prev, ...cleaned].forEach((p) => map.set(p.id, p));
+          const list = Array.from(map.values());
+          saveCustom(list);
+          return list;
+        });
+      } catch (e: any) {
+        setImportError(e?.message || "Import failed");
+      }
+    };
+    reader.readAsText(file);
+  }
+
   return (
     <div className="grid gap-6 md:grid-cols-2">
       {/* Controls */}
-      <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-4">
+      <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
+        {/* Presets */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Presets</label>
+          <select
+            value={presetId}
+            onChange={(e) => setPresetId(e.target.value)}
+            className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+          >
+            <optgroup label="Built-in">
+              {BUILT_IN.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Custom">
+              {customPresets.length === 0 ? (
+                <option value="__none" disabled>
+                  (No custom presets yet)
+                </option>
+              ) : (
+                customPresets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))
+              )}
+            </optgroup>
+          </select>
+
+          {/* Save / rename */}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <input
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              className="rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+              placeholder="Preset name"
+            />
+            <button
+              onClick={handleSavePreset}
+              className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700"
+              title={isBuiltIn || saveAsNew ? "Save as new custom preset" : "Update this custom preset"}
+            >
+              {isBuiltIn || saveAsNew ? "Save as New" : "Save / Update"}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 text-sm">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={saveAsNew}
+                onChange={(e) => setSaveAsNew(e.target.checked)}
+              />
+              Save as new (duplicate)
+            </label>
+
+            {isCustom && (
+              <button
+                onClick={handleDeletePreset}
+                className="ml-auto rounded border px-3 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                Delete preset
+              </button>
+            )}
+          </div>
+
+          {/* Import / Export */}
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <button
+              onClick={exportPresets}
+              className="rounded border px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800"
+            >
+              Export custom presets
+            </button>
+            <label className="rounded border px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800">
+              Import…
+              <input
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) importPresets(f);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+            {importError && <span className="text-sm text-red-600">{importError}</span>}
+          </div>
+        </div>
+
+        {/* Pattern + Flags */}
         <div>
           <label className="block text-sm font-medium mb-1">Pattern</label>
           <div className="flex items-center gap-2">
@@ -122,26 +479,37 @@ Name: Jane
             />
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {flagDefs.map((f) => (
+            {(["i", "g", "m", "s", "u", "y"] as FlagKey[]).map((f) => (
               <button
-                key={f.k}
-                onClick={() => toggleFlag(f.k)}
-                title={f.tip}
+                key={f}
+                onClick={() => toggleFlag(f)}
+                title={
+                  f === "i"
+                    ? "Ignore case"
+                    : f === "g"
+                    ? "Global"
+                    : f === "m"
+                    ? "Multiline"
+                    : f === "s"
+                    ? "DotAll"
+                    : f === "u"
+                    ? "Unicode"
+                    : "Sticky"
+                }
                 className={`rounded border px-2 py-1 text-sm ${
-                  flags.includes(f.k) ? "bg-blue-600 text-white" : "bg-white/60 dark:bg-neutral-800"
+                  flags.includes(f) ? "bg-blue-600 text-white" : "bg-white/60 dark:bg-neutral-800"
                 }`}
               >
-                {f.label}
+                {f}
               </button>
             ))}
           </div>
           {error && (
-            <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-              ⚠️ {error}
-            </p>
+            <p className="mt-2 text-sm text-red-600 dark:text-red-400">⚠️ {error}</p>
           )}
         </div>
 
+        {/* Sample text */}
         <div>
           <label className="block text-sm font-medium mb-1">Test Text</label>
           <textarea
@@ -154,10 +522,11 @@ Name: Jane
         </div>
 
         <div className="text-xs text-gray-500">
-          Quick tips: use <code className="font-mono">g</code> to highlight all matches; enable{" "}
+          Tips: Use <code className="font-mono">g</code> to highlight all matches;{" "}
           <code className="font-mono">m</code> for multi-line anchors;{" "}
-          <code className="font-mono">s</code> lets <code className="font-mono">.</code> match
-          newlines.
+          <code className="font-mono">s</code> makes <code className="font-mono">.</code> match
+          newlines; <code className="font-mono">u</code> enables Unicode classes like{" "}
+          <code className="font-mono">\\p&#123;L&#125;</code>.
         </div>
       </div>
 
@@ -194,10 +563,13 @@ Name: Jane
                 </thead>
                 <tbody>
                   {matches.map((m, idx) => (
-                    <tr key={idx} className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800">
+                    <tr
+                      key={idx}
+                      className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800"
+                    >
                       <td className="px-2 py-1 border text-center">{idx + 1}</td>
-                      <td className="px-2 py-1 border font-mono">{m[0]}</td>
-                      <td className="px-2 py-1 border font-mono">
+                      <td className="px-2 py-1 border font-mono break-all">{m[0]}</td>
+                      <td className="px-2 py-1 border font-mono break-all">
                         {m.slice(1).length ? m.slice(1).join(" | ") : "—"}
                       </td>
                     </tr>
