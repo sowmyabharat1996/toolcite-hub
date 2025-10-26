@@ -193,6 +193,8 @@ export const TOOLS: Tool[] = [
       "Copy the generated <head> snippet.",
     ],
   },
+{ slug: "speed-test", name: "Website Speed Test", category: "Developer & SEO", description: "Analyze website load performance, TTFB, and connection metrics.", keywords: ["website speed test", "page load time", "ttfb test", "performance metrics"], status: "live", icon: "⚡", longDescription: "Quickly measure a website’s load speed, DNS lookup, TTFB, DOM load, and total render time directly in your browser. Runs locally with no external calls.", features: [ "Instant client-side performance test", "TTFB, DOM Load, and Total Load time metrics", "Network info (type, bandwidth, latency)", "Private and offline — no data sent anywhere", ], howToSteps: [ "Enter a website URL (with or without https://).", "Click 'Run Test' to analyze load metrics.", "View DNS, TTFB, DOM Load, and Total Load times.", "Compare different sites for speed optimization.", ], },
+
   {
     slug: "color-palette-generator",
     name: "Color Palette Generator",
