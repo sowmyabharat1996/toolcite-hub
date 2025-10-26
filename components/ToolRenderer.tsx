@@ -23,11 +23,6 @@ const REGISTRY: Record<string, React.ComponentType<any>> = {
     ssr: false,
     loading: Loading,
   }),
-  // ✅ New: Meta Tag & Open Graph Generator
-  "meta-og-generator": dynamic(() => import("@/components/tools/MetaOgGenerator"), {
-    ssr: false,
-    loading: Loading,
-  }),
 };
 
 export default function ToolRenderer({ slug }: { slug: string }) {
