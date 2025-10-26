@@ -26,7 +26,20 @@ export const TOOL_FAQS: Record<string, { q: string; a: string }[]> = {
     { q: "Can I test previews?", a: "Yes—use this tool’s live previews and external debuggers like Facebook Sharing Debugger and Twitter Card Validator." },
     { q: "Is my data stored?", a: "No. Everything runs locally in your browser." },
   ],
-
+"speed-test": [
+  {
+    q: "Does this website speed test use external APIs?",
+    a: "No. It uses built-in browser performance APIs, so everything runs locally in your browser.",
+  },
+  {
+    q: "What metrics does this tool show?",
+    a: "It reports DNS lookup time, connection time, TTFB (time to first byte), DOM load, and total page load time.",
+  },
+  {
+    q: "Is my website data stored anywhere?",
+    a: "No. The test runs completely client-side — nothing is uploaded or stored.",
+  },
+],
   "qr-code-generator": [
     { q: "Are QR codes free to generate?", a: "Yes, and you can download PNG, JPG, WEBP, or SVG." },
     { q: "Can I change colors?", a: "Yes — pick foreground and background colors, and set margin/size." },
