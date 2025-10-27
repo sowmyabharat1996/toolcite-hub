@@ -19,38 +19,33 @@ export default function KeywordResearch() {
   const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [showTrend, setShowTrend] = useState(true);
 
-  // AI Insight
   const [insights, setInsights] = useState<Array<KeywordItem & { reasons?: string[] }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [sortByAI, setSortByAI] = useState(false);
 
-  // Simulator
   const [volSim, setVolSim] = useState(50);
   const [cpcSim, setCpcSim] = useState(50);
   const [estClicks, setEstClicks] = useState(0);
 
-  // Baseline to avoid compounding
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
-
-  // Mood color (green / red / blue)
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Load seed from URL
+  // seed from URL
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("q") || "";
     if (q) { setQuery(q); handleGenerate(q); }
   }, []);
 
-  // Persist sort toggle
+  // sort toggle persistence
   useEffect(() => {
     const stored = localStorage.getItem("sortByAI");
     if (stored === "true") setSortByAI(true);
   }, []);
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
 
-  // Derive mood color
+  // mood color
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -59,11 +54,9 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
-  // Actions
   function handleGenerate(q?: string) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
-
     setPreviousMetrics(dataset.metrics);
     setBaseBlocks(result.data);
 
@@ -142,10 +135,17 @@ export default function KeywordResearch() {
   const { metrics } = dataset;
 
   return (
-    <div className="relative min-h-[100vh]">
+    <div className="relative min-h-[100vh] overflow-visible">
+      {/* Subtle page wash, plus export-mode CSS fixes */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
+      <style jsx global>{`
+        /* Prevent sticky from creating huge white gaps during export */
+        [data-export-paused="1"] .sticky { position: static !important; top: auto !important; }
+        /* Make sure nested wrappers don't clip portaled tooltips */
+        #__next, body, html { overflow: visible !important; }
+      `}</style>
 
-      <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6">
+      <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
         {/* Header & controls */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
@@ -173,7 +173,6 @@ export default function KeywordResearch() {
           <SummaryBar metrics={metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
         </div>
 
-        {/* Toggles */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
             <input type="checkbox" className="accent-blue-600" checked={showTrend} onChange={(e) => setShowTrend(e.target.checked)} />
@@ -186,12 +185,11 @@ export default function KeywordResearch() {
         </div>
 
         {/* Simulator */}
-        <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4">
+        <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
             <div className="text-xs text-neutral-500">Adjust sliders → AI Picks &amp; KSI update live</div>
           </div>
-
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
@@ -206,7 +204,6 @@ export default function KeywordResearch() {
               <input type="range" min={0} max={100} value={cpcSim} onChange={onCpc} className="w-full accent-amber-600" />
             </div>
           </div>
-
           <div className="mt-4">
             <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm">
               <span>🟢 Est. Monthly Clicks</span>
@@ -222,7 +219,7 @@ export default function KeywordResearch() {
         </div>
 
         {/* AI Insight panel */}
-        <aside data-export="section" id="insights-panel" className="rounded-2xl border p-4"
+        <aside data-export="section" id="insights-panel" className="rounded-2xl border p-4 overflow-visible"
           style={{
             borderColor: trendColor + "66",
             background:
@@ -238,7 +235,6 @@ export default function KeywordResearch() {
             <h3 className="font-semibold text-lg" style={{ color: trendColor }}>AI Insight — Easiest Wins</h3>
             <span className="text-xs font-medium" style={{ color: trendColor }}>Click again after changing data/filters</span>
           </div>
-
           <ul className="space-y-3">
             {insights.map((x, i) => (
               <li key={x.id} className="rounded-xl border bg-white/70 dark:bg-white/10 p-3" style={{ borderColor: trendColor + "4d" }}>
@@ -272,7 +268,7 @@ export default function KeywordResearch() {
         </aside>
 
         {/* Keyword Lists */}
-        <div data-export="section" id="kw-lists" className="pt-2">
+        <div data-export="section" id="kw-lists" className="pt-2 overflow-visible">
           <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
         </div>
       </div>
