@@ -1,7 +1,6 @@
-// components/tools/KeywordResearch/index.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import SummaryBar from "./SummaryBar";
 import MetricsCharts from "./MetricsCharts";
 import KeywordList from "./KeywordList";
@@ -17,6 +16,16 @@ import {
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
+function useGlowTrigger(deps: any[]) {
+  const [glow, setGlow] = useState(false);
+  useEffect(() => {
+    setGlow(true);
+    const id = setTimeout(() => setGlow(false), 800);
+    return () => clearTimeout(id);
+  }, deps);
+  return glow;
+}
+
 export default function KeywordResearch() {
   const [query, setQuery] = useState("");
   const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
@@ -24,23 +33,45 @@ export default function KeywordResearch() {
   const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [showTrend, setShowTrend] = useState(true);
 
-  // AI Insight state
   const [aiTopIds, setAiTopIds] = useState<Set<string>>(new Set());
   const [insights, setInsights] = useState<any[]>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
-  const [sortByAI, setSortByAI] = useState(false); // NEW toggle
+  const [sortByAI, setSortByAI] = useState(false);
+  const [trendColor, setTrendColor] = useState("#3b82f6"); // mood color (blue default)
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const glow = useGlowTrigger([dataset.metrics.health]);
 
+  // preload from ?q=
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("q") || "";
     if (q) {
       setQuery(q);
       handleGenerate(q);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // load sort preference
+  useEffect(() => {
+    const stored = localStorage.getItem("sortByAI");
+    if (stored === "true") setSortByAI(true);
+  }, []);
+
+  // persist toggle state
+  useEffect(() => {
+    localStorage.setItem("sortByAI", sortByAI ? "true" : "false");
+  }, [sortByAI]);
+
+  // 🌈 derive “mood color” by comparing previous vs current health
+  useEffect(() => {
+    if (!previousMetrics) return;
+    const delta = dataset.metrics.health - previousMetrics.health;
+    if (Math.abs(delta) < 1) setTrendColor("#3b82f6"); // blue = stable
+    else if (delta > 0) setTrendColor("#22c55e"); // green = improving
+    else setTrendColor("#ef4444"); // red = declining
+  }, [dataset.metrics.health, previousMetrics]);
+
+  // ------------- core actions ------------------
   function handleGenerate(q?: string) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
@@ -77,7 +108,6 @@ export default function KeywordResearch() {
     await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
   }
 
-  // AI Insight
   function handleAIInsight() {
     const { top3, scores } = runAIInsight(dataset.data);
     const newBlocks: KeywordSourceBlock[] = dataset.data.map(b => ({
@@ -85,14 +115,13 @@ export default function KeywordResearch() {
       items: b.items.map(k => ({ ...k, ai: scores[k.id] ?? k.ai })),
     }));
     setDataset({ data: newBlocks, metrics: computeMetrics(newBlocks) });
-
     setInsights(top3);
     setAiTopIds(new Set(top3.map(t => t.id)));
     setHighlightId(top3[0]?.id ?? null);
     document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
   }
 
-  // Sorting logic — reorder items inside each block
+  // sort items by AI
   const sortedBlocks: KeywordSourceBlock[] = sortByAI
     ? dataset.data.map(b => ({
         ...b,
@@ -102,12 +131,13 @@ export default function KeywordResearch() {
 
   const { metrics } = dataset;
 
+  // -------------------- render ---------------------
   return (
-    <div ref={rootRef} className="space-y-6">
-      {/* Title & Controls */}
+    <div ref={rootRef} className="space-y-6 transition-all duration-500 ease-in-out">
+      {/* Title + Controls */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <h1 className="text-2xl md:text-3xl font-semibold">
-          🔎 Keyword Research (Basic)
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+          🔎 Keyword Research (AI Dashboard)
         </h1>
 
         <div className="flex flex-wrap gap-2">
@@ -119,14 +149,14 @@ export default function KeywordResearch() {
             className="h-10 w-64 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
           />
           <button
-            className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium"
+            className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium hover:scale-[1.03] transition-transform"
             onClick={() => handleGenerate()}
           >
             Generate
           </button>
           <button
             type="button"
-            className="h-10 px-3 rounded-xl bg-emerald-600 text-white"
+            className="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:scale-[1.03] transition-transform"
             onClick={handleAIInsight}
             aria-controls="insights-panel"
           >
@@ -150,7 +180,7 @@ export default function KeywordResearch() {
         </div>
       </div>
 
-      {/* Sticky Summary */}
+      {/* Summary */}
       <SummaryBar
         metrics={metrics}
         previous={previousMetrics}
@@ -158,7 +188,7 @@ export default function KeywordResearch() {
         showTrend={showTrend}
       />
 
-      {/* Options row */}
+      {/* Controls row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
           <input
@@ -170,7 +200,6 @@ export default function KeywordResearch() {
           Show trend deltas
         </label>
 
-        {/* NEW Sort toggle */}
         <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
           <input
             type="checkbox"
@@ -182,25 +211,54 @@ export default function KeywordResearch() {
         </label>
       </div>
 
-      {/* Charts */}
-      <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
+      {/* Charts section */}
+      <div
+        className={`transition-all duration-700 ${
+          glow ? "shadow-[0_0_25px_rgba(16,185,129,0.45)] rounded-2xl" : ""
+        }`}
+      >
+        <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
+      </div>
 
-      {/* AI Insights Panel */}
+      {/* AI Insight Top 3 Panel */}
       <aside
         id="insights-panel"
-        className="rounded-2xl border border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/20 p-4"
+        className="rounded-2xl border p-4 transition-all duration-500 hover:shadow-lg"
+        style={{
+          borderColor: trendColor + "66",
+          background:
+            trendColor === "#22c55e"
+              ? "linear-gradient(145deg, rgba(240,253,244,0.8) 0%, rgba(220,252,231,0.5) 100%)"
+              : trendColor === "#ef4444"
+              ? "linear-gradient(145deg, rgba(254,242,242,0.8) 0%, rgba(254,226,226,0.5) 100%)"
+              : "linear-gradient(145deg, rgba(239,246,255,0.8) 0%, rgba(219,234,254,0.5) 100%)",
+          boxShadow: `0 0 18px ${trendColor}40`,
+        }}
       >
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-emerald-800 dark:text-emerald-200">
+        <div className="flex items-center justify-between mb-2">
+          <h3
+            className="font-semibold text-lg"
+            style={{ color: trendColor }}
+          >
             AI Insight — Easiest Wins
           </h3>
-          <span className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
-            Click again after changing data/filters to refresh picks
+          <span
+            className="text-xs font-medium"
+            style={{ color: trendColor }}
+          >
+            Click again after changing data/filters
           </span>
         </div>
-        <ul className="mt-2 space-y-2">
+        <ul className="space-y-2">
           {insights.map((x, i) => (
-            <li key={x.id} className="flex items-center justify-between">
+            <li
+              key={x.id}
+              className="flex items-center justify-between rounded-lg px-3 py-2 transition-all duration-300 hover:scale-[1.02]"
+              style={{
+                backgroundColor: trendColor + "0F",
+                borderLeft: `3px solid ${trendColor}`,
+              }}
+            >
               <div className="min-w-0">
                 <div className="truncate font-medium">
                   {i + 1}. {x.phrase}
@@ -209,20 +267,20 @@ export default function KeywordResearch() {
                   diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
                 </div>
               </div>
-              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+              <span className="text-sm font-semibold" style={{ color: trendColor }}>
                 {x.ai}
               </span>
             </li>
           ))}
           {!insights.length && (
             <li className="text-sm text-neutral-600 dark:text-neutral-300">
-              Click “AI Insight” to score and see Top-3 easiest keywords.
+              Click “AI Insight” to score and see Top 3 easiest keywords.
             </li>
           )}
         </ul>
       </aside>
 
-      {/* Keyword Lists */}
+      {/* Keyword list grid */}
       <div id="kw-lists" className="pt-2">
         <KeywordList
           blocks={sortedBlocks}
@@ -235,6 +293,7 @@ export default function KeywordResearch() {
   );
 }
 
+// Empty metric template
 function emptyMetrics(): Metrics {
   return {
     total: 0,
