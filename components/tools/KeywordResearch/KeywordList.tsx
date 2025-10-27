@@ -1,4 +1,3 @@
-// components/tools/KeywordResearch/KeywordList.tsx
 "use client";
 import React from "react";
 import { KeywordSourceBlock, KeywordItem } from "./utils";
@@ -6,9 +5,11 @@ import { KeywordSourceBlock, KeywordItem } from "./utils";
 export default function KeywordList({
   blocks,
   highlightId,
+  aiTopIds = new Set<string>(),
 }: {
   blocks: KeywordSourceBlock[];
   highlightId?: string | null;
+  aiTopIds?: Set<string>;
 }) {
   return (
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -20,7 +21,7 @@ export default function KeywordList({
           <div className="text-lg font-semibold mb-2">{block.source}</div>
           <div className="space-y-2">
             {block.items.map((k) => (
-              <Card key={k.id} k={k} highlight={k.id === highlightId} />
+              <Card key={k.id} k={k} highlight={k.id === highlightId} isAIPick={aiTopIds.has(k.id)} />
             ))}
           </div>
         </div>
@@ -29,7 +30,7 @@ export default function KeywordList({
   );
 }
 
-function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
+function Card({ k, highlight, isAIPick }: { k: KeywordItem; highlight: boolean; isAIPick: boolean }) {
   return (
     <div
       className={`rounded-xl p-3 border transition-shadow duration-300 ${
@@ -40,19 +41,26 @@ function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
     >
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{k.phrase}</div>
-        <span
-          className={`text-xs px-2 py-0.5 rounded-full ${
-            k.intent === "Transactional"
-              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-              : k.intent === "Commercial"
-              ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
-              : k.intent === "Informational"
-              ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200"
-              : "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200"
-          }`}
-        >
-          {k.intent}
-        </span>
+        <div className="flex items-center gap-2">
+          {isAIPick && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+              AI pick{typeof k.ai === "number" ? ` • ${k.ai}` : ""}
+            </span>
+          )}
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full ${
+              k.intent === "Transactional"
+                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                : k.intent === "Commercial"
+                ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+                : k.intent === "Informational"
+                ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200"
+                : "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200"
+            }`}
+          >
+            {k.intent}
+          </span>
+        </div>
       </div>
 
       <div className="mt-2">
@@ -66,10 +74,16 @@ function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
             style={{ width: `${k.difficulty}%` }}
           />
         </div>
-        <div className="mt-1 text-xs">
+        <div className="mt-1 text-xs flex items-center justify-between">
           <span className={k.trendPct >= 0 ? "text-green-600" : "text-rose-600"}>
             {k.trendPct >= 0 ? "📈" : "📉"} {Math.abs(k.trendPct)}%
           </span>
+          {/* optional tiny readout */}
+          {(k.volume ?? k.cpc) !== undefined && (
+            <span className="text-neutral-500 dark:text-neutral-400">
+              vol {k.volume ?? "—"} • cpc {k.cpc ?? "—"}
+            </span>
+          )}
         </div>
       </div>
     </div>

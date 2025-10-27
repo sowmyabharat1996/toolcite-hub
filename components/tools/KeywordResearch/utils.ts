@@ -1,6 +1,4 @@
-// components/tools/KeywordResearch/utils.ts
 export type Intent = "Navigational" | "Transactional" | "Informational" | "Commercial";
-
 export type Source = "Google" | "YouTube" | "Bing" | "Amazon";
 
 export type KeywordItem = {
@@ -10,6 +8,10 @@ export type KeywordItem = {
   intent: Intent;
   source: Source;
   trendPct: number;   // -15 to +15 simulated percentage change
+  // NEW (for AI/monetization work)
+  volume?: number;    // 0–100 (simulated for now)
+  cpc?: number;       // 0–100 (simulated for now)
+  ai?: number;        // 0–100 (computed by AI Insight)
 };
 
 export type KeywordSourceBlock = {
@@ -73,8 +75,11 @@ export function generateMockData(seed: string): Dataset {
   }
 
   function kw(phrase: string, source: Source): KeywordItem {
-    const difficulty = Math.round(rand() * 70 + 10);      // 10..80
+    const difficulty = Math.round(rand() * 70 + 10);           // 10..80
     const trendPct = Math.round((rand() * 30 - 15) * 10) / 10; // -15..+15
+    // NEW: light simulation for volume & CPC (0–100)
+    const volume = Math.round(rand() * 100);
+    const cpc = Math.round(rand() * 100);
     return {
       id: `${source}-${phrase}-${Math.floor(rand() * 1e6)}`,
       phrase,
@@ -82,6 +87,8 @@ export function generateMockData(seed: string): Dataset {
       intent: randomIntent(),
       source,
       trendPct,
+      volume,
+      cpc,
     };
   }
 
@@ -99,11 +106,19 @@ export function generateMockData(seed: string): Dataset {
 }
 
 export function toCSV(blocks: KeywordSourceBlock[]) {
-  const header = ["Source", "Keyword", "Intent", "Difficulty", "Trend %"];
+  const header = ["Source", "Keyword", "Intent", "Difficulty", "Trend %", "Volume", "CPC"];
   const rows = blocks.flatMap(b =>
-    b.items.map(k => [b.source, k.phrase, k.intent, String(k.difficulty), `${k.trendPct}`])
+    b.items.map(k => [
+      b.source,
+      k.phrase,
+      k.intent,
+      String(k.difficulty),
+      `${k.trendPct}`,
+      k.volume ?? "",
+      k.cpc ?? "",
+    ])
   );
-  return [header, ...rows].map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+  return [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
 }
 
 export function shareURLFromSeed(seed: string) {
@@ -112,7 +127,36 @@ export function shareURLFromSeed(seed: string) {
   return url.toString();
 }
 
-// pick the easiest keyword (lowest difficulty) for "AI Insight"
+// ---------- AI Insight ----------
+// Intent weights (transactional/commercial favored)
+const INTENT_W: Record<Intent, number> = {
+  Transactional: 1.0,
+  Commercial: 0.9,
+  Informational: 0.6,
+  Navigational: 0.5,
+};
+
+export function aiScore(k: KeywordItem) {
+  const vol = k.volume ?? 40;
+  const cpcBoost = Math.min((k.cpc ?? 0) / 100, 0.3);
+  const reach = (vol / 100) + cpcBoost;   // 0..1.3
+  const ease  = 1 - (k.difficulty / 100); // 0..1 (higher is easier)
+  const iw    = INTENT_W[k.intent] ?? 0.6;
+  return Math.round(100 * (0.55*ease + 0.35*reach + 0.10*iw));
+}
+
+// Returns Top-3 + a map of {id: aiScore} to attach on rows
+export function runAIInsight(blocks: KeywordSourceBlock[]) {
+  const all = blocks.flatMap(b => b.items);
+  if (!all.length) return { top3: [] as (KeywordItem & { ai:number })[], scores: {} as Record<string, number> };
+  const scored = all.map(k => ({ ...k, ai: aiScore(k) }));
+  const top3 = scored.sort((a,b)=> b.ai - a.ai).slice(0,3);
+  const scores: Record<string, number> = {};
+  scored.forEach(s => { scores[s.id] = s.ai!; });
+  return { top3, scores };
+}
+
+// Keep the old helper (not used for AI anymore, but harmless)
 export function pickEasiestKeyword(blocks: KeywordSourceBlock[]): KeywordItem | null {
   const all = blocks.flatMap(b => b.items);
   if (!all.length) return null;

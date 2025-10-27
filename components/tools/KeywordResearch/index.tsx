@@ -1,7 +1,7 @@
 // components/tools/KeywordResearch/index.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import SummaryBar from "./SummaryBar";
 import MetricsCharts from "./MetricsCharts";
 import KeywordList from "./KeywordList";
@@ -13,18 +13,22 @@ import {
   computeMetrics,
   toCSV,
   shareURLFromSeed,
-  pickEasiestKeyword,
+  runAIInsight,         // NEW
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
 export default function KeywordResearch() {
   const [query, setQuery] = useState("");
-  // Store the whole dataset (this fixes the type error you saw)
   const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
   const [previousMetrics, setPreviousMetrics] = useState<Metrics | null>(null);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [showTrend, setShowTrend] = useState(true);
+
+  // NEW: AI state (for badges + panel)
+  const [aiTopIds, setAiTopIds] = useState<Set<string>>(new Set());
+  const [insights, setInsights] = useState<(ReturnType<typeof runAIInsight>["top3"][number])[]>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+
   const rootRef = useRef<HTMLDivElement>(null);
 
   // preload from URL ?q=
@@ -34,17 +38,19 @@ export default function KeywordResearch() {
       setQuery(q);
       handleGenerate(q);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleGenerate(q?: string) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
-    // set previous for delta calc
     setPreviousMetrics(dataset.metrics);
     setDataset(result);
     setLastUpdated(Date.now());
     setHighlightId(null);
+    // clear previous AI picks on new run
+    setAiTopIds(new Set());
+    setInsights([]);
   }
 
   function handleCopyAll() {
@@ -72,17 +78,24 @@ export default function KeywordResearch() {
     await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
   }
 
-  // AI Insight button — find easiest keyword & highlight
+  // NEW: AI Insight — score all rows, badge Top-3, show panel, store ai values on rows
   function handleAIInsight() {
-    const best = pickEasiestKeyword(dataset.data);
-    if (!best) return;
-    setHighlightId(best.id);
-    // scroll a bit to the lists
-    document.getElementById("kw-lists")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const { top3, scores } = runAIInsight(dataset.data);
+    // attach ai scores back into blocks (immutable)
+    const newBlocks: KeywordSourceBlock[] = dataset.data.map(b => ({
+      ...b,
+      items: b.items.map(k => ({ ...k, ai: scores[k.id] ?? k.ai }))
+    }));
+    setDataset({ data: newBlocks, metrics: computeMetrics(newBlocks) }); // metrics unchanged, but safe
+
+    setInsights(top3);
+    setAiTopIds(new Set(top3.map(t => t.id)));
+    setHighlightId(top3[0]?.id ?? null);
+
+    document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const metrics = dataset.metrics;
-  const blocks = dataset.data;
+  const { metrics, data: blocks } = dataset;
 
   return (
     <div ref={rootRef} className="space-y-6">
@@ -104,7 +117,12 @@ export default function KeywordResearch() {
             onClick={() => handleGenerate()}>
             Generate
           </button>
-          <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleAIInsight}>
+          <button
+            type="button"
+            className="h-10 px-3 rounded-xl bg-emerald-600 text-white"
+            onClick={handleAIInsight}
+            aria-controls="insights-panel"
+          >
             🤖 AI Insight
           </button>
           <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>
@@ -149,10 +167,40 @@ export default function KeywordResearch() {
       {/* Charts */}
       <MetricsCharts metrics={metrics} blocks={blocks} />
 
+      {/* AI Insights panel */}
+      <aside
+        id="insights-panel"
+        className="rounded-2xl border border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/20 p-4"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-emerald-800 dark:text-emerald-200">AI Insight — Easiest Wins</h3>
+          <span className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
+            Click again after changing data/filters to refresh picks
+          </span>
+        </div>
+        <ul className="mt-2 space-y-2">
+          {insights.map((x,i)=>(
+            <li key={x.id} className="flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{i+1}. {x.phrase}</div>
+                <div className="text-xs text-neutral-600 dark:text-neutral-300">
+                  diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
+                </div>
+              </div>
+              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-200">{x.ai}</span>
+            </li>
+          ))}
+          {!insights.length && (
+            <li className="text-sm text-neutral-600 dark:text-neutral-300">
+              Click “AI Insight” to score and see Top-3 easiest keywords.
+            </li>
+          )}
+        </ul>
+      </aside>
 
       {/* Keyword Lists */}
       <div id="kw-lists" className="pt-2">
-        <KeywordList blocks={blocks} highlightId={highlightId} />
+        <KeywordList blocks={blocks} highlightId={highlightId} aiTopIds={aiTopIds} />
       </div>
     </div>
   );
