@@ -1,3 +1,5 @@
+// components/tools/KeywordResearch/utils.ts
+
 export type Intent = "Navigational" | "Transactional" | "Informational" | "Commercial";
 export type Source = "Google" | "YouTube" | "Bing" | "Amazon";
 
@@ -7,11 +9,10 @@ export type KeywordItem = {
   difficulty: number; // 0-100
   intent: Intent;
   source: Source;
-  trendPct: number;   // -15 to +15 simulated percentage change
-  // NEW (for AI/monetization work)
-  volume?: number;    // 0–100 (simulated for now)
-  cpc?: number;       // 0–100 (simulated for now)
-  ai?: number;        // 0–100 (computed by AI Insight)
+  trendPct: number; // -15..+15
+  volume?: number;  // 0-100 (sim scale)
+  cpc?: number;     // 0-100 (sim scale)
+  ai?: number;      // 0-100 (AI score)
 };
 
 export type KeywordSourceBlock = {
@@ -35,7 +36,6 @@ export type Dataset = {
 const INTENTS: Intent[] = ["Navigational", "Transactional", "Informational", "Commercial"];
 const SOURCES: Source[] = ["Google", "YouTube", "Bing", "Amazon"];
 
-// tiny seeded RNG so "same seed → same data"
 function mulberry32(a: number) {
   return function () {
     let t = (a += 0x6d2b79f5);
@@ -50,7 +50,7 @@ function slugNum(seed: string) {
 }
 
 export function computeMetrics(blocks: KeywordSourceBlock[]): Metrics {
-  const all = blocks.flatMap(b => b.items);
+  const all = blocks.flatMap((b) => b.items);
   const total = all.length;
   const avgDifficulty = total ? Math.round(all.reduce((s, k) => s + k.difficulty, 0) / total) : 0;
   const byIntent: Record<Intent, number> = {
@@ -59,11 +59,12 @@ export function computeMetrics(blocks: KeywordSourceBlock[]): Metrics {
     Informational: 0,
     Commercial: 0,
   };
-  all.forEach(k => { byIntent[k.intent]++; });
+  all.forEach((k) => {
+    byIntent[k.intent]++;
+  });
 
-  // simple “health”: invert difficulty & weight lower diff more
+  // simple “health”: invert difficulty
   const health = Math.max(0, Math.min(100, Math.round(100 - avgDifficulty)));
-
   return { total, avgDifficulty, byIntent, health };
 }
 
@@ -75,13 +76,12 @@ export function generateMockData(seed: string): Dataset {
   }
 
   function kw(phrase: string, source: Source): KeywordItem {
-    const difficulty = Math.round(rand() * 70 + 10);           // 10..80
+    const difficulty = Math.round(rand() * 70 + 10); // 10..80
     const trendPct = Math.round((rand() * 30 - 15) * 10) / 10; // -15..+15
-    // NEW: light simulation for volume & CPC (0–100)
     const volume = Math.round(rand() * 100);
     const cpc = Math.round(rand() * 100);
     return {
-      id: `${source}-${phrase}-${Math.floor(rand() * 1e6)}`,
+      id: `${source}-${phrase}-${Math.floor(rand() * 1e9)}`,
       phrase,
       difficulty,
       intent: randomIntent(),
@@ -89,13 +89,13 @@ export function generateMockData(seed: string): Dataset {
       trendPct,
       volume,
       cpc,
+      ai: undefined,
     };
   }
 
   const blocks: KeywordSourceBlock[] = SOURCES.map((src) => {
     const base = seed || src.toLowerCase();
-    // create 6–9 items per source
-    const count = 6 + Math.floor(rand() * 4);
+    const count = 6 + Math.floor(rand() * 4); // 6–9 items per source
     const items: KeywordItem[] = Array.from({ length: count }, (_, i) =>
       kw(`${base} ${i + 1}`, src)
     );
@@ -106,9 +106,9 @@ export function generateMockData(seed: string): Dataset {
 }
 
 export function toCSV(blocks: KeywordSourceBlock[]) {
-  const header = ["Source", "Keyword", "Intent", "Difficulty", "Trend %", "Volume", "CPC"];
-  const rows = blocks.flatMap(b =>
-    b.items.map(k => [
+  const header = ["Source", "Keyword", "Intent", "Difficulty", "Trend %", "Volume", "CPC", "AI"];
+  const rows = blocks.flatMap((b) =>
+    b.items.map((k) => [
       b.source,
       k.phrase,
       k.intent,
@@ -116,49 +116,94 @@ export function toCSV(blocks: KeywordSourceBlock[]) {
       `${k.trendPct}`,
       k.volume ?? "",
       k.cpc ?? "",
+      k.ai ?? "",
     ])
   );
-  return [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  return [header, ...rows]
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
 }
 
 export function shareURLFromSeed(seed: string) {
-  const url = new URL(typeof window !== "undefined" ? window.location.href : "https://toolcite.com/tools");
+  const url = new URL(
+    typeof window !== "undefined" ? window.location.href : "https://toolcite.com/tools"
+  );
   url.searchParams.set("q", seed);
   return url.toString();
 }
 
 // ---------- AI Insight ----------
-// Intent weights (transactional/commercial favored)
-const INTENT_W: Record<Intent, number> = {
+
+const INTENT_WEIGHT: Record<Intent, number> = {
   Transactional: 1.0,
   Commercial: 0.9,
   Informational: 0.6,
   Navigational: 0.5,
 };
 
-export function aiScore(k: KeywordItem) {
+export function aiScore(k: KeywordItem): number {
   const vol = k.volume ?? 40;
-  const cpcBoost = Math.min((k.cpc ?? 0) / 100, 0.3);
-  const reach = (vol / 100) + cpcBoost;   // 0..1.3
-  const ease  = 1 - (k.difficulty / 100); // 0..1 (higher is easier)
-  const iw    = INTENT_W[k.intent] ?? 0.6;
-  return Math.round(100 * (0.55*ease + 0.35*reach + 0.10*iw));
+  const cpcBoost = Math.min((k.cpc ?? 0) / 100, 0.3); // small premium
+  const reach = vol / 100 + cpcBoost; // 0..1.3
+  const ease = 1 - k.difficulty / 100; // 0..1
+  const iw = INTENT_WEIGHT[k.intent] ?? 0.6;
+  return Math.round(100 * (0.55 * ease + 0.35 * reach + 0.1 * iw));
 }
 
-// Returns Top-3 + a map of {id: aiScore} to attach on rows
 export function runAIInsight(blocks: KeywordSourceBlock[]) {
-  const all = blocks.flatMap(b => b.items);
-  if (!all.length) return { top3: [] as (KeywordItem & { ai:number })[], scores: {} as Record<string, number> };
-  const scored = all.map(k => ({ ...k, ai: aiScore(k) }));
-  const top3 = scored.sort((a,b)=> b.ai - a.ai).slice(0,3);
+  const all = blocks.flatMap((b) => b.items);
   const scores: Record<string, number> = {};
-  scored.forEach(s => { scores[s.id] = s.ai!; });
+  all.forEach((k) => (scores[k.id] = aiScore(k)));
+  const top3 = [...all]
+    .map((k) => ({ ...k, ai: scores[k.id] }))
+    .sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0))
+    .slice(0, 3);
   return { top3, scores };
 }
 
-// Keep the old helper (not used for AI anymore, but harmless)
+// ---------- Simulation (Volume & CPC) ----------
+
+function clamp01x100(n: number) {
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+/**
+ * Apply simulator:
+ * - volSim / cpcSim are 0..100 sliders. We scale baseline values by factor.
+ * - factorVol = volSim / 50 (0..2), factorCpc = cpcSim / 50 (0..2)
+ * - recompute AI score for each item
+ * - return adjusted blocks and estimated monthly clicks
+ */
+export function applyVolumeCPCSimulation(
+  base: KeywordSourceBlock[],
+  volSim: number,
+  cpcSim: number
+): { blocks: KeywordSourceBlock[]; estClicks: number } {
+  const factorVol = (volSim || 0) / 50; // 0..2
+  const factorCpc = (cpcSim || 0) / 50; // 0..2
+
+  let estClicks = 0;
+
+  const blocks = base.map((b) => ({
+    ...b,
+    items: b.items.map((k) => {
+      const vol0 = k.volume ?? 50;
+      const cpc0 = k.cpc ?? 50;
+      const vol = clamp01x100(vol0 * factorVol);
+      const cpc = clamp01x100(cpc0 * factorCpc);
+      const scored: KeywordItem = { ...k, volume: vol, cpc, ai: aiScore({ ...k, volume: vol, cpc }) };
+      estClicks += vol * (1 - k.difficulty / 100); // toy model
+      return scored;
+    }),
+  }));
+
+  estClicks = Math.round(estClicks); // simple integer KPI
+  return { blocks, estClicks };
+}
+
+// pick the easiest keyword (lowest difficulty) – still used in basic mode
 export function pickEasiestKeyword(blocks: KeywordSourceBlock[]): KeywordItem | null {
-  const all = blocks.flatMap(b => b.items);
+  const all = blocks.flatMap((b) => b.items);
   if (!all.length) return null;
   return all.reduce((min, k) => (k.difficulty < min.difficulty ? k : min), all[0]);
 }

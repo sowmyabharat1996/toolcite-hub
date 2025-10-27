@@ -8,9 +8,11 @@ type Props = {
   lastUpdated: number;
   showTrend: boolean;
   previous?: Metrics | null;
+  /** NEW: live KPI from sliders */
+  estClicks?: number;
 };
 
-// ⚙️ Smooth number animation for metric transitions
+// ---------- helpers ----------
 function useTicker(target: number, deps: React.DependencyList) {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -30,14 +32,12 @@ function useTicker(target: number, deps: React.DependencyList) {
   return n;
 }
 
-// 🎨 Background based on current health value
 function bgForHealth(h: number) {
   if (h >= 70) return "from-green-500/15 to-emerald-500/15";
   if (h >= 40) return "from-blue-500/15 to-sky-500/15";
   return "from-rose-500/15 to-red-500/15";
 }
 
-// 🔺/🔻 trend arrow display
 function TrendArrow({ delta }: { delta: number }) {
   const up = delta >= 0;
   return (
@@ -51,9 +51,8 @@ function TrendArrow({ delta }: { delta: number }) {
   );
 }
 
-// 📈 Sparkline SVG, now synchronized with trend color logic
 function Sparkline({ data, color }: { data: number[]; color: string }) {
-  if (data.length < 2) return null;
+  if (!data || data.length < 2) return null;
   const width = 60;
   const height = 24;
   const min = Math.min(...data);
@@ -63,7 +62,6 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   const points = data
     .map((v, i) => `${(i / (data.length - 1)) * width},${norm(v)}`)
     .join(" ");
-
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="ml-2">
       <polyline
@@ -75,7 +73,7 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
         className="opacity-80 transition-all duration-500"
       />
       <circle
-        cx={(data.length - 1) / (data.length - 1) * width}
+        cx={width}
         cy={norm(data[data.length - 1])}
         r="2.5"
         fill={color}
@@ -85,22 +83,42 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   );
 }
 
-// Utility class joiner
 function classNames(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
 }
 
-export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }: Props) {
-  const [spin, setSpin] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
+const fmt = (n: number | undefined) =>
+  typeof n === "number" ? n.toLocaleString() : "—";
 
-  // load history on mount
+export default function SummaryBar({
+  metrics,
+  lastUpdated,
+  showTrend,
+  previous,
+  estClicks = 0,
+}: Props) {
+  const [spin, setSpin] = useState(false);
+  const [history, setHistory] = useState<
+    Array<{
+      time: number;
+      total: number;
+      avgDifficulty: number;
+      health: number;
+      intents: Metrics["byIntent"];
+      estClicks: number;
+    }>
+  >([]);
+
+  // load history on mount (compat: older entries may not have estClicks)
   useEffect(() => {
-    const h = JSON.parse(localStorage.getItem("metricHistory") || "[]");
+    const h = JSON.parse(localStorage.getItem("metricHistory") || "[]").map((x: any) => ({
+      ...x,
+      estClicks: typeof x.estClicks === "number" ? x.estClicks : 0,
+    }));
     setHistory(h);
   }, []);
 
-  // update history on each generation
+  // update history when metrics/estClicks change
   useEffect(() => {
     if (!metrics || metrics.total === 0) return;
     const newEntry = {
@@ -109,13 +127,15 @@ export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }
       avgDifficulty: metrics.avgDifficulty,
       health: metrics.health,
       intents: metrics.byIntent,
+      estClicks,
     };
-    const updated = [...history.slice(-4), newEntry]; // keep 5 latest
+    const updated = [...history.slice(-4), newEntry]; // keep last 5
     setHistory(updated);
     localStorage.setItem("metricHistory", JSON.stringify(updated));
-  }, [metrics.total, metrics.avgDifficulty, metrics.health]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics.total, metrics.avgDifficulty, metrics.health, estClicks]);
 
-  // spin animation on data update
+  // little spinner on update
   useEffect(() => {
     setSpin(true);
     const id = setTimeout(() => setSpin(false), 600);
@@ -127,11 +147,13 @@ export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }
     return s < 1 ? 0 : s;
   }, [lastUpdated]);
 
+  // animated numbers
   const totalN = useTicker(metrics.total, [metrics.total, lastUpdated]);
   const avgDiffN = useTicker(metrics.avgDifficulty, [metrics.avgDifficulty, lastUpdated]);
   const healthN = useTicker(metrics.health, [metrics.health, lastUpdated]);
+  const clicksN = useTicker(estClicks, [estClicks, lastUpdated]);
 
-  // calculate deltas
+  // deltas (for avg diff + intents + health) using "previous"
   const deltas = useMemo(() => {
     if (!previous) return null;
     return {
@@ -158,15 +180,20 @@ export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }
     };
   }, [metrics, previous]);
 
-  // dynamic trend color (green up / red down / blue stable)
+  // derive trend color from health delta for synchronized mood
   const trendColor = useMemo(() => {
-    const delta = deltas?.health ?? 0;
-    if (Math.abs(delta) < 1) return "#3b82f6"; // stable
-    return delta > 0 ? "#22c55e" : "#ef4444"; // up / down
+    const d = deltas?.health ?? 0;
+    if (Math.abs(d) < 1) return "#3b82f6"; // blue = stable
+    return d > 0 ? "#22c55e" : "#ef4444"; // green / red
   }, [deltas]);
 
-  // data for sparklines
-  const getSpark = (key: "total" | "avgDifficulty" | "health") =>
+  // clicks delta (use history’s last value)
+  const prevClicks = history.length ? history[history.length - 1].estClicks : 0;
+  const clicksDelta =
+    prevClicks === 0 ? 0 : Math.round(((estClicks - prevClicks) / Math.max(1, prevClicks)) * 100);
+
+  // sparkline helpers
+  const getSpark = (key: "total" | "avgDifficulty" | "health" | "estClicks") =>
     history.map((h) => h[key]).slice(-5);
 
   return (
@@ -177,8 +204,8 @@ export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }
         "backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:supports-[backdrop-filter]:bg-black/40 transition-shadow duration-500"
       )}
     >
-      {/* Top metric grid */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 p-4">
+      {/* now 7 tiles including Est. Monthly Clicks */}
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-4 p-4">
         <Stat label="Total Keywords" value={totalN} spark={getSpark("total")} color={trendColor} />
         <Stat label="Avg Difficulty" value={avgDiffN} spark={getSpark("avgDifficulty")} color={trendColor}>
           {showTrend && deltas && <TrendArrow delta={-deltas.avgDifficulty} />}
@@ -195,9 +222,13 @@ export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }
         <Stat label="Commercial" value={metrics.byIntent.Commercial}>
           {showTrend && deltas && <TrendArrow delta={deltas.intents.Commercial} />}
         </Stat>
+        {/* NEW TILE */}
+        <Stat label="Est. Monthly Clicks" value={fmt(clicksN)} spark={getSpark("estClicks")} color={trendColor}>
+          {showTrend && <TrendArrow delta={clicksDelta} />}
+        </Stat>
       </div>
 
-      {/* Health section */}
+      {/* Health bar row */}
       <div className="flex items-center justify-between px-4 pb-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-neutral-600 dark:text-neutral-300">Keyword Health</span>
@@ -216,14 +247,11 @@ export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }
               }}
             />
           </div>
-          <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
-            {healthN}
-          </span>
+          <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">{healthN}</span>
           {showTrend && deltas && <TrendArrow delta={deltas.health} />}
           <Sparkline data={getSpark("health")} color={trendColor} />
         </div>
 
-        {/* last updated indicator */}
         <div className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
           <button
             aria-label="Refresh"
@@ -239,7 +267,6 @@ export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }
   );
 }
 
-// 🔹 Reusable Stat Block with colorized sparkline
 function Stat({
   label,
   value,
