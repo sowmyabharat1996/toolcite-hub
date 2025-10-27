@@ -33,40 +33,44 @@ export default function KeywordList({
 function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
   const reasons = explainPick(k);
 
-  // Hover state + refs to measure available space
   const [hovered, setHovered] = useState(false);
   const [placeAbove, setPlaceAbove] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
+
   const cardRef = useRef<HTMLDivElement | null>(null);
   const tipRef = useRef<HTMLDivElement | null>(null);
 
-  // Measure and decide whether to place the tooltip above or below.
+  // Measure after layout whenever hovered
   useLayoutEffect(() => {
-    if (!hovered) return;
-    if (typeof window === "undefined") return;
+    if (!hovered || typeof window === "undefined") return;
+    const card = cardRef.current;
+    const tip = tipRef.current;
+    if (!card || !tip) return;
 
     const compute = () => {
-      const card = cardRef.current;
-      const tip = tipRef.current;
-      if (!card || !tip) return;
-
       const rect = card.getBoundingClientRect();
-      // Ensure tip has a layout (even when visually hidden, it's in the DOM)
+      // Ensure the tooltip has a layout box to measure
       const tipRect = tip.getBoundingClientRect();
-      const tipH = tipRect.height || tip.offsetHeight || 0;
+      const tipH = tipRect.height || tip.scrollHeight || 0;
+      const tipW = tipRect.width || tip.scrollWidth || 0;
 
+      const vw = window.innerWidth || document.documentElement.clientWidth;
       const vh = window.innerHeight || document.documentElement.clientHeight;
+
       const spaceBelow = vh - rect.bottom;
       const spaceAbove = rect.top;
+      const spaceRight = vw - rect.right;
+      const spaceLeft = rect.left;
 
-      // Flip above if not enough room below and more room above
-      const shouldFlip = spaceBelow < tipH + 12 && spaceAbove > spaceBelow;
-      setPlaceAbove(shouldFlip);
+      // Vertical: flip above if not enough room below and more room above
+      setPlaceAbove(spaceBelow < tipH + 12 && spaceAbove > spaceBelow);
+
+      // Horizontal: pin to right edge if not enough space on right and more on left
+      setAlignRight(spaceRight < tipW * 0.6 && spaceLeft > spaceRight);
     };
 
-    // First compute on hover
+    // initial + on scroll/resize
     const raf = requestAnimationFrame(compute);
-
-    // Recompute while hovering on resize/scroll
     const onResize = () => compute();
     const onScroll = () => compute();
     window.addEventListener("resize", onResize, { passive: true });
@@ -91,7 +95,7 @@ function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100 truncate">
           {k.phrase}
@@ -115,9 +119,7 @@ function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
       <div className="mt-2">
         <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
           <span>Difficulty</span>
-          <span className="font-semibold text-neutral-700 dark:text-neutral-200">
-            {k.difficulty}
-          </span>
+          <span className="font-semibold text-neutral-700 dark:text-neutral-200">{k.difficulty}</span>
         </div>
         <div className="mt-1 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
           <div
@@ -139,16 +141,17 @@ function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
         </div>
       </div>
 
-      {/* Hover tooltip: Why this pick? (auto-flips above when near bottom) */}
+      {/* Tooltip (auto flip + horizontal pin) */}
       {reasons.length > 0 && (
         <div
           ref={tipRef}
           className={`
             pointer-events-none opacity-0 group-hover:opacity-100
-            transition-opacity duration-200
-            absolute left-3 right-3 z-20
+            transition-opacity duration-200 absolute z-20
             ${placeAbove ? "bottom-full mb-2" : "top-full mt-2"}
+            ${alignRight ? "right-3" : "left-3"}
           `}
+          style={{ maxWidth: 320 }}
         >
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/95 shadow-xl p-3">
             <div className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-200">
