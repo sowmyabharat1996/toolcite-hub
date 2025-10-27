@@ -1,4 +1,3 @@
-components/tools/KeywordResearch/MetricsCharts.tsx
 "use client";
 import React, { useMemo } from "react";
 import { Metrics, KeywordSourceBlock } from "./utils";
