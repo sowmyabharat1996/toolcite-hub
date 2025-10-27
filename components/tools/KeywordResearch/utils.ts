@@ -133,7 +133,6 @@ export function shareURLFromSeed(seed: string) {
 }
 
 // ---------- AI Insight ----------
-
 const INTENT_WEIGHT: Record<Intent, number> = {
   Transactional: 1.0,
   Commercial: 0.9,
@@ -162,7 +161,6 @@ export function runAIInsight(blocks: KeywordSourceBlock[]) {
 }
 
 // ---------- Simulation (Volume & CPC) ----------
-
 function clamp01x100(n: number) {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
@@ -201,7 +199,35 @@ export function applyVolumeCPCSimulation(
   return { blocks, estClicks };
 }
 
-// pick the easiest keyword (lowest difficulty) – still used in basic mode
+// ---------- Shared explanation for "Why this pick?" ----------
+export function explainPick(k: KeywordItem): string[] {
+  const reasons: string[] = [];
+
+  // Difficulty
+  if (k.difficulty <= 25) reasons.push("Very low difficulty — quick win potential");
+  else if (k.difficulty <= 40) reasons.push("Manageable difficulty — realistic to rank");
+
+  // Volume
+  if ((k.volume ?? 0) >= 70) reasons.push("Strong search volume signal");
+  else if ((k.volume ?? 0) >= 50) reasons.push("Decent search interest");
+
+  // CPC (monetizability)
+  if ((k.cpc ?? 0) >= 70) reasons.push("High CPC — monetizable traffic");
+  else if ((k.cpc ?? 0) >= 50) reasons.push("Above-average CPC — revenue opportunity");
+
+  // Intent
+  if (k.intent === "Transactional" || k.intent === "Commercial") {
+    reasons.push(`Buyer intent leaning ${k.intent.toLowerCase()}`);
+  }
+
+  // Trend
+  if (k.trendPct > 0) reasons.push(`Positive trend (${k.trendPct}% ↑)`);
+
+  // Cap to best 2–3 reasons
+  return reasons.slice(0, 3);
+}
+
+// pick the easiest keyword (lowest difficulty) – still available
 export function pickEasiestKeyword(blocks: KeywordSourceBlock[]): KeywordItem | null {
   const all = blocks.flatMap((b) => b.items);
   if (!all.length) return null;
