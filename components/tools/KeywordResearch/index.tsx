@@ -147,7 +147,7 @@ export default function KeywordResearch() {
       </div>
 
       {/* Charts */}
-      <MetricsCharts metrics={metrics} />
+<MetricsCharts metrics={metrics} blocks={blocks} />
 
       {/* Keyword Lists */}
       <div id="kw-lists" className="pt-2">
