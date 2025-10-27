@@ -1,17 +1,17 @@
-// components/tools/KeywordResearch/MetricsCharts.tsx
+components/tools/KeywordResearch/MetricsCharts.tsx
 "use client";
 import React, { useMemo } from "react";
 import { Metrics, KeywordSourceBlock } from "./utils";
 import {
-ResponsiveContainer,
-PieChart,
-Pie,
- Cell,
- Tooltip,
- BarChart,
- Bar,
- CartesianGrid,
- XAxis,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
   YAxis,
 } from "recharts";
 const INTENT_COLORS: Record<string, string> = {
@@ -80,7 +80,7 @@ export default function MetricsCharts({
         <div className="mt-2 flex flex-wrap gap-3 text-xs">
           {pieData.map((p) => (
             <div key={p.name} className="inline-flex items-center gap-2">
-          <span
+              <span
                 className="inline-block h-2 w-2 rounded-sm"
                 style={{ background: INTENT_COLORS[p.name] }}
               />
