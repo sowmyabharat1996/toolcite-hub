@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Metrics, KeywordSourceBlock } from "./utils";
 import {
   ResponsiveContainer,
@@ -15,14 +15,7 @@ import {
   YAxis,
 } from "recharts";
 
-const INTENT_COLORS: Record<string, string> = {
-  Navigational: "#38bdf8",     // sky-400
-  Transactional: "#10b981",    // emerald-500
-  Informational: "#6366f1",    // indigo-500
-  Commercial: "#f59e0b",       // amber-500
-};
-
-const BAR_COLOR = "#60a5fa"; // blue-400
+type IntentStr = "Navigational" | "Transactional" | "Informational" | "Commercial";
 
 export default function MetricsCharts({
   metrics,
@@ -31,8 +24,56 @@ export default function MetricsCharts({
   metrics: Metrics;
   blocks: KeywordSourceBlock[];
 }) {
-  // --- Intent Pie ---
-  const pieData = useMemo(
+  // Track previous health to compute delta safely (no stale reads)
+  const prevHealthRef = useRef<number>(metrics.health);
+  const [trendColor, setTrendColor] = useState<string>("#3b82f6"); // blue default
+
+  useEffect(() => {
+    const prev = prevHealthRef.current;
+    const delta = metrics.health - prev;
+    if (Math.abs(delta) < 1) setTrendColor("#3b82f6"); // stable
+    else if (delta > 0) setTrendColor("#22c55e"); // improving
+    else setTrendColor("#ef4444"); // declining
+    prevHealthRef.current = metrics.health;
+  }, [metrics.health]);
+
+  // Mood-aware palette (typed)
+  const palette: Record<IntentStr, string> = useMemo(() => {
+    if (trendColor === "#22c55e") {
+      // GREEN mood
+      return {
+        Navigational: "#34d399",
+        Transactional: "#10b981",
+        Informational: "#059669",
+        Commercial: "#6ee7b7",
+      };
+    }
+    if (trendColor === "#ef4444") {
+      // RED mood
+      return {
+        Navigational: "#f87171",
+        Transactional: "#dc2626",
+        Informational: "#b91c1c",
+        Commercial: "#fecaca",
+      };
+    }
+    // BLUE / stable mood
+    return {
+      Navigational: "#60a5fa",
+      Transactional: "#3b82f6",
+      Informational: "#2563eb",
+      Commercial: "#93c5fd",
+    };
+  }, [trendColor]);
+
+  const barFill = useMemo(() => {
+    if (trendColor === "#22c55e") return "#34d399";
+    if (trendColor === "#ef4444") return "#f87171";
+    return "#60a5fa";
+  }, [trendColor]);
+
+  // Pie data by intent (typed)
+  const pieData: { name: IntentStr; value: number }[] = useMemo(
     () => [
       { name: "Navigational", value: metrics.byIntent.Navigational },
       { name: "Transactional", value: metrics.byIntent.Transactional },
@@ -42,56 +83,79 @@ export default function MetricsCharts({
     [metrics.byIntent]
   );
 
-  // --- Avg difficulty by source ---
+  // Bar data: average difficulty by source
   const barData = useMemo(() => {
     return blocks.map((b) => {
       const avg =
         b.items.length === 0
           ? 0
-          : Math.round(
-              b.items.reduce((s, k) => s + k.difficulty, 0) / b.items.length
-            );
+          : Math.round(b.items.reduce((s, k) => s + k.difficulty, 0) / b.items.length);
       return { source: b.source, avgDifficulty: avg };
     });
   }, [blocks]);
 
-  // --- Health (KSI) Gauge ---
-  const healthPct = Math.min(100, Math.max(0, metrics.health));
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Pie: intents */}
-      <div className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4">
-        <div className="mb-2 text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+    <div
+      className="grid grid-cols-1 lg:grid-cols-2 gap-6 transition-all duration-700"
+      style={{ boxShadow: `0 0 22px ${trendColor}22`, borderRadius: 16 }}
+    >
+      {/* Pie: Intent Distribution */}
+      <div
+        className="rounded-2xl border p-4 transition-all duration-700 bg-white/70 dark:bg-white/5"
+        style={{
+          borderColor: trendColor + "55",
+          background:
+            trendColor === "#22c55e"
+              ? "linear-gradient(145deg, rgba(240,253,244,0.6) 0%, rgba(220,252,231,0.4) 100%)"
+              : trendColor === "#ef4444"
+              ? "linear-gradient(145deg, rgba(254,242,242,0.6) 0%, rgba(254,226,226,0.4) 100%)"
+              : "linear-gradient(145deg, rgba(239,246,255,0.6) 0%, rgba(219,234,254,0.4) 100%)",
+          borderWidth: 1,
+        }}
+      >
+        <div className="mb-2 text-sm font-semibold flex items-center gap-2" style={{ color: trendColor }}>
           Keywords by Intent
+          <span className="text-xs opacity-75">(colors reflect performance mood)</span>
         </div>
-        <div className="h-[240px]">
+
+        <div className="h-[260px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Tooltip formatter={(v: any) => [`${v}`, "Count"]} />
+              <Tooltip
+                formatter={(v: any) => [`${v}`, "Count"]}
+                contentStyle={{
+                  background: "#fff",
+                  border: `1px solid ${trendColor}55`,
+                  borderRadius: 8,
+                }}
+              />
               <Pie
                 data={pieData}
                 dataKey="value"
                 nameKey="name"
-                innerRadius={50}
-                outerRadius={90}
-                paddingAngle={3}
+                innerRadius={55}
+                outerRadius={95}
+                paddingAngle={2}
                 stroke="#ffffff"
+                isAnimationActive
+                animationDuration={900}
               >
-                {pieData.map((entry, i) => (
-                  <Cell key={i} fill={INTENT_COLORS[entry.name]} />
+                {pieData.map((entry) => (
+                  <Cell
+                    key={entry.name}
+                    fill={palette[entry.name]}
+                    style={{ filter: `drop-shadow(0 0 6px ${trendColor}44)` }}
+                  />
                 ))}
               </Pie>
             </PieChart>
           </ResponsiveContainer>
         </div>
+
         <div className="mt-2 flex flex-wrap gap-3 text-xs">
           {pieData.map((p) => (
             <div key={p.name} className="inline-flex items-center gap-2">
-              <span
-                className="inline-block h-2 w-2 rounded-sm"
-                style={{ background: INTENT_COLORS[p.name] }}
-              />
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: palette[p.name] }} />
               <span className="text-neutral-600 dark:text-neutral-300">
                 {p.name}: <strong>{p.value}</strong>
               </span>
@@ -100,44 +164,42 @@ export default function MetricsCharts({
         </div>
       </div>
 
-      {/* Bar: avg difficulty by source */}
-      <div className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4">
-        <div className="mb-2 text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+      {/* Bar: Avg Difficulty by Source */}
+      <div
+        className="rounded-2xl border p-4 transition-all duration-700 bg-white/70 dark:bg-white/5"
+        style={{
+          borderColor: trendColor + "55",
+          background:
+            trendColor === "#22c55e"
+              ? "linear-gradient(145deg, rgba(236,253,245,0.6) 0%, rgba(209,250,229,0.4) 100%)"
+              : trendColor === "#ef4444"
+              ? "linear-gradient(145deg, rgba(254,242,242,0.6) 0%, rgba(254,226,226,0.4) 100%)"
+              : "linear-gradient(145deg, rgba(239,246,255,0.6) 0%, rgba(219,234,254,0.4) 100%)",
+          borderWidth: 1,
+        }}
+      >
+        <div className="mb-2 text-sm font-semibold flex items-center gap-2" style={{ color: trendColor }}>
           Avg Difficulty by Source
+          <span className="text-xs opacity-75">(fills respond to performance mood)</span>
         </div>
-        <div className="h-[240px]">
+
+        <div className="h-[260px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={barData} margin={{ left: 10, right: 10 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
               <XAxis dataKey="source" />
               <YAxis domain={[0, 100]} />
-              <Tooltip formatter={(v: any) => [`${v}`, "Avg Difficulty"]} />
-              <Bar dataKey="avgDifficulty" fill={BAR_COLOR} radius={[6, 6, 0, 0]} />
+              <Tooltip
+                formatter={(v: any) => [`${v}`, "Avg Difficulty"]}
+                contentStyle={{
+                  background: "#fff",
+                  border: `1px solid ${trendColor}55`,
+                  borderRadius: 8,
+                }}
+              />
+              <Bar dataKey="avgDifficulty" fill={barFill} radius={[6, 6, 0, 0]} isAnimationActive animationDuration={900} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Keyword Strength Index (Health) */}
-      <div className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-gradient-to-br from-emerald-50 to-sky-50 dark:from-emerald-900/20 dark:to-sky-900/20 p-4">
-        <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-100 mb-3">
-          Keyword Strength Index (KSI)
-        </div>
-        <div className="relative w-full h-4 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-          <div
-            className="absolute left-0 top-0 h-full transition-all duration-700"
-            style={{
-              width: `${healthPct}%`,
-              background:
-                "linear-gradient(90deg, rgba(34,197,94,1) 0%, rgba(59,130,246,1) 100%)",
-            }}
-          />
-        </div>
-        <div className="mt-3 text-sm text-neutral-700 dark:text-neutral-200 flex justify-between">
-          <span className="font-medium">Health: {healthPct}</span>
-          <span className="text-neutral-500 dark:text-neutral-400">
-            Lower = competitive, Higher = easier
-          </span>
         </div>
       </div>
     </div>
