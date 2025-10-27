@@ -6,10 +6,12 @@ export default function KeywordList({
   blocks,
   highlightId,
   aiTopIds = new Set<string>(),
+  sortByAI = false,
 }: {
   blocks: KeywordSourceBlock[];
   highlightId?: string | null;
   aiTopIds?: Set<string>;
+  sortByAI?: boolean;
 }) {
   return (
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -21,7 +23,13 @@ export default function KeywordList({
           <div className="text-lg font-semibold mb-2">{block.source}</div>
           <div className="space-y-2">
             {block.items.map((k) => (
-              <Card key={k.id} k={k} highlight={k.id === highlightId} isAIPick={aiTopIds.has(k.id)} />
+              <Card
+                key={k.id}
+                k={k}
+                highlight={k.id === highlightId}
+                isAIPick={aiTopIds.has(k.id)}
+                sortByAI={sortByAI}
+              />
             ))}
           </div>
         </div>
@@ -30,21 +38,35 @@ export default function KeywordList({
   );
 }
 
-function Card({ k, highlight, isAIPick }: { k: KeywordItem; highlight: boolean; isAIPick: boolean }) {
+function Card({
+  k,
+  highlight,
+  isAIPick,
+  sortByAI,
+}: {
+  k: KeywordItem;
+  highlight: boolean;
+  isAIPick: boolean;
+  sortByAI: boolean;
+}) {
+  const glow = sortByAI && isAIPick;
+
   return (
     <div
       className={`rounded-xl p-3 border transition-shadow duration-300 ${
-        highlight
-          ? "border-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
+        highlight || glow
+          ? "border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.45)]"
           : "border-neutral-200/70 dark:border-neutral-800"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{k.phrase}</div>
+        <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+          {k.phrase}
+        </div>
         <div className="flex items-center gap-2">
           {isAIPick && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-              AI pick{typeof k.ai === "number" ? ` • ${k.ai}` : ""}
+              AI pick {typeof k.ai === "number" ? `• ${k.ai}` : ""}
             </span>
           )}
           <span
@@ -66,7 +88,9 @@ function Card({ k, highlight, isAIPick }: { k: KeywordItem; highlight: boolean; 
       <div className="mt-2">
         <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
           <span>Difficulty</span>
-          <span className="font-semibold text-neutral-700 dark:text-neutral-200">{k.difficulty}</span>
+          <span className="font-semibold text-neutral-700 dark:text-neutral-200">
+            {k.difficulty}
+          </span>
         </div>
         <div className="mt-1 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
           <div
@@ -78,12 +102,9 @@ function Card({ k, highlight, isAIPick }: { k: KeywordItem; highlight: boolean; 
           <span className={k.trendPct >= 0 ? "text-green-600" : "text-rose-600"}>
             {k.trendPct >= 0 ? "📈" : "📉"} {Math.abs(k.trendPct)}%
           </span>
-          {/* optional tiny readout */}
-          {(k.volume ?? k.cpc) !== undefined && (
-            <span className="text-neutral-500 dark:text-neutral-400">
-              vol {k.volume ?? "—"} • cpc {k.cpc ?? "—"}
-            </span>
-          )}
+          <span className="text-neutral-500 dark:text-neutral-400">
+            vol {k.volume ?? "—"} • cpc {k.cpc ?? "—"}
+          </span>
         </div>
       </div>
     </div>

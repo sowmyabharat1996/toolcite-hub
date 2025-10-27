@@ -13,7 +13,7 @@ import {
   computeMetrics,
   toCSV,
   shareURLFromSeed,
-  runAIInsight,         // NEW
+  runAIInsight,
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
@@ -24,14 +24,14 @@ export default function KeywordResearch() {
   const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [showTrend, setShowTrend] = useState(true);
 
-  // NEW: AI state (for badges + panel)
+  // AI Insight state
   const [aiTopIds, setAiTopIds] = useState<Set<string>>(new Set());
-  const [insights, setInsights] = useState<(ReturnType<typeof runAIInsight>["top3"][number])[]>([]);
+  const [insights, setInsights] = useState<any[]>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [sortByAI, setSortByAI] = useState(false); // NEW toggle
 
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // preload from URL ?q=
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("q") || "";
     if (q) {
@@ -48,7 +48,6 @@ export default function KeywordResearch() {
     setDataset(result);
     setLastUpdated(Date.now());
     setHighlightId(null);
-    // clear previous AI picks on new run
     setAiTopIds(new Set());
     setInsights([]);
   }
@@ -78,24 +77,30 @@ export default function KeywordResearch() {
     await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
   }
 
-  // NEW: AI Insight — score all rows, badge Top-3, show panel, store ai values on rows
+  // AI Insight
   function handleAIInsight() {
     const { top3, scores } = runAIInsight(dataset.data);
-    // attach ai scores back into blocks (immutable)
     const newBlocks: KeywordSourceBlock[] = dataset.data.map(b => ({
       ...b,
-      items: b.items.map(k => ({ ...k, ai: scores[k.id] ?? k.ai }))
+      items: b.items.map(k => ({ ...k, ai: scores[k.id] ?? k.ai })),
     }));
-    setDataset({ data: newBlocks, metrics: computeMetrics(newBlocks) }); // metrics unchanged, but safe
+    setDataset({ data: newBlocks, metrics: computeMetrics(newBlocks) });
 
     setInsights(top3);
     setAiTopIds(new Set(top3.map(t => t.id)));
     setHighlightId(top3[0]?.id ?? null);
-
-    document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
   }
 
-  const { metrics, data: blocks } = dataset;
+  // Sorting logic — reorder items inside each block
+  const sortedBlocks: KeywordSourceBlock[] = sortByAI
+    ? dataset.data.map(b => ({
+        ...b,
+        items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)),
+      }))
+    : dataset.data;
+
+  const { metrics } = dataset;
 
   return (
     <div ref={rootRef} className="space-y-6">
@@ -113,8 +118,10 @@ export default function KeywordResearch() {
             placeholder="e.g. ai tools for students"
             className="h-10 w-64 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
           />
-          <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium"
-            onClick={() => handleGenerate()}>
+          <button
+            className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium"
+            onClick={() => handleGenerate()}
+          >
             Generate
           </button>
           <button
@@ -134,8 +141,10 @@ export default function KeywordResearch() {
           <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>
             Export PDF
           </button>
-          <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
-            onClick={handleShare}>
+          <button
+            className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
+            onClick={handleShare}
+          >
             Share Link
           </button>
         </div>
@@ -149,45 +158,60 @@ export default function KeywordResearch() {
         showTrend={showTrend}
       />
 
-      {/* Small controls under summary */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-neutral-600 dark:text-neutral-300">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              className="accent-blue-600"
-              checked={showTrend}
-              onChange={(e) => setShowTrend(e.target.checked)}
-            />
-            Show trend deltas
-          </label>
-        </div>
+      {/* Options row */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
+          <input
+            type="checkbox"
+            className="accent-blue-600"
+            checked={showTrend}
+            onChange={(e) => setShowTrend(e.target.checked)}
+          />
+          Show trend deltas
+        </label>
+
+        {/* NEW Sort toggle */}
+        <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
+          <input
+            type="checkbox"
+            className="accent-emerald-600"
+            checked={sortByAI}
+            onChange={(e) => setSortByAI(e.target.checked)}
+          />
+          Sort / Highlight by AI Score
+        </label>
       </div>
 
       {/* Charts */}
-      <MetricsCharts metrics={metrics} blocks={blocks} />
+      <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
 
-      {/* AI Insights panel */}
+      {/* AI Insights Panel */}
       <aside
         id="insights-panel"
         className="rounded-2xl border border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/20 p-4"
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-emerald-800 dark:text-emerald-200">AI Insight — Easiest Wins</h3>
+          <h3 className="font-semibold text-emerald-800 dark:text-emerald-200">
+            AI Insight — Easiest Wins
+          </h3>
           <span className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
             Click again after changing data/filters to refresh picks
           </span>
         </div>
         <ul className="mt-2 space-y-2">
-          {insights.map((x,i)=>(
+          {insights.map((x, i) => (
             <li key={x.id} className="flex items-center justify-between">
               <div className="min-w-0">
-                <div className="truncate font-medium">{i+1}. {x.phrase}</div>
+                <div className="truncate font-medium">
+                  {i + 1}. {x.phrase}
+                </div>
                 <div className="text-xs text-neutral-600 dark:text-neutral-300">
                   diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
                 </div>
               </div>
-              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-200">{x.ai}</span>
+              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+                {x.ai}
+              </span>
             </li>
           ))}
           {!insights.length && (
@@ -200,7 +224,12 @@ export default function KeywordResearch() {
 
       {/* Keyword Lists */}
       <div id="kw-lists" className="pt-2">
-        <KeywordList blocks={blocks} highlightId={highlightId} aiTopIds={aiTopIds} />
+        <KeywordList
+          blocks={sortedBlocks}
+          highlightId={highlightId}
+          aiTopIds={aiTopIds}
+          sortByAI={sortByAI}
+        />
       </div>
     </div>
   );
