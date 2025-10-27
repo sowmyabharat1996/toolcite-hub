@@ -1,97 +1,77 @@
+// components/tools/KeywordResearch/KeywordList.tsx
 "use client";
 import React from "react";
+import { KeywordSourceBlock, KeywordItem } from "./utils";
 
-export default function KeywordList({ data, search, grouping, comparison }: any) {
-  const showToast = (msg: string) => {
-    const t = document.createElement("div");
-    t.textContent = msg;
-    Object.assign(t.style, {
-      position: "fixed",
-      bottom: "24px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      background: "#333",
-      color: "#fff",
-      padding: "8px 16px",
-      borderRadius: "8px",
-      fontSize: "14px",
-      zIndex: "9999",
-      opacity: "0",
-      transition: "opacity 0.3s ease",
-    });
-    document.body.appendChild(t);
-    requestAnimationFrame(() => (t.style.opacity = "1"));
-    setTimeout(() => {
-      t.style.opacity = "0";
-      setTimeout(() => t.remove(), 400);
-    }, 1500);
-  };
-
-  const filtered = data
-    .flatMap((s: any) =>
-      s.keywords.map((k: any) => ({
-        ...k,
-        source: s.source,
-      }))
-    )
-    .filter((k: any) => k.text.toLowerCase().includes(search.toLowerCase()));
-
-  const groups = grouping
-    ? filtered.reduce((acc: any, k: any) => {
-        const key = k.text.split(" ")[1] || "misc";
-        (acc[key] = acc[key] || []).push(k);
-        return acc;
-      }, {})
-    : { All: filtered };
-
-  const diffColor = (n: number) =>
-    n < 34 ? "bg-green-500" : n < 67 ? "bg-yellow-500" : "bg-red-500";
-
+export default function KeywordList({
+  blocks,
+  highlightId,
+}: {
+  blocks: KeywordSourceBlock[];
+  highlightId?: string | null;
+}) {
   return (
-    <div>
-      {Object.entries(groups).map(([group, list]: any) => (
-        <div key={group} className="mb-6">
-          {grouping && (
-            <h2 className="text-lg font-semibold mb-3 text-gray-700 capitalize">
-              {group}
-            </h2>
-          )}
-          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {list.map((k: any, i: number) => {
-              const compDiff =
-                comparison?.avg && comparison.count[k.intent]
-                  ? comparison.avg - k.difficulty
-                  : 0;
-              const outline =
-                compDiff > 0
-                  ? "border-green-300"
-                  : compDiff < 0
-                  ? "border-red-300"
-                  : "border-gray-100";
-              return (
-                <div
-                  key={i}
-                  onClick={() => showToast(`Copied: ${k.text}`)}
-                  className={`p-3 border ${outline} rounded-lg bg-white hover:shadow transition cursor-pointer`}
-                >
-                  <p className="font-medium text-gray-800 mb-1">{k.text}</p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-white text-xs ${diffColor(
-                        k.difficulty
-                      )}`}
-                    >
-                      {k.difficulty}
-                    </span>
-                    <span className="text-gray-500">{k.intent}</span>
-                    <span className="text-gray-400">{k.source}</span>
-                  </div>
-                </div>
-              );
-            })}
+    <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+      {blocks.map((block) => (
+        <div
+          key={block.source}
+          className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 p-3 bg-white/70 dark:bg-white/5"
+        >
+          <div className="text-lg font-semibold mb-2">{block.source}</div>
+          <div className="space-y-2">
+            {block.items.map((k) => (
+              <Card key={k.id} k={k} highlight={k.id === highlightId} />
+            ))}
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
+  return (
+    <div
+      className={`rounded-xl p-3 border transition-shadow duration-300 ${
+        highlight
+          ? "border-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
+          : "border-neutral-200/70 dark:border-neutral-800"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{k.phrase}</div>
+        <span
+          className={`text-xs px-2 py-0.5 rounded-full ${
+            k.intent === "Transactional"
+              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+              : k.intent === "Commercial"
+              ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+              : k.intent === "Informational"
+              ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200"
+              : "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200"
+          }`}
+        >
+          {k.intent}
+        </span>
+      </div>
+
+      <div className="mt-2">
+        <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
+          <span>Difficulty</span>
+          <span className="font-semibold text-neutral-700 dark:text-neutral-200">{k.difficulty}</span>
+        </div>
+        <div className="mt-1 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-700"
+            style={{ width: `${k.difficulty}%` }}
+          />
+        </div>
+        <div className="mt-1 text-xs">
+          <span className={k.trendPct >= 0 ? "text-green-600" : "text-rose-600"}>
+            {k.trendPct >= 0 ? "📈" : "📉"} {Math.abs(k.trendPct)}%
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

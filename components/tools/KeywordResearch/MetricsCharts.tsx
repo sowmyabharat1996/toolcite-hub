@@ -1,65 +1,31 @@
+// components/tools/KeywordResearch/MetricsCharts.tsx
 "use client";
 import React from "react";
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
-} from "recharts";
+import { Metrics } from "./utils";
 
-const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6"];
-
-export default function MetricsCharts({ metrics }: any) {
-  const lineData = Object.entries(metrics.sourceAverages || {}).map(([src, val]) => ({
-    source: src,
-    difficulty: val,
-  }));
-
-  const pieData = Object.entries(metrics.count).map(([intent, count]) => ({
-    name: intent,
-    value: count,
-  }));
+export default function MetricsCharts({ metrics }: { metrics: Metrics }) {
+  const pairs = [
+    { label: "Navigational", value: metrics.byIntent.Navigational, color: "bg-sky-500" },
+    { label: "Transactional", value: metrics.byIntent.Transactional, color: "bg-emerald-500" },
+    { label: "Informational", value: metrics.byIntent.Informational, color: "bg-indigo-500" },
+    { label: "Commercial", value: metrics.byIntent.Commercial, color: "bg-amber-500" },
+  ];
+  const max = Math.max(...pairs.map(p => p.value), 1);
 
   return (
-    <div className="grid md:grid-cols-2 gap-6 mb-10">
-      <div className="bg-white p-4 rounded-xl shadow border">
-        <h2 className="font-semibold mb-2 text-gray-700">Difficulty by Source</h2>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={lineData}>
-            <XAxis dataKey="source" />
-            <YAxis domain={[0, 100]} />
-            <Tooltip />
-            <Line
-              type="monotone"
-              dataKey="difficulty"
-              stroke="#3B82F6"
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              animationDuration={800}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {pairs.map((p) => (
+        <div key={p.label} className="rounded-xl p-3 border border-neutral-200/70 dark:border-neutral-800">
+          <div className="text-sm text-neutral-600 dark:text-neutral-300">{p.label}</div>
+          <div className="mt-2 h-2 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+            <div
+              className={`h-full ${p.color} transition-all duration-700`}
+              style={{ width: `${(p.value / max) * 100}%` }}
             />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="bg-white p-4 rounded-xl shadow border">
-        <h2 className="font-semibold mb-2 text-gray-700">Intent Distribution</h2>
-        <ResponsiveContainer width="100%" height={200}>
-          <PieChart>
-            <Pie
-              data={pieData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={60}
-              label
-            >
-              {pieData.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
-              ))}
-            </Pie>
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
+          </div>
+          <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{p.value} keywords</div>
+        </div>
+      ))}
     </div>
   );
 }

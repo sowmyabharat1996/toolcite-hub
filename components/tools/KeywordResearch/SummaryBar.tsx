@@ -1,139 +1,164 @@
+// components/tools/KeywordResearch/SummaryBar.tsx
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Intent, Metrics } from "./utils";
 
-export default function SummaryBar({ metrics, health, comparison }: any) {
-  const [bg, setBg] = useState("from-blue-50 to-blue-100");
-  const [secondsAgo, setSecondsAgo] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
+type Props = {
+  metrics: Metrics;
+  lastUpdated: number;
+  showTrend: boolean;
+  previous?: Metrics | null;
+};
 
+function classNames(...c: (string | false | null | undefined)[]) {
+  return c.filter(Boolean).join(" ");
+}
+
+function bgForHealth(h: number) {
+  // animated background class by health (A/B/C requirement)
+  if (h >= 70) return "from-green-500/15 to-emerald-500/15";
+  if (h >= 40) return "from-blue-500/15 to-sky-500/15";
+  return "from-zinc-500/15 to-neutral-600/15";
+}
+
+function TrendArrow({ delta }: { delta: number }) {
+  const up = delta >= 0;
+  return (
+    <span className={classNames(
+      "ml-1 text-xs font-medium inline-flex items-center gap-0.5 transition-opacity duration-300",
+      up ? "text-green-600" : "text-rose-600"
+    )}>
+      {up ? "▲" : "▼"} {Math.abs(delta)}%
+    </span>
+  );
+}
+
+function useTicker(target: number, deps: React.DependencyList) {
+  const [n, setN] = useState(0);
   useEffect(() => {
-    if (health > 75) setBg("from-green-100 to-green-50");
-    else if (health > 50) setBg("from-blue-50 to-blue-100");
-    else setBg("from-rose-50 to-red-100");
+    let raf: number;
+    let start: number | null = null;
+    const dur = 700;
+    const step = (t: number) => {
+      if (start === null) start = t;
+      const p = Math.min(1, (t - start) / dur);
+      setN(Math.round(target * p));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return n;
+}
 
-    setRefreshing(true);
-    const t = setTimeout(() => setRefreshing(false), 1000);
-    return () => clearTimeout(t);
-  }, [health]);
-
+export default function SummaryBar({ metrics, lastUpdated, showTrend, previous }: Props) {
+  const [spin, setSpin] = useState(false);
+  // Simulate a quick spinner whenever timestamp changes
   useEffect(() => {
-    setSecondsAgo(0);
-    const timer = setInterval(() => setSecondsAgo((s) => s + 1), 1000);
-    return () => clearInterval(timer);
-  }, [metrics]);
+    setSpin(true);
+    const id = setTimeout(() => setSpin(false), 600);
+    return () => clearTimeout(id);
+  }, [lastUpdated]);
+
+  const secondsAgo = useMemo(() => {
+    const s = Math.floor((Date.now() - lastUpdated) / 1000);
+    return s < 1 ? 0 : s;
+  }, [lastUpdated]);
+
+  const totalN = useTicker(metrics.total, [metrics.total, lastUpdated]);
+  const avgDiffN = useTicker(metrics.avgDifficulty, [metrics.avgDifficulty, lastUpdated]);
+  const healthN = useTicker(metrics.health, [metrics.health, lastUpdated]);
+
+  const deltas = useMemo(() => {
+    if (!previous) return null;
+    return {
+      avgDifficulty: previous.avgDifficulty === 0 ? 0 : Math.round(((metrics.avgDifficulty - previous.avgDifficulty) / Math.max(1, previous.avgDifficulty)) * 100),
+      intents: (["Navigational","Transactional","Informational","Commercial"] as Intent[]).reduce<Record<Intent, number>>((acc, key) => {
+        const prev = previous.byIntent[key] || 0;
+        const cur = metrics.byIntent[key] || 0;
+        acc[key] = prev === 0 ? 0 : Math.round(((cur - prev) / prev) * 100);
+        return acc;
+      }, {Navigational:0,Transactional:0,Informational:0,Commercial:0}),
+      health: previous.health === 0 ? 0 : Math.round(((metrics.health - previous.health) / Math.max(1, previous.health)) * 100),
+    };
+  }, [metrics, previous]);
 
   return (
     <div
-      className={`sticky top-0 z-10 bg-gradient-to-br ${bg} transition-colors duration-700 rounded-xl p-4 mb-6 shadow`}
+      className={classNames(
+        "sticky top-0 z-20 mb-6 rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 bg-gradient-to-r",
+        bgForHealth(metrics.health),
+        "backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:supports-[backdrop-filter]:bg-black/40"
+      )}
     >
-      <style>{`
-        @keyframes spinRefresh { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
-        .spin-once { animation: spinRefresh 1s ease; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.5s ease; }
-
-        @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0px rgba(0,0,0,0); } 50% { box-shadow: 0 0 10px rgba(16,185,129,0.5); } }
-        .animate-pulse-glow { animation: pulseGlow 2s infinite; }
-      `}</style>
-
-      {/* Top Metrics Grid */}
-      <div className="grid sm:grid-cols-2 md:grid-cols-5 gap-4 text-center">
-        <Metric label="Total Keywords" value={metrics.total} />
-        <Metric
-          label="Avg Difficulty"
-          value={metrics.avg}
-          delta={comparison ? metrics.avg - comparison.avg : 0}
-        />
-        {Object.entries(metrics.count).map(([intent, count], i) => (
-          <Metric
-            key={intent}
-            label={intent}
-            value={count as number}
-            delta={
-              comparison
-                ? ((count as number) -
-                    (comparison.count[intent] || 0)) /
-                  ((comparison.count[intent] || 1) / 100)
-                : 0
-            }
-            index={i}
-          />
-        ))}
-        <div>
-          <p className="text-sm text-gray-500">Last Updated</p>
-          <p className="text-lg font-semibold flex justify-center items-center gap-1">
-            {secondsAgo < 2 ? "Just now" : `${secondsAgo}s ago`}
-            <span className={`${refreshing ? "spin-once" : ""}`}>🔄</span>
-          </p>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 p-4">
+        <Stat label="Total Keywords" value={totalN} />
+        <Stat label="Avg Difficulty" value={avgDiffN}>
+          {showTrend && deltas && <TrendArrow delta={-deltas.avgDifficulty} />}
+        </Stat>
+        <Stat label="Navigational" value={metrics.byIntent.Navigational}>
+          {showTrend && deltas && <TrendArrow delta={deltas.intents.Navigational} />}
+        </Stat>
+        <Stat label="Transactional" value={metrics.byIntent.Transactional}>
+          {showTrend && deltas && <TrendArrow delta={deltas.intents.Transactional} />}
+        </Stat>
+        <Stat label="Informational" value={metrics.byIntent.Informational}>
+          {showTrend && deltas && <TrendArrow delta={deltas.intents.Informational} />}
+        </Stat>
+        <Stat label="Commercial" value={metrics.byIntent.Commercial}>
+          {showTrend && deltas && <TrendArrow delta={deltas.intents.Commercial} />}
+        </Stat>
       </div>
 
-      {/* Keyword Health Score Gauge */}
-      <div className="mt-6">
-        <h3 className="text-sm font-medium text-gray-700 mb-1">
-          Keyword Health Score
-        </h3>
-        <div className="relative h-5 w-full bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className="absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out animate-pulse-glow"
-            style={{
-              width: `${health}%`,
-              background: `linear-gradient(90deg,
-                rgba(239,68,68,1) 0%,
-                rgba(234,179,8,1) 50%,
-                rgba(34,197,94,1) 100%)`,
-            }}
-          ></div>
+      <div className="flex items-center justify-between px-4 pb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-neutral-600 dark:text-neutral-300">Keyword Health</span>
+          <div className="relative w-44 h-3 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+            <div
+              className="absolute left-0 top-0 h-full transition-all duration-700"
+              style={{
+                width: `${metrics.health}%`,
+                background:
+                  "linear-gradient(90deg, rgba(34,197,94,1) 0%, rgba(59,130,246,1) 60%, rgba(59,130,246,1) 100%)",
+              }}
+            />
+          </div>
+          <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">{healthN}</span>
+          {showTrend && deltas && <TrendArrow delta={deltas.health} />}
         </div>
-        <div className="flex justify-between text-xs text-gray-500 mt-1">
-          <span>0</span>
-          <span>
-            {health}% —{" "}
-            {health > 80
-              ? "Excellent"
-              : health > 60
-              ? "Good"
-              : health > 40
-              ? "Fair"
-              : "Poor"}
-          </span>
-          <span>100</span>
+
+        <div className="text-sm text-neutral-600 dark:text-neutral-300">
+          <button
+            aria-label="Refresh"
+            className={classNames("mr-2 inline-flex items-center", spin && "animate-spin")}
+            onClick={() => {/* spin purely visual; main refresh in parent */}}
+          >
+            🔄
+          </button>
+          Last Updated <span className="font-medium">{secondsAgo}s</span> ago
         </div>
       </div>
     </div>
   );
 }
 
-function Metric({ label, value, delta = 0, index = 0 }: any) {
-  const [display, setDisplay] = useState(0);
-  useEffect(() => {
-    let start: number | null = null;
-    const anim = (ts: number) => {
-      if (!start) start = ts;
-      const p = Math.min((ts - start) / 600, 1);
-      setDisplay(Math.round(p * value));
-      if (p < 1) requestAnimationFrame(anim);
-    };
-    const t = setTimeout(() => requestAnimationFrame(anim), index * 50);
-    return () => clearTimeout(t);
-  }, [value]);
-
-  const color = delta > 0 ? "text-green-600" : delta < 0 ? "text-red-600" : "text-gray-700";
-  const icon = delta > 0 ? "📈" : delta < 0 ? "📉" : "⏸️";
-
+function Stat({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value: number | string;
+  children?: React.ReactNode;
+}) {
   return (
-    <div>
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-lg font-semibold flex justify-center items-center gap-1">
-        {display}
-        {delta !== 0 && (
-          <span className={`${color} text-sm animate-fade-in`}>
-            {icon} {delta > 0 ? "+" : ""}
-            {Math.round(delta)}%
-          </span>
-        )}
-      </p>
+    <div className="rounded-xl bg-white/60 dark:bg-white/5 p-3 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
+      <div className="text-xs text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+        {value}
+        {children}
+      </div>
     </div>
   );
 }

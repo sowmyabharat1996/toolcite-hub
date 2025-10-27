@@ -1,124 +1,172 @@
+// components/tools/KeywordResearch/index.tsx
 "use client";
-import React, { useState, useEffect, useMemo } from "react";
-import { generateMockData, computeMetrics, calcHealthScore } from "./utils";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import SummaryBar from "./SummaryBar";
 import MetricsCharts from "./MetricsCharts";
 import KeywordList from "./KeywordList";
+import {
+  Dataset,
+  KeywordSourceBlock,
+  Metrics,
+  generateMockData,
+  computeMetrics,
+  toCSV,
+  shareURLFromSeed,
+  pickEasiestKeyword,
+} from "./utils";
+import { exportDashboardToPDF } from "./PdfReport";
 
 export default function KeywordResearch() {
-  const [seed, setSeed] = useState("");
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [grouping, setGrouping] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
-  const [compareIndex, setCompareIndex] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  // Store the whole dataset (this fixes the type error you saw)
+  const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
+  const [previousMetrics, setPreviousMetrics] = useState<Metrics | null>(null);
+  const [lastUpdated, setLastUpdated] = useState(Date.now());
+  const [showTrend, setShowTrend] = useState(true);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  const runAnalysis = async () => {
-    if (!seed.trim()) return;
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
+  // preload from URL ?q=
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q") || "";
+    if (q) {
+      setQuery(q);
+      handleGenerate(q);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleGenerate(q?: string) {
+    const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
-    setData(result);
-    const newSession = { seed, result, time: new Date().toISOString() };
-    setHistory((h) => [newSession, ...h.slice(0, 4)]);
-    setLoading(false);
-  };
+    // set previous for delta calc
+    setPreviousMetrics(dataset.metrics);
+    setDataset(result);
+    setLastUpdated(Date.now());
+    setHighlightId(null);
+  }
 
-  const metrics = useMemo(() => computeMetrics(data), [data]);
-  const health = useMemo(() => calcHealthScore(metrics), [metrics]);
+  function handleCopyAll() {
+    const flat = dataset.data.flatMap(b => b.items.map(k => k.phrase)).join("\n");
+    navigator.clipboard.writeText(flat);
+  }
 
-  // Auto-compare to previous run if selected
-  const comparison =
-    compareIndex !== null && history[compareIndex]
-      ? computeMetrics(history[compareIndex].result)
-      : null;
+  function handleExportCSV() {
+    const csv = toCSV(dataset.data);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "keywords.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleShare() {
+    navigator.clipboard.writeText(shareURLFromSeed(query || "keyword"));
+  }
+
+  async function handleExportPDF() {
+    if (!rootRef.current) return;
+    await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
+  }
+
+  // AI Insight button — find easiest keyword & highlight
+  function handleAIInsight() {
+    const best = pickEasiestKeyword(dataset.data);
+    if (!best) return;
+    setHighlightId(best.id);
+    // scroll a bit to the lists
+    document.getElementById("kw-lists")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const metrics = dataset.metrics;
+  const blocks = dataset.data;
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-2xl font-semibold text-center mb-3">
-        🔍 Keyword Research (Pro Dashboard)
-      </h1>
-      <p className="text-center text-gray-600 mb-6">
-        Simulated SEO analytics — difficulty, intent, health & performance insights.
-      </p>
+    <div ref={rootRef} className="space-y-6">
+      {/* Title & Controls */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <h1 className="text-2xl md:text-3xl font-semibold">
+          🔎 Keyword Research (Basic)
+        </h1>
 
-      {/* Input + Controls */}
-      <div className="flex flex-wrap justify-center gap-3 mb-6">
-        <input
-          type="text"
-          value={seed}
-          onChange={(e) => setSeed(e.target.value)}
-          placeholder="Enter seed keyword"
-          className="w-72 border border-gray-300 rounded-md px-3 py-2 focus:ring focus:ring-blue-400"
-        />
-        <button
-          onClick={runAnalysis}
-          disabled={loading}
-          className={`px-4 py-2 text-white rounded-md ${
-            loading ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
-          {loading ? "Analyzing..." : "Generate"}
-        </button>
-
-        {data.length > 0 && (
-          <>
-            <input
-              type="text"
-              placeholder="Search keyword..."
-              className="border border-gray-300 rounded-md px-3 py-2"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <button
-              className={`px-4 py-2 rounded-md ${
-                grouping
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-200 text-gray-700"
-              }`}
-              onClick={() => setGrouping(!grouping)}
-            >
-              {grouping ? "Ungroup" : "Group by Modifier"}
-            </button>
-            {history.length > 1 && (
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2"
-                onChange={(e) =>
-                  setCompareIndex(
-                    e.target.value === "" ? null : Number(e.target.value)
-                  )
-                }
-              >
-                <option value="">Compare previous run...</option>
-                {history.slice(1).map((h, i) => (
-                  <option key={i} value={i + 1}>
-                    {h.seed} — {new Date(h.time).toLocaleTimeString()}
-                  </option>
-                ))}
-              </select>
-            )}
-          </>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => (e.key === "Enter" ? handleGenerate() : null)}
+            placeholder="e.g. ai tools for students"
+            className="h-10 w-64 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
+          />
+          <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium"
+            onClick={() => handleGenerate()}>
+            Generate
+          </button>
+          <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleAIInsight}>
+            🤖 AI Insight
+          </button>
+          <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>
+            Copy All
+          </button>
+          <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>
+            Export CSV
+          </button>
+          <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>
+            Export PDF
+          </button>
+          <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
+            onClick={handleShare}>
+            Share Link
+          </button>
+        </div>
       </div>
 
-      {/* Summary Bar */}
-      {data.length > 0 && (
-        <SummaryBar metrics={metrics} health={health} comparison={comparison} />
-      )}
+      {/* Sticky Summary */}
+      <SummaryBar
+        metrics={metrics}
+        previous={previousMetrics}
+        lastUpdated={lastUpdated}
+        showTrend={showTrend}
+      />
+
+      {/* Small controls under summary */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-neutral-600 dark:text-neutral-300">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              className="accent-blue-600"
+              checked={showTrend}
+              onChange={(e) => setShowTrend(e.target.checked)}
+            />
+            Show trend deltas
+          </label>
+        </div>
+      </div>
 
       {/* Charts */}
-      {data.length > 0 && <MetricsCharts metrics={metrics} />}
+      <MetricsCharts metrics={metrics} />
 
-      {/* Keyword List */}
-      {data.length > 0 && (
-        <KeywordList
-          data={data}
-          search={search}
-          grouping={grouping}
-          comparison={comparison}
-        />
-      )}
+      {/* Keyword Lists */}
+      <div id="kw-lists" className="pt-2">
+        <KeywordList blocks={blocks} highlightId={highlightId} />
+      </div>
     </div>
   );
+}
+
+function emptyMetrics(): Metrics {
+  return {
+    total: 0,
+    avgDifficulty: 0,
+    byIntent: {
+      Navigational: 0,
+      Transactional: 0,
+      Informational: 0,
+      Commercial: 0,
+    },
+    health: 0,
+  };
 }
