@@ -38,8 +38,8 @@ export default function KeywordResearch() {
   // Immutable baseline so sliders don’t compound
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
 
-  // 🌈 trend color mood for AI Insight panel (and can be reused elsewhere)
-  const [trendColor, setTrendColor] = useState<string>("#3b82f6"); // blue default
+  // 🌈 trend color mood (blue = stable, green = improving, red = declining)
+  const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -178,197 +178,209 @@ export default function KeywordResearch() {
 
   const { metrics } = dataset;
 
-  // Helpers to tint the AI panel
-  const aiPanelStyle: React.CSSProperties = {
-    borderColor: trendColor + "66",
-    background:
-      trendColor === "#22c55e"
-        ? "linear-gradient(145deg, rgba(240,253,244,0.8) 0%, rgba(220,252,231,0.5) 100%)"
-        : trendColor === "#ef4444"
-        ? "linear-gradient(145deg, rgba(254,242,242,0.8) 0%, rgba(254,226,226,0.5) 100%)"
-        : "linear-gradient(145deg, rgba(239,246,255,0.8) 0%, rgba(219,234,254,0.5) 100%)",
-    boxShadow: `0 0 18px ${trendColor}33`,
+  // ---------- Page background gradient (mood-synced) ----------
+  const bgStyle: React.CSSProperties = {
+    background: `
+      radial-gradient(1200px 700px at 10% -10%, ${trendColor}12, transparent 60%),
+      radial-gradient(1200px 700px at 110% 110%, ${trendColor}10, transparent 60%),
+      linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 100%)
+    `,
+    transition: "background 700ms ease",
   };
 
   return (
-    <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6">
-      {/* Title & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-          🔎 Keyword Research (AI Dashboard)
-        </h1>
+    <div className="relative min-h-[100vh]">
+      {/* Fixed, subtle gradient wash behind the page */}
+      <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={bgStyle} />
 
-        <div className="flex flex-wrap gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => (e.key === "Enter" ? handleGenerate() : null)}
-            placeholder="e.g. ai tools for students"
-            className="h-10 w-64 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
-          />
-          <button
-            className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium hover:scale-[1.03] transition-transform"
-            onClick={() => handleGenerate()}
-          >
-            Generate
-          </button>
-          <button
-            type="button"
-            className="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:scale-[1.03] transition-transform"
-            onClick={handleAIInsight}
-            aria-controls="insights-panel"
-          >
-            🤖 AI Insight
-          </button>
-          <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>
-            Copy All
-          </button>
-          <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>
-            Export CSV
-          </button>
-          <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>
-            Export PDF
-          </button>
-          <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
-            Share Link
-          </button>
-        </div>
-      </div>
+      <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6">
+        {/* Title & Controls */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+            🔎 Keyword Research (AI Dashboard)
+          </h1>
 
-      {/* Summary (with Est. Monthly Clicks tile) */}
-      <SummaryBar
-        metrics={metrics}
-        previous={previousMetrics}
-        lastUpdated={lastUpdated}
-        showTrend={showTrend}
-        estClicks={estClicks}
-      />
-
-      {/* Toggles */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
-          <input
-            type="checkbox"
-            className="accent-blue-600"
-            checked={showTrend}
-            onChange={(e) => setShowTrend(e.target.checked)}
-          />
-          Show trend deltas
-        </label>
-
-        <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
-          <input
-            type="checkbox"
-            className="accent-emerald-600"
-            checked={sortByAI}
-            onChange={(e) => setSortByAI(e.target.checked)}
-          />
-          Sort / Highlight by AI Score
-        </label>
-      </div>
-
-      {/* Volume + CPC Simulator */}
-      <div className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Volume + CPC Simulator</div>
-          <div className="text-xs text-neutral-500">Adjust sliders → AI Picks &amp; KSI update live</div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Volume */}
-          <div>
-            <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
-              <span>Assumed Avg Volume (scales all rows)</span>
-              <strong>{volSim}</strong>
-            </div>
+          <div className="flex flex-wrap gap-2">
             <input
-              type="range"
-              min={0}
-              max={100}
-              value={volSim}
-              onChange={onVolChange}
-              className="w-full accent-sky-600"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => (e.key === "Enter" ? handleGenerate() : null)}
+              placeholder="e.g. ai tools for students"
+              className="h-10 w-64 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
             />
-          </div>
-
-          {/* CPC */}
-          <div>
-            <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
-              <span>Assumed Avg CPC (scales all rows)</span>
-              <strong>{cpcSim}</strong>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={cpcSim}
-              onChange={onCpcChange}
-              className="w-full accent-amber-600"
-            />
-          </div>
-        </div>
-
-        {/* KPI */}
-        <div className="mt-4">
-          <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm">
-            <span>🟢 Est. Monthly Clicks</span>
-            <strong className="text-emerald-700 dark:text-emerald-300">
-              {estClicks.toLocaleString()}
-            </strong>
-            <span className="text-xs text-neutral-500">toy model: Σ(vol × (1–diff%))</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
-
-      {/* AI Insight Top-3 — mood-synced colors restored */}
-      <aside
-        id="insights-panel"
-        className="rounded-2xl border p-4 transition-all duration-500 hover:shadow-lg"
-        style={aiPanelStyle}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-lg" style={{ color: trendColor }}>
-            AI Insight — Easiest Wins
-          </h3>
-          <span className="text-xs font-medium" style={{ color: trendColor }}>
-            Click again after changing data/filters
-          </span>
-        </div>
-
-        <ul className="mt-2 space-y-2">
-          {insights.map((x, i) => (
-            <li
-              key={x.id}
-              className="flex items-center justify-between rounded-lg px-3 py-2 transition-all duration-300 hover:scale-[1.02] bg-white/70 dark:bg-white/10"
-              style={{ borderLeft: `3px solid ${trendColor}` }}
+            <button
+              className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium hover:scale-[1.03] transition-transform"
+              onClick={() => handleGenerate()}
             >
-              <div className="min-w-0">
-                <div className="truncate font-medium">
-                  {i + 1}. {x.phrase}
-                </div>
-                <div className="text-xs text-neutral-600 dark:text-neutral-300">
-                  diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
-                </div>
-              </div>
-              <span className="text-sm font-semibold" style={{ color: trendColor }}>
-                {x.ai}
-              </span>
-            </li>
-          ))}
-          {!insights.length && (
-            <li className="text-sm text-neutral-600 dark:text-neutral-300">
-              Click “AI Insight” to score and see Top-3 easiest keywords.
-            </li>
-          )}
-        </ul>
-      </aside>
+              Generate
+            </button>
+            <button
+              type="button"
+              className="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:scale-[1.03] transition-transform"
+              onClick={handleAIInsight}
+              aria-controls="insights-panel"
+            >
+              🤖 AI Insight
+            </button>
+            <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>
+              Copy All
+            </button>
+            <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>
+              Export CSV
+            </button>
+            <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>
+              Export PDF
+            </button>
+            <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
+              Share Link
+            </button>
+          </div>
+        </div>
 
-      {/* Keyword Lists */}
-      <div id="kw-lists" className="pt-2">
-        <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
+        {/* Summary (with Est. Monthly Clicks tile) */}
+        <SummaryBar
+          metrics={metrics}
+          previous={previousMetrics}
+          lastUpdated={lastUpdated}
+          showTrend={showTrend}
+          estClicks={estClicks}
+        />
+
+        {/* Toggles */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
+            <input
+              type="checkbox"
+              className="accent-blue-600"
+              checked={showTrend}
+              onChange={(e) => setShowTrend(e.target.checked)}
+            />
+            Show trend deltas
+          </label>
+
+          <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
+            <input
+              type="checkbox"
+              className="accent-emerald-600"
+              checked={sortByAI}
+              onChange={(e) => setSortByAI(e.target.checked)}
+            />
+            Sort / Highlight by AI Score
+          </label>
+        </div>
+
+        {/* Volume + CPC Simulator */}
+        <div className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold">Volume + CPC Simulator</div>
+            <div className="text-xs text-neutral-500">Adjust sliders → AI Picks &amp; KSI update live</div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Volume */}
+            <div>
+              <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
+                <span>Assumed Avg Volume (scales all rows)</span>
+                <strong>{volSim}</strong>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={volSim}
+                onChange={onVolChange}
+                className="w-full accent-sky-600"
+              />
+            </div>
+
+            {/* CPC */}
+            <div>
+              <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
+                <span>Assumed Avg CPC (scales all rows)</span>
+                <strong>{cpcSim}</strong>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={cpcSim}
+                onChange={onCpcChange}
+                className="w-full accent-amber-600"
+              />
+            </div>
+          </div>
+
+          {/* KPI */}
+          <div className="mt-4">
+            <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm">
+              <span>🟢 Est. Monthly Clicks</span>
+              <strong className="text-emerald-700 dark:text-emerald-300">
+                {estClicks.toLocaleString()}
+              </strong>
+              <span className="text-xs text-neutral-500">toy model: Σ(vol × (1–diff%))</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Charts */}
+        <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
+
+        {/* AI Insight Top-3 — mood-synced colors */}
+        <aside
+          id="insights-panel"
+          className="rounded-2xl border p-4 transition-all duration-500 hover:shadow-lg"
+          style={{
+            borderColor: trendColor + "66",
+            background:
+              trendColor === "#22c55e"
+                ? "linear-gradient(145deg, rgba(240,253,244,0.8) 0%, rgba(220,252,231,0.5) 100%)"
+                : trendColor === "#ef4444"
+                ? "linear-gradient(145deg, rgba(254,242,242,0.8) 0%, rgba(254,226,226,0.5) 100%)"
+                : "linear-gradient(145deg, rgba(239,246,255,0.8) 0%, rgba(219,234,254,0.5) 100%)",
+            boxShadow: `0 0 18px ${trendColor}33`,
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-lg" style={{ color: trendColor }}>
+              AI Insight — Easiest Wins
+            </h3>
+            <span className="text-xs font-medium" style={{ color: trendColor }}>
+              Click again after changing data/filters
+            </span>
+          </div>
+
+          <ul className="mt-2 space-y-2">
+            {insights.map((x, i) => (
+              <li
+                key={x.id}
+                className="flex items-center justify-between rounded-lg px-3 py-2 transition-all duration-300 hover:scale-[1.02] bg-white/70 dark:bg-white/10"
+                style={{ borderLeft: `3px solid ${trendColor}` }}
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium">
+                    {i + 1}. {x.phrase}
+                  </div>
+                  <div className="text-xs text-neutral-600 dark:text-neutral-300">
+                    diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
+                  </div>
+                </div>
+                <span className="text-sm font-semibold" style={{ color: trendColor }}>
+                  {x.ai}
+                </span>
+              </li>
+            ))}
+            {!insights.length && (
+              <li className="text-sm text-neutral-600 dark:text-neutral-300">
+                Click “AI Insight” to score and see Top-3 easiest keywords.
+              </li>
+            )}
+          </ul>
+        </aside>
+
+        {/* Keyword Lists */}
+        <div id="kw-lists" className="pt-2">
+          <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
+        </div>
       </div>
     </div>
   );
