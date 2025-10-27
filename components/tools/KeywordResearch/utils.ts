@@ -1,57 +1,36 @@
-export function generateMockData(seed: string) {
-  const SOURCES = ["Google", "YouTube", "Bing", "Amazon"];
-  const intents = ["Informational", "Commercial", "Transactional", "Navigational"];
-  const rand = (min: number, max: number) =>
-    Math.floor(Math.random() * (max - min + 1)) + min;
+// utils.ts — local SEO keyword simulation engine
+export function generateMockKeywords(seed: string) {
+  const sources = ["Google", "YouTube", "Bing", "Amazon"];
+  const intents = ["Navigational", "Transactional", "Informational", "Commercial"];
 
-  const genKeywords = (src: string) =>
-    Array.from({ length: 8 }).map(() => {
-      const difficulty = rand(10, 90);
-      const intent = intents[rand(0, intents.length - 1)];
+  const data = sources.map((source) => ({
+    source,
+    keywords: Array.from({ length: 8 }).map(() => {
+      const intent = intents[Math.floor(Math.random() * intents.length)];
+      const difficulty = Math.floor(Math.random() * 60) + 10; // 10–70
+      const trend = Math.random() > 0.5 ? "up" : "down";
       return {
-        text: `${seed} ${["review", "price", "2025", "guide", "cheap", "trend"][
-          rand(0, 5)
-        ]}`,
+        text: `${seed} ${intent.toLowerCase()} ${source.toLowerCase()}`,
         difficulty,
         intent,
+        trend,
       };
-    });
-
-  return SOURCES.map((s) => ({
-    source: s,
-    keywords: genKeywords(s),
+    }),
   }));
-}
 
-export function computeMetrics(data: any[]) {
-  const all = data.flatMap((s) => s.keywords);
-  const total = all.length;
-  const avg = total
-    ? Math.round(all.reduce((a, b) => a + b.difficulty, 0) / total)
-    : 0;
-  const count = all.reduce((acc: any, k: any) => {
-    acc[k.intent] = (acc[k.intent] || 0) + 1;
-    return acc;
-  }, {});
-  const sourceAverages = data.reduce((acc: any, s) => {
-    acc[s.source] =
-      s.keywords.reduce((a: number, k: any) => a + k.difficulty, 0) /
-      s.keywords.length;
-    return acc;
-  }, {});
-  return { total, avg, count, sourceAverages };
-}
-
-export function calcHealthScore(metrics: any) {
-  const intentBalance = Object.keys(metrics.count).length;
-  const health = Math.round(
-    Math.max(
-      0,
-      Math.min(
-        100,
-        100 - metrics.avg / 1.5 + intentBalance * 5 + metrics.total / 2
-      )
-    )
+  // --- Aggregate metrics ---
+  const allKeywords = data.flatMap((s) => s.keywords);
+  const total = allKeywords.length;
+  const avg = Math.round(
+    allKeywords.reduce((sum, k) => sum + k.difficulty, 0) / total
   );
-  return health;
+  const count = intents.reduce((acc, i) => {
+    acc[i as keyof typeof acc] = allKeywords.filter((k) => k.intent === i).length;
+    return acc;
+  }, { Navigational: 0, Transactional: 0, Informational: 0, Commercial: 0 });
+
+  // --- Keyword Health Score (lower difficulty = healthier) ---
+  const health = Math.max(0, Math.min(100, 100 - avg));
+
+  return { data, metrics: { total, avg, count }, health };
 }
