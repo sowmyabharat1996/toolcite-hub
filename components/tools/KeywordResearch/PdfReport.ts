@@ -1,48 +1,102 @@
 // components/tools/KeywordResearch/PdfReport.ts
-"use client";
+// A lightweight, robust page-to-PDF exporter that captures the dashboard
+// section-by-section to avoid main-thread stalls.
 
-export async function exportDashboardToPDF(rootEl: HTMLElement, fileName = "keyword-report.pdf") {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas"),
-    import("jspdf"),
-  ]);
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
-  const canvas = await html2canvas(rootEl, {
-    backgroundColor: "#ffffff",
-    scale: 2,
-    useCORS: true,
+// Helper: temporarily pause CSS animations/transitions to speed up capture
+function pauseAnimations(el: HTMLElement) {
+  el.setAttribute("data-export-paused", "1");
+  el.querySelectorAll<HTMLElement>("*").forEach((n) => {
+    n.style.animationPlayState = "paused";
+    n.style.transition = "none";
   });
+}
+function resumeAnimations(el: HTMLElement) {
+  el.removeAttribute("data-export-paused");
+  el.querySelectorAll<HTMLElement>("*").forEach((n) => {
+    n.style.animationPlayState = "";
+    n.style.transition = "";
+  });
+}
 
-  const imgData = canvas.toDataURL("image/png");
-  const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
+// Helper: small idle wait (lets UI settle)
+const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imgWidth = pageWidth - 48; // margins
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-  let y = 24;
-  if (imgHeight < pageHeight - 48) {
-    pdf.addImage(imgData, "PNG", 24, y, imgWidth, imgHeight, "FAST");
-  } else {
-    // paginate if content is tall
-    let remaining = imgHeight;
-    let sY = 0;
-    const pageCanvas = document.createElement("canvas");
-    const ctx = pageCanvas.getContext("2d")!;
-    const ratio = imgWidth / canvas.width;
-
-    while (remaining > 0) {
-      pageCanvas.width = canvas.width;
-      pageCanvas.height = Math.min(canvas.height - sY, (pageHeight - 48) / ratio);
-      ctx.drawImage(canvas, 0, sY, canvas.width, pageCanvas.height, 0, 0, pageCanvas.width, pageCanvas.height);
-      const pageImg = pageCanvas.toDataURL("image/png");
-      pdf.addImage(pageImg, "PNG", 24, 24, imgWidth, pageCanvas.height * ratio, "FAST");
-      remaining -= pageCanvas.height * ratio;
-      sY += pageCanvas.height;
-      if (remaining > 0) pdf.addPage();
-    }
+/**
+ * Export the dashboard to a paginated PDF.
+ * Requirements:
+ *  - Wrap major blocks in a container with data-export="section".
+ *    (see notes below for what to wrap)
+ */
+export async function exportDashboardToPDF(root: HTMLElement, filename = "keyword-dashboard.pdf") {
+  // Find exportable sections (order = DOM order)
+  const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-export="section"]'));
+  if (sections.length === 0) {
+    // Fallback: if no sections are marked, capture the whole root (may be heavy)
+    sections.push(root);
   }
 
-  pdf.save(fileName);
+  // PDF setup (A4 portrait in points)
+  const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+
+  pauseAnimations(root);
+  // A slightly modest scale keeps memory reasonable on long pages.
+  const scale = window.devicePixelRatio > 1 ? 1.5 : 1.25;
+
+  try {
+    let first = true;
+
+    for (const section of sections) {
+      // Ensure the section is visible in the viewport for accurate layout
+      section.scrollIntoView({ block: "center" });
+      await tick(50);
+
+      const canvas = await html2canvas(section, {
+        scale,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false,
+        windowWidth: document.documentElement.scrollWidth,
+        windowHeight: document.documentElement.scrollHeight,
+      });
+
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+      const ratio = pageW / imgW;
+      const renderH = imgH * ratio;
+
+      if (!first) pdf.addPage();
+      first = false;
+
+      // If the section is taller than one page, tile it downwards
+      if (renderH <= pageH) {
+        pdf.addImage(canvas, "PNG", 0, 0, pageW, renderH);
+      } else {
+        // Tile vertically
+        const pageCount = Math.ceil(renderH / pageH);
+        for (let i = 0; i < pageCount; i++) {
+          if (i > 0) pdf.addPage();
+          const sY = (i * pageH) / ratio;             // slice start in canvas pixels
+          const sH = Math.min(imgH - sY, pageH / ratio);
+          const slice = document.createElement("canvas");
+          slice.width = imgW;
+          slice.height = sH;
+          const ctx = slice.getContext("2d")!;
+          ctx.drawImage(canvas, 0, sY, imgW, sH, 0, 0, imgW, sH);
+          pdf.addImage(slice, "PNG", 0, 0, pageW, sH * ratio);
+        }
+      }
+
+      // Yield to main thread between sections (prevents the “page not responding” dialog)
+      await tick(50);
+    }
+
+    pdf.save(filename);
+  } finally {
+    resumeAnimations(root);
+  }
 }
