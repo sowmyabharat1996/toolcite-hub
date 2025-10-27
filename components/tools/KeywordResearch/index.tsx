@@ -9,6 +9,7 @@ import {
   Dataset,
   KeywordSourceBlock,
   Metrics,
+  KeywordItem,
   generateMockData,
   computeMetrics,
   toCSV,
@@ -26,7 +27,7 @@ export default function KeywordResearch() {
   const [showTrend, setShowTrend] = useState(true);
 
   // AI Insight state
-  const [insights, setInsights] = useState<any[]>([]);
+  const [insights, setInsights] = useState<Array<KeywordItem & { reasons?: string[] }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [sortByAI, setSortByAI] = useState(false);
 
@@ -70,6 +71,34 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444"); // red declining
   }, [dataset.metrics.health, previousMetrics]);
 
+  // ---------- Explainability ----------
+  function explainPick(k: KeywordItem): string[] {
+    const reasons: string[] = [];
+
+    // Difficulty
+    if (k.difficulty <= 25) reasons.push("Very low difficulty — quick win potential");
+    else if (k.difficulty <= 40) reasons.push("Manageable difficulty — realistic to rank");
+
+    // Volume
+    if ((k.volume ?? 0) >= 70) reasons.push("Strong search volume signal");
+    else if ((k.volume ?? 0) >= 50) reasons.push("Decent search interest");
+
+    // CPC (monetizability)
+    if ((k.cpc ?? 0) >= 70) reasons.push("High CPC — monetizable traffic");
+    else if ((k.cpc ?? 0) >= 50) reasons.push("Above-average CPC — revenue opportunity");
+
+    // Intent
+    if (k.intent === "Transactional" || k.intent === "Commercial") {
+      reasons.push(`Buyer intent leaning ${k.intent.toLowerCase()}`);
+    }
+
+    // Trend
+    if (k.trendPct > 0) reasons.push(`Positive trend (${k.trendPct}% ↑)`);
+
+    // cap to best 2–3 reasons
+    return reasons.slice(0, 3);
+  }
+
   // ---------- Actions ----------
   function handleGenerate(q?: string) {
     const seed = (q ?? query).trim() || "keyword";
@@ -90,7 +119,7 @@ export default function KeywordResearch() {
     }));
 
     setDataset({ data: scoredBlocks, metrics });
-    setInsights(top3);
+    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(top3[0]?.id ?? null);
     setEstClicks(sim.estClicks);
     setLastUpdated(Date.now());
@@ -129,7 +158,7 @@ export default function KeywordResearch() {
       items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
     }));
     setDataset({ data: scoredBlocks, metrics: computeMetrics(scoredBlocks) });
-    setInsights(top3);
+    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(top3[0]?.id ?? null);
     document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
     setLastUpdated(Date.now());
@@ -150,7 +179,7 @@ export default function KeywordResearch() {
     }));
 
     setDataset({ data: scoredBlocks, metrics });
-    setInsights(top3);
+    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(top3[0]?.id ?? null);
     setEstClicks(sim.estClicks);
     setLastUpdated(Date.now());
@@ -188,9 +217,24 @@ export default function KeywordResearch() {
     transition: "background 700ms ease",
   };
 
+  // ---------- Helpers for AI panel chips ----------
+  const chip = (label: string, tone: "sky" | "emerald" | "amber" | "indigo") => {
+    const toneMap: Record<typeof tone, string> = {
+      sky: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200",
+      emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+      amber: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200",
+      indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
+    } as any;
+    return (
+      <span className={`text-[11px] px-2 py-0.5 rounded-full ${toneMap[tone]} whitespace-nowrap`}>
+        {label}
+      </span>
+    );
+  };
+
   return (
     <div className="relative min-h-[100vh]">
-      {/* Fixed, subtle gradient wash behind the page */}
+      {/* Fixed background wash (mood synced) */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={bgStyle} />
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6">
@@ -325,22 +369,22 @@ export default function KeywordResearch() {
         {/* Charts */}
         <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
 
-        {/* AI Insight Top-3 — mood-synced colors */}
+        {/* AI Insight Top-3 — card style with “Why this pick?” */}
         <aside
           id="insights-panel"
-          className="rounded-2xl border p-4 transition-all duration-500 hover:shadow-lg"
+          className="rounded-2xl border p-4 transition-all duration-500"
           style={{
             borderColor: trendColor + "66",
             background:
               trendColor === "#22c55e"
-                ? "linear-gradient(145deg, rgba(240,253,244,0.8) 0%, rgba(220,252,231,0.5) 100%)"
+                ? "linear-gradient(145deg, rgba(240,253,244,0.85) 0%, rgba(220,252,231,0.5) 100%)"
                 : trendColor === "#ef4444"
-                ? "linear-gradient(145deg, rgba(254,242,242,0.8) 0%, rgba(254,226,226,0.5) 100%)"
-                : "linear-gradient(145deg, rgba(239,246,255,0.8) 0%, rgba(219,234,254,0.5) 100%)",
-            boxShadow: `0 0 18px ${trendColor}33`,
+                ? "linear-gradient(145deg, rgba(254,242,242,0.85) 0%, rgba(254,226,226,0.5) 100%)"
+                : "linear-gradient(145deg, rgba(239,246,255,0.85) 0%, rgba(219,234,254,0.5) 100%)",
+            boxShadow: `0 6px 24px ${trendColor}1f`,
           }}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold text-lg" style={{ color: trendColor }}>
               AI Insight — Easiest Wins
             </h3>
@@ -349,26 +393,63 @@ export default function KeywordResearch() {
             </span>
           </div>
 
-          <ul className="mt-2 space-y-2">
+          <ul className="space-y-3">
             {insights.map((x, i) => (
               <li
                 key={x.id}
-                className="flex items-center justify-between rounded-lg px-3 py-2 transition-all duration-300 hover:scale-[1.02] bg-white/70 dark:bg-white/10"
-                style={{ borderLeft: `3px solid ${trendColor}` }}
+                className="rounded-xl border bg-white/70 dark:bg-white/10 p-3 transition-all duration-300 hover:shadow-md"
+                style={{ borderColor: trendColor + "4d" }}
               >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">
-                    {i + 1}. {x.phrase}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold"
+                        style={{ backgroundColor: trendColor + "22", color: trendColor }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div className="truncate font-medium">{x.phrase}</div>
+                    </div>
+
+                    {/* chips */}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {chip(x.intent, x.intent === "Transactional"
+                        ? "emerald"
+                        : x.intent === "Commercial"
+                        ? "amber"
+                        : x.intent === "Informational"
+                        ? "indigo"
+                        : "sky")}
+                      {chip(`diff ${x.difficulty}`, "sky")}
+                      {typeof x.volume === "number" && chip(`vol ${x.volume}`, "emerald")}
+                      {typeof x.cpc === "number" && chip(`cpc ${x.cpc}`, "amber")}
+                    </div>
+
+                    {/* Why this pick */}
+                    {x.reasons && x.reasons.length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
+                          Why this pick?
+                        </div>
+                        <ul className="mt-1 ml-4 list-disc text-xs text-neutral-600 dark:text-neutral-300 space-y-0.5">
+                          {x.reasons.map((r, idx) => (
+                            <li key={idx}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-neutral-600 dark:text-neutral-300">
-                    diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
+
+                  <div className="shrink-0 text-right">
+                    <div className="text-sm font-semibold" style={{ color: trendColor }}>
+                      {x.ai}
+                    </div>
                   </div>
                 </div>
-                <span className="text-sm font-semibold" style={{ color: trendColor }}>
-                  {x.ai}
-                </span>
               </li>
             ))}
+
             {!insights.length && (
               <li className="text-sm text-neutral-600 dark:text-neutral-300">
                 Click “AI Insight” to score and see Top-3 easiest keywords.
