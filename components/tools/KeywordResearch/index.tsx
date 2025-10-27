@@ -38,6 +38,9 @@ export default function KeywordResearch() {
   // Immutable baseline so sliders don’t compound
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
 
+  // 🌈 trend color mood for AI Insight panel (and can be reused elsewhere)
+  const [trendColor, setTrendColor] = useState<string>("#3b82f6"); // blue default
+
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Preload seed from URL (?q=)
@@ -57,6 +60,15 @@ export default function KeywordResearch() {
   useEffect(() => {
     localStorage.setItem("sortByAI", sortByAI ? "true" : "false");
   }, [sortByAI]);
+
+  // Derive trend color from health delta vs previous run
+  useEffect(() => {
+    if (!previousMetrics) return;
+    const delta = dataset.metrics.health - previousMetrics.health;
+    if (Math.abs(delta) < 1) setTrendColor("#3b82f6"); // blue stable
+    else if (delta > 0) setTrendColor("#22c55e"); // green improving
+    else setTrendColor("#ef4444"); // red declining
+  }, [dataset.metrics.health, previousMetrics]);
 
   // ---------- Actions ----------
   function handleGenerate(q?: string) {
@@ -166,6 +178,18 @@ export default function KeywordResearch() {
 
   const { metrics } = dataset;
 
+  // Helpers to tint the AI panel
+  const aiPanelStyle: React.CSSProperties = {
+    borderColor: trendColor + "66",
+    background:
+      trendColor === "#22c55e"
+        ? "linear-gradient(145deg, rgba(240,253,244,0.8) 0%, rgba(220,252,231,0.5) 100%)"
+        : trendColor === "#ef4444"
+        ? "linear-gradient(145deg, rgba(254,242,242,0.8) 0%, rgba(254,226,226,0.5) 100%)"
+        : "linear-gradient(145deg, rgba(239,246,255,0.8) 0%, rgba(219,234,254,0.5) 100%)",
+    boxShadow: `0 0 18px ${trendColor}33`,
+  };
+
   return (
     <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6">
       {/* Title & Controls */}
@@ -205,16 +229,13 @@ export default function KeywordResearch() {
           <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>
             Export PDF
           </button>
-          <button
-            className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
-            onClick={handleShare}
-          >
+          <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
             Share Link
           </button>
         </div>
       </div>
 
-      {/* Summary (now with estClicks tile) */}
+      {/* Summary (with Est. Monthly Clicks tile) */}
       <SummaryBar
         metrics={metrics}
         previous={previousMetrics}
@@ -302,22 +323,27 @@ export default function KeywordResearch() {
       {/* Charts */}
       <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
 
-      {/* AI Insight Top-3 */}
+      {/* AI Insight Top-3 — mood-synced colors restored */}
       <aside
         id="insights-panel"
-        className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4"
+        className="rounded-2xl border p-4 transition-all duration-500 hover:shadow-lg"
+        style={aiPanelStyle}
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">AI Insight — Easiest Wins</h3>
-          <span className="text-xs text-neutral-500">
-            Click again after changing data/filters to refresh picks
+          <h3 className="font-semibold text-lg" style={{ color: trendColor }}>
+            AI Insight — Easiest Wins
+          </h3>
+          <span className="text-xs font-medium" style={{ color: trendColor }}>
+            Click again after changing data/filters
           </span>
         </div>
+
         <ul className="mt-2 space-y-2">
           {insights.map((x, i) => (
             <li
               key={x.id}
-              className="flex items-center justify-between bg-white/70 dark:bg-white/10 rounded-lg px-3 py-2"
+              className="flex items-center justify-between rounded-lg px-3 py-2 transition-all duration-300 hover:scale-[1.02] bg-white/70 dark:bg-white/10"
+              style={{ borderLeft: `3px solid ${trendColor}` }}
             >
               <div className="min-w-0">
                 <div className="truncate font-medium">
@@ -327,7 +353,9 @@ export default function KeywordResearch() {
                   diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
                 </div>
               </div>
-              <span className="text-sm font-semibold">{x.ai}</span>
+              <span className="text-sm font-semibold" style={{ color: trendColor }}>
+                {x.ai}
+              </span>
             </li>
           ))}
           {!insights.length && (
