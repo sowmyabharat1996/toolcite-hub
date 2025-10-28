@@ -13,10 +13,6 @@ import {
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
-/* -------------------------------------------------------------------------- */
-/* Session History types & helpers                                             */
-/* -------------------------------------------------------------------------- */
-
 type SessionSnapshot = {
   id: string;
   ts: number;
@@ -25,20 +21,19 @@ type SessionSnapshot = {
   cpcSim: number;
   minDiff: number;
   maxDiff: number;
+  textFilter: string;
+  chips: string[];
   metrics: Metrics;
   estClicks: number;
   top3: Array<KeywordItem & { reasons?: string[] }>;
   base: KeywordSourceBlock[];
 };
 
-const SESS_KEY = "kr:sessions:v2";
+const SESS_KEY = "kr:sessions:v3";
 const MAX_SESSIONS = 5;
 
 function loadSessions(): SessionSnapshot[] {
-  try {
-    const raw = localStorage.getItem(SESS_KEY);
-    return raw ? (JSON.parse(raw) as SessionSnapshot[]) : [];
-  } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(SESS_KEY) || "[]"); } catch { return []; }
 }
 function saveSessions(list: SessionSnapshot[]) {
   try { localStorage.setItem(SESS_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS))); } catch {}
@@ -53,10 +48,9 @@ function formatTime(ts: number) {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/* -------------------------------------------------------------------------- */
+const CHIP_CATALOG = ["best","vs","review","price","guide","cheap","free","tool"] as const;
 
 export default function KeywordResearch() {
-  // Core state
   const [query, setQuery] = useState("");
   const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
   const [previousMetrics, setPreviousMetrics] = useState<Metrics | null>(null);
@@ -71,48 +65,51 @@ export default function KeywordResearch() {
   const [cpcSim, setCpcSim] = useState(50);
   const [estClicks, setEstClicks] = useState(0);
 
-  // Step 3: difficulty filter
+  // Step 3 (existing)
   const [minDiff, setMinDiff] = useState<number>(() => Number(localStorage.getItem("dfMin") ?? 0));
   const [maxDiff, setMaxDiff] = useState<number>(() => Number(localStorage.getItem("dfMax") ?? 100));
   const [totalBefore, setTotalBefore] = useState(0);
   const [totalAfter, setTotalAfter] = useState(0);
 
+  // Step 4: text + chips
+  const [textFilter, setTextFilter] = useState("");
+  const [chips, setChips] = useState<string[]>([]);
+
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
-  // History / Compare
+  // History / compare
   const [history, setHistory] = useState<SessionSnapshot[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [compareWith, setCompareWith] = useState<SessionSnapshot | null>(null);
 
-  // Share feedback
+  // Share copied flag
   const [copied, setCopied] = useState(false);
 
   // Refs
   const rootRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<number | null>(null);
+  const debounceTextRef = useRef<number | null>(null);
   const historyBtnRef = useRef<HTMLButtonElement | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const compareRef = useRef<HTMLDivElement | null>(null);
 
-  // Init (URL params + first generate)
+  // Init
   useEffect(() => {
     setHistory(loadSessions());
-
     const sp = new URLSearchParams(window.location.search);
     const q = sp.get("q") || "";
     const df = sp.get("df");
     if (df) {
-      const [a, b] = df.split("-").map((n) => Math.max(0, Math.min(100, Number(n))));
-      if (!Number.isNaN(a) && !Number.isNaN(b)) {
-        setMinDiff(Math.min(a, b));
-        setMaxDiff(Math.max(a, b));
-      }
+      const [a,b] = df.split("-").map(n => Math.max(0, Math.min(100, Number(n))));
+      if (!Number.isNaN(a) && !Number.isNaN(b)) { setMinDiff(Math.min(a, b)); setMaxDiff(Math.max(a, b)); }
     }
     const v = sp.get("vol"), c = sp.get("cpc"), ai = sp.get("ai");
     if (v) setVolSim(Math.max(0, Math.min(100, Number(v))));
     if (c) setCpcSim(Math.max(0, Math.min(100, Number(c))));
     if (ai === "1") setSortByAI(true);
+    const qf = sp.get("qf"); if (qf) setTextFilter(qf);
+    const ch = sp.get("chips"); if (ch) setChips(ch.split(".").filter(Boolean));
 
     if (q) { setQuery(q); handleGenerate(q, { initial: true }); }
   }, []);
@@ -124,7 +121,7 @@ export default function KeywordResearch() {
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
   useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
 
-  // History menu positioning
+  // Position dropdown
   useEffect(() => {
     function compute() {
       if (!historyOpen || !historyBtnRef.current) return;
@@ -150,19 +147,34 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
-  // Generate / Restore
   function snapshotCurrent(seedForSave?: string): SessionSnapshot | null {
     if (!baseBlocks.length) return null;
     return {
-      id: makeId(),
-      ts: Date.now(),
+      id: makeId(), ts: Date.now(),
       seed: seedForSave ?? (query.trim() || "keyword"),
-      volSim, cpcSim, minDiff, maxDiff,
-      metrics: dataset.metrics,
-      estClicks,
-      top3: insights,
-      base: baseBlocks,
+      volSim, cpcSim, minDiff, maxDiff, textFilter, chips,
+      metrics: dataset.metrics, estClicks, top3: insights, base: baseBlocks,
     };
+  }
+
+  function applyPipeline(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
+    if (!baseBlocks.length) return;
+    const next = recomputeAll(baseBlocks, v, c, d0, d1, tf, ch);
+    setDataset({ data: next.blocks, metrics: next.metrics });
+    setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
+    setHighlightId(next.top3[0]?.id ?? null);
+    setEstClicks(next.estClicks);
+    setTotalBefore(next.totalBefore);
+    setTotalAfter(next.totalAfter);
+    setLastUpdated(Date.now());
+  }
+
+  function schedule(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      applyPipeline(v, c, d0, d1, tf, ch);
+      debounceRef.current = null;
+    }, 120);
   }
 
   function handleGenerate(q?: string, opts?: { initial?: boolean }) {
@@ -171,9 +183,9 @@ export default function KeywordResearch() {
     setPreviousMetrics(dataset.metrics);
     setBaseBlocks(result.data);
 
-    const next = recomputeAll(result.data, volSim, cpcSim, minDiff, maxDiff);
+    const next = recomputeAll(result.data, volSim, cpcSim, minDiff, maxDiff, textFilter, chips);
     setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3.map((t) => ({ ...t, reasons: explainPick(t) })));
+    setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
     setEstClicks(next.estClicks);
     setTotalBefore(next.totalBefore);
@@ -183,7 +195,7 @@ export default function KeywordResearch() {
     if (!opts?.initial) {
       const snap: SessionSnapshot = {
         id: makeId(), ts: Date.now(), seed, volSim, cpcSim, minDiff, maxDiff,
-        metrics: next.metrics, estClicks: next.estClicks, top3: next.top3, base: result.data,
+        textFilter, chips, metrics: next.metrics, estClicks: next.estClicks, top3: next.top3, base: result.data,
       };
       upsertSession(snap);
       setHistory(loadSessions());
@@ -196,51 +208,47 @@ export default function KeywordResearch() {
     setCpcSim(s.cpcSim);
     setMinDiff(s.minDiff);
     setMaxDiff(s.maxDiff);
+    setTextFilter(s.textFilter);
+    setChips(s.chips);
     setBaseBlocks(s.base);
-
-    const next = recomputeAll(s.base, s.volSim, s.cpcSim, s.minDiff, s.maxDiff);
-    setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3.map((t) => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.estClicks);
-    setTotalBefore(next.totalBefore);
-    setTotalAfter(next.totalAfter);
-    setLastUpdated(Date.now());
+    applyPipeline(s.volSim, s.cpcSim, s.minDiff, s.maxDiff, s.textFilter, s.chips);
   }
 
-  // Live recompute (debounce)
-  function applyNow(v: number, c: number, d0: number, d1: number) {
-    if (!baseBlocks.length) return;
-    const next = recomputeAll(baseBlocks, v, c, d0, d1);
-    setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3.map((t) => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.estClicks);
-    setTotalBefore(next.totalBefore);
-    setTotalAfter(next.totalAfter);
-    setLastUpdated(Date.now());
-  }
-  function schedule(v: number, c: number, d0: number, d1: number) {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      applyNow(v, c, d0, d1);
-      debounceRef.current = null;
-    }, 120);
-  }
+  // Handlers (sliders)
   const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value; setVolSim(v); schedule(v, cpcSim, minDiff, maxDiff);
+    const v = +e.target.value; setVolSim(v);
+    schedule(v, cpcSim, minDiff, maxDiff, textFilter, chips);
   };
   const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value; setCpcSim(v); schedule(volSim, v, minDiff, maxDiff);
+    const v = +e.target.value; setCpcSim(v);
+    schedule(volSim, v, minDiff, maxDiff, textFilter, chips);
   };
   const onMin = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value; const nv = Math.min(v, maxDiff);
-    setMinDiff(nv); schedule(volSim, cpcSim, nv, maxDiff);
+    setMinDiff(nv); schedule(volSim, cpcSim, nv, maxDiff, textFilter, chips);
   };
   const onMax = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value; const nv = Math.max(v, minDiff);
-    setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv);
+    setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv, textFilter, chips);
   };
+
+  // Text filter (debounced)
+  const onText = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setTextFilter(v);
+    if (debounceTextRef.current) clearTimeout(debounceTextRef.current);
+    debounceTextRef.current = window.setTimeout(() => {
+      applyPipeline(volSim, cpcSim, minDiff, maxDiff, v, chips);
+    }, 150);
+  };
+
+  // Chips toggle
+  function toggleChip(tag: string) {
+    const exists = chips.includes(tag);
+    const next = exists ? chips.filter(c => c !== tag) : [...chips, tag];
+    setChips(next);
+    schedule(volSim, cpcSim, minDiff, maxDiff, textFilter, next);
+  }
 
   // Actions
   function handleCopyAll() {
@@ -257,6 +265,8 @@ export default function KeywordResearch() {
       vol: volSim,
       cpc: cpcSim,
       sortAI: sortByAI,
+      text: textFilter,
+      chips,
     });
     try {
       await navigator.clipboard.writeText(url);
@@ -277,7 +287,7 @@ export default function KeywordResearch() {
     setHistory(loadSessions());
   }
 
-  // Compare helpers
+  // Compare
   function startCompare(s: SessionSnapshot) {
     setCompareWith(s);
     setHistoryOpen(false);
@@ -285,13 +295,12 @@ export default function KeywordResearch() {
   }
   function clearCompare() { setCompareWith(null); }
 
-  // AI Insight (manual re-score + scroll)
+  // AI Insight (manual re-score)
   function handleAIInsight() {
     if (!dataset.data.length) return;
     const { top3, scores } = runAIInsight(dataset.data);
     const scoredBlocks = dataset.data.map((b) => ({
-      ...b,
-      items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+      ...b, items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
     }));
     setDataset({ data: scoredBlocks, metrics: computeMetricsAdvanced(scoredBlocks) });
     setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
@@ -300,21 +309,17 @@ export default function KeywordResearch() {
     setLastUpdated(Date.now());
   }
 
-  // Derived
+  // Sorted view
   const sortedBlocks = sortByAI
     ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
     : dataset.data;
 
+  // UI helpers
   const moodBG: React.CSSProperties = {
     background: `radial-gradient(1200px 700px at 10% -10%, ${trendColor}12, transparent 60%), radial-gradient(1200px 700px at 110% 110%, ${trendColor}10, transparent 60%)`,
     transition: "background 700ms ease",
   };
-  const { metrics } = dataset;
 
-  const leftPct = minDiff;
-  const widthPct = Math.max(0, maxDiff - minDiff);
-
-  // UI
   return (
     <div className="relative min-h-[100vh] overflow-visible">
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
@@ -324,7 +329,7 @@ export default function KeywordResearch() {
       `}</style>
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
-        {/* Header & controls */}
+        {/* Header */}
         <div className="flex flex-wrap gap-2 items-center [isolation:isolate]">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
           <div className="flex flex-wrap gap-2 items-center">
@@ -340,7 +345,7 @@ export default function KeywordResearch() {
             </button>
             <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
 
-            {/* History dropdown */}
+            {/* History */}
             <div className="relative">
               <button
                 ref={historyBtnRef}
@@ -349,10 +354,14 @@ export default function KeywordResearch() {
               >
                 History ▾
               </button>
-              {historyOpen && menuPos && createPortal(
+              {historyOpen && historyBtnRef.current && createPortal(
                 <div
                   className="fixed z-[99999] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl p-2 space-y-1 pointer-events-auto"
-                  style={{ top: menuPos.top, left: Math.max(8, menuPos.left), width: menuPos.width }}
+                  style={{
+                    top: historyBtnRef.current.getBoundingClientRect().bottom + 8,
+                    left: Math.max(8, historyBtnRef.current.getBoundingClientRect().right - 340),
+                    width: 340
+                  }}
                   role="menu"
                 >
                   {history.length === 0 && (
@@ -368,12 +377,13 @@ export default function KeywordResearch() {
                         <span>• KSI {s.metrics.health}</span>
                         <span>• EMC {s.estClicks}</span>
                         <span>• DF {s.minDiff}-{s.maxDiff}</span>
+                        {(s.textFilter || s.chips.length) && <span>• Filter</span>}
                       </div>
                       <div className="mt-2 flex gap-2">
                         <button className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs" onClick={() => { restoreSession(s); setHistoryOpen(false); }}>
                           Restore
                         </button>
-                        <button className="px-2 py-1 rounded-md bg-amber-600 text-white text-xs" onClick={() => { startCompare(s); }}>
+                        <button className="px-2 py-1 rounded-md bg-amber-600 text-white text-xs" onClick={() => { setHistoryOpen(false); startCompare(s); }}>
                           Compare
                         </button>
                       </div>
@@ -407,7 +417,7 @@ export default function KeywordResearch() {
                 Compare with: <span className="font-medium">{compareWith.seed}</span>{" "}
                 <span className="text-xs text-neutral-500">({formatTime(compareWith.ts)})</span>
               </div>
-              <button className="text-xs px-2 py-1 rounded-md bg-sky-600 text-white" onClick={clearCompare}>Clear</button>
+              <button className="text-xs px-2 py-1 rounded-md bg-sky-600 text-white" onClick={() => setCompareWith(null)}>Clear</button>
             </div>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
               {[
@@ -444,14 +454,12 @@ export default function KeywordResearch() {
           </label>
         </div>
 
-        {/* Simulator + Difficulty filter */}
+        {/* Volume/CPC + Difficulty + NEW Search & Chips */}
         <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
-            {/* tiny on-screen KSI indicator */}
             <div className="text-xs text-neutral-500">KSI now: <b>{dataset.metrics.health}</b></div>
           </div>
-
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
@@ -475,15 +483,9 @@ export default function KeywordResearch() {
               </div>
               <div className="text-xs text-neutral-500">Showing {totalAfter} of {totalBefore} keywords</div>
             </div>
-
-            {/* Gradient bar */}
-            <div className="mt-2 relative h-3 rounded-full overflow-hidden"
-                 style={{ background: "linear-gradient(90deg,#22c55e 0%,#f59e0b 60%,#ef4444 100%)" }}>
-              <div className="absolute top-0 bottom-0 bg-white/30 border border-white/60"
-                   style={{ left: `${minDiff}%`, width: `${Math.max(0, maxDiff - minDiff)}%` }} />
+            <div className="mt-2 relative h-3 rounded-full overflow-hidden" style={{ background: "linear-gradient(90deg,#22c55e 0%,#f59e0b 60%,#ef4444 100%)" }}>
+              <div className="absolute top-0 bottom-0 bg-white/30 border border-white/60" style={{ left: `${minDiff}%`, width: `${Math.max(0, maxDiff - minDiff)}%` }} />
             </div>
-
-            {/* Dual sliders */}
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
@@ -498,7 +500,37 @@ export default function KeywordResearch() {
                 <input type="range" min={0} max={100} value={maxDiff} onChange={onMax} className="w-full accent-rose-600" />
               </div>
             </div>
-            <div className="mt-1 text-[11px] text-neutral-500">KSI, charts, and AI Top-3 respond to this range.</div>
+          </div>
+
+          {/* NEW: Search in results + Chips */}
+          <div className="mt-6">
+            <div className="text-sm font-semibold">Search in results</div>
+            <input
+              value={textFilter}
+              onChange={onText}
+              placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
+              className="mt-2 h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {CHIP_CATALOG.map((tag) => {
+                const active = chips.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggleChip(tag)}
+                    className={
+                      "px-3 py-1 rounded-full text-xs border " +
+                      (active
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20"
+                        : "border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 text-neutral-700 dark:text-neutral-200")
+                    }
+                  >
+                    {active ? "✓ " : ""}{tag}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-500">Filters affect AI Top-3, charts, and KSI.</div>
           </div>
 
           <div className="mt-4">
@@ -541,9 +573,7 @@ export default function KeywordResearch() {
                       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold" style={{ backgroundColor: trendColor + "22", color: trendColor }}>{i + 1}</span>
                       <div className="truncate font-medium">{x.phrase}</div>
                     </div>
-                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
-                      diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
-                    </div>
+                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}</div>
                     {x.reasons && x.reasons.length > 0 && (
                       <div className="mt-2">
                         <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Why this pick?</div>
@@ -561,7 +591,7 @@ export default function KeywordResearch() {
             ))}
             {!insights.length && (
               <li className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/10 p-4 text-sm text-neutral-600 dark:text-neutral-300">
-                No keywords in this difficulty range. Widen the band or click Generate for a new seed.
+                No keywords match this filter/band. Clear filters or widen the difficulty range.
               </li>
             )}
           </ul>
@@ -571,7 +601,7 @@ export default function KeywordResearch() {
         <div data-export="section" id="kw-lists" className="pt-2 overflow-visible">
           {totalAfter === 0 ? (
             <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-6 text-sm text-neutral-600 dark:text-neutral-300">
-              No results to display for this band <b>{minDiff}–{maxDiff}</b>. Try widening the range.
+              No results to display for current filters. Try clearing text/chips or widening the difficulty band.
             </div>
           ) : (
             <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
