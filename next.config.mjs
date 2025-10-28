@@ -15,14 +15,10 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // long-cache static assets
         source: '/:all*(svg|jpg|jpeg|png|webp|avif|gif|ico|js|css|woff2)',
-        headers: [
-          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
-        ],
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {
-        // security headers for everything else
         source: '/:path*',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -37,16 +33,7 @@ const nextConfig = {
 
   async redirects() {
     return [
-      // --- Canonical host: handle www → apex here (platform must NOT also redirect)
-      {
-        source: '/:path*',
-        has: [{ type: 'host', value: 'www.toolcite.com' }],
-        destination: 'https://toolcite.com/:path*',
-        permanent: true,    // Next uses 308 for permanent redirects
-        statusCode: 308
-      },
-
-      // --- App-level path redirects (keep your existing ones here)
+      // keep only app-path redirects here
       { source: '/weather', destination: '/tools/weather', permanent: true },
     ];
   },
