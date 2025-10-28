@@ -65,13 +65,13 @@ export default function KeywordResearch() {
   const [cpcSim, setCpcSim] = useState(50);
   const [estClicks, setEstClicks] = useState(0);
 
-  // Step 3 (existing)
+  // Difficulty filter
   const [minDiff, setMinDiff] = useState<number>(() => Number(localStorage.getItem("dfMin") ?? 0));
   const [maxDiff, setMaxDiff] = useState<number>(() => Number(localStorage.getItem("dfMax") ?? 100));
   const [totalBefore, setTotalBefore] = useState(0);
   const [totalAfter, setTotalAfter] = useState(0);
 
-  // Step 4: text + chips
+  // Search in results + chips
   const [textFilter, setTextFilter] = useState("");
   const [chips, setChips] = useState<string[]>([]);
 
@@ -147,6 +147,7 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
+  // Snapshot for history
   function snapshotCurrent(seedForSave?: string): SessionSnapshot | null {
     if (!baseBlocks.length) return null;
     return {
@@ -157,6 +158,7 @@ export default function KeywordResearch() {
     };
   }
 
+  // Pipeline
   function applyPipeline(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
     if (!baseBlocks.length) return;
     const next = recomputeAll(baseBlocks, v, c, d0, d1, tf, ch);
@@ -177,6 +179,7 @@ export default function KeywordResearch() {
     }, 120);
   }
 
+  // Generate
   function handleGenerate(q?: string, opts?: { initial?: boolean }) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
@@ -202,6 +205,7 @@ export default function KeywordResearch() {
     }
   }
 
+  // Restore
   function restoreSession(s: SessionSnapshot) {
     setQuery(s.seed);
     setVolSim(s.volSim);
@@ -214,7 +218,7 @@ export default function KeywordResearch() {
     applyPipeline(s.volSim, s.cpcSim, s.minDiff, s.maxDiff, s.textFilter, s.chips);
   }
 
-  // Handlers (sliders)
+  // Sliders
   const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value; setVolSim(v);
     schedule(v, cpcSim, minDiff, maxDiff, textFilter, chips);
@@ -242,12 +246,22 @@ export default function KeywordResearch() {
     }, 150);
   };
 
-  // Chips toggle
+  // Chips
   function toggleChip(tag: string) {
     const exists = chips.includes(tag);
     const next = exists ? chips.filter(c => c !== tag) : [...chips, tag];
     setChips(next);
     schedule(volSim, cpcSim, minDiff, maxDiff, textFilter, next);
+  }
+
+  // Clear Filters (PATCH #1 & #2)
+  function clearAllFilters() {
+    const v = volSim, c = cpcSim;
+    setTextFilter("");
+    setChips([]);
+    setMinDiff(0);
+    setMaxDiff(100);
+    applyPipeline(v, c, 0, 100, "", []);
   }
 
   // Actions
@@ -293,11 +307,10 @@ export default function KeywordResearch() {
     setHistoryOpen(false);
     setTimeout(() => { compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0);
   }
-  function clearCompare() { setCompareWith(null); }
 
-  // AI Insight (manual re-score)
+  // AI Insight (PATCH #3 disables when empty via button prop)
   function handleAIInsight() {
-    if (!dataset.data.length) return;
+    if (!dataset.data.length || totalAfter === 0) return;
     const { top3, scores } = runAIInsight(dataset.data);
     const scoredBlocks = dataset.data.map((b) => ({
       ...b, items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
@@ -309,12 +322,11 @@ export default function KeywordResearch() {
     setLastUpdated(Date.now());
   }
 
-  // Sorted view
+  // Sorted
   const sortedBlocks = sortByAI
     ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
     : dataset.data;
 
-  // UI helpers
   const moodBG: React.CSSProperties = {
     background: `radial-gradient(1200px 700px at 10% -10%, ${trendColor}12, transparent 60%), radial-gradient(1200px 700px at 110% 110%, ${trendColor}10, transparent 60%)`,
     transition: "background 700ms ease",
@@ -400,7 +412,15 @@ export default function KeywordResearch() {
             <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
               {copied ? "✅ Copied" : "Share Link"}
             </button>
-            <button className="h-10 px-3 rounded-xl bg-emerald-700 text-white" onClick={handleAIInsight}>🤖 AI Insight</button>
+            {/* PATCH #3: disabled when totalAfter === 0 */}
+            <button
+              className="h-10 px-3 rounded-xl bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleAIInsight}
+              disabled={totalAfter === 0}
+              title={totalAfter === 0 ? "No keywords in view — widen band or clear filters" : "Score & pick easiest keywords"}
+            >
+              🤖 AI Insight
+            </button>
           </div>
         </div>
 
@@ -454,11 +474,12 @@ export default function KeywordResearch() {
           </label>
         </div>
 
-        {/* Volume/CPC + Difficulty + NEW Search & Chips */}
+        {/* Simulator + Difficulty + Search & Chips */}
         <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
-            <div className="text-xs text-neutral-500">KSI now: <b>{dataset.metrics.health}</b></div>
+            {/* PATCH #4: graceful when empty */}
+            <div className="text-xs text-neutral-500">KSI now: <b>{totalAfter === 0 ? "—" : dataset.metrics.health}</b></div>
           </div>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -502,15 +523,26 @@ export default function KeywordResearch() {
             </div>
           </div>
 
-          {/* NEW: Search in results + Chips */}
+          {/* Search in results + Chips + PATCH #2 Clear button */}
           <div className="mt-6">
             <div className="text-sm font-semibold">Search in results</div>
-            <input
-              value={textFilter}
-              onChange={onText}
-              placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
-              className="mt-2 h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
-            />
+
+            <div className="mt-2 flex items-center justify-between">
+              <input
+                value={textFilter}
+                onChange={onText}
+                placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
+                className="h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
+              />
+              <button
+                onClick={clearAllFilters}
+                className="ml-2 shrink-0 h-10 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 text-sm"
+                title="Reset text/chips and difficulty band to defaults"
+              >
+                Clear
+              </button>
+            </div>
+
             <div className="mt-3 flex flex-wrap gap-2">
               {CHIP_CATALOG.map((tag) => {
                 const active = chips.includes(tag);
