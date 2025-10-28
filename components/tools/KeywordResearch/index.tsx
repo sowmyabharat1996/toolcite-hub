@@ -9,11 +9,60 @@ import {
   Dataset, KeywordSourceBlock, Metrics,
   generateMockData, computeMetrics, toCSV, shareURLFromSeed,
   downloadBlob, KeywordItem,
-  recomputeAll, // NEW
+  recomputeAll, // from utils.ts (Step 1)
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
+/* -------------------------------------------------------------------------- */
+/* Session History types & helpers                                             */
+/* -------------------------------------------------------------------------- */
+
+type SessionSnapshot = {
+  id: string;
+  ts: number;                 // epoch ms
+  seed: string;
+  volSim: number;
+  cpcSim: number;
+  metrics: Metrics;
+  estClicks: number;
+  top3: Array<KeywordItem & { reasons?: string[] }>;
+  base: KeywordSourceBlock[]; // the generated baseBlocks so restore is deterministic
+};
+
+const SESS_KEY = "kr:sessions:v1";
+const MAX_SESSIONS = 5;
+
+function loadSessions(): SessionSnapshot[] {
+  try {
+    const raw = localStorage.getItem(SESS_KEY);
+    return raw ? (JSON.parse(raw) as SessionSnapshot[]) : [];
+  } catch {
+    return [];
+  }
+}
+function saveSessions(list: SessionSnapshot[]) {
+  try {
+    localStorage.setItem(SESS_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS)));
+  } catch {}
+}
+function upsertSession(s: SessionSnapshot) {
+  const list = loadSessions();
+  const filtered = list.filter(x => x.id !== s.id);
+  saveSessions([s, ...filtered].slice(0, MAX_SESSIONS));
+}
+function makeId() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+function formatTime(ts: number) {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/* -------------------------------------------------------------------------- */
+
 export default function KeywordResearch() {
+  /* ------------------------------- State ---------------------------------- */
   const [query, setQuery] = useState("");
   const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
   const [previousMetrics, setPreviousMetrics] = useState<Metrics | null>(null);
@@ -31,23 +80,28 @@ export default function KeywordResearch() {
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
-  const rootRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<number | null>(null); // NEW
+  // History UI state
+  const [history, setHistory] = useState<SessionSnapshot[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [compareWith, setCompareWith] = useState<SessionSnapshot | null>(null);
 
-  /* ------------------------------- URL Seed ------------------------------- */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<number | null>(null);
+
+  /* ------------------------------- Init ----------------------------------- */
   useEffect(() => {
+    setHistory(loadSessions());
     const q = new URLSearchParams(window.location.search).get("q") || "";
     if (q) { setQuery(q); handleGenerate(q); }
   }, []);
 
-  /* --------------------------- Sort toggle persist ------------------------ */
   useEffect(() => {
     const stored = localStorage.getItem("sortByAI");
     if (stored === "true") setSortByAI(true);
   }, []);
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
 
-  /* --------------------------------- Mood -------------------------------- */
+  /* -------------------------------- Mood ---------------------------------- */
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -56,47 +110,62 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
-  /* ------------------------------ Generators ------------------------------ */
+  /* --------------------------- Generate / Restore ------------------------- */
+  function snapshotCurrent(seedForSave?: string): SessionSnapshot | null {
+    if (!baseBlocks.length) return null;
+    return {
+      id: makeId(),
+      ts: Date.now(),
+      seed: seedForSave ?? (query.trim() || "keyword"),
+      volSim, cpcSim,
+      metrics: dataset.metrics,
+      estClicks,
+      top3: insights,
+      base: baseBlocks,
+    };
+  }
+
   function handleGenerate(q?: string) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
     setPreviousMetrics(dataset.metrics);
     setBaseBlocks(result.data);
 
-    // One-shot recompute on top of freshly generated base
     const next = recomputeAll(result.data, volSim, cpcSim);
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3);
     setHighlightId(next.top3[0]?.id ?? null);
     setEstClicks(next.estClicks);
     setLastUpdated(Date.now());
+
+    // auto-save a session for each fresh generate
+    const snap: SessionSnapshot = {
+      id: makeId(),
+      ts: Date.now(),
+      seed,
+      volSim,
+      cpcSim,
+      metrics: next.metrics,
+      estClicks: next.estClicks,
+      top3: next.top3,
+      base: result.data,
+    };
+    upsertSession(snap);
+    setHistory(loadSessions());
   }
 
-  /* ------------------------------- Actions -------------------------------- */
-  function handleCopyAll() {
-    const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
-    navigator.clipboard.writeText(flat);
-  }
+  function restoreSession(s: SessionSnapshot) {
+    // restore knobs & base; recompute so all derived values are in sync
+    setQuery(s.seed);
+    setVolSim(s.volSim);
+    setCpcSim(s.cpcSim);
+    setBaseBlocks(s.base);
 
-  function handleExportCSV() {
-    const csv = toCSV(dataset.data);
-    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
-  }
-
-  function handleShare() { navigator.clipboard.writeText(shareURLFromSeed(query || "keyword")); }
-
-  async function handleExportPDF() {
-    if (!rootRef.current) return;
-    await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
-  }
-
-  function handleAIInsight() {
-    // Reuse recomputeAll so scores align with current sim state
-    const next = recomputeAll(dataset.data, volSim, cpcSim);
+    const next = recomputeAll(s.base, s.volSim, s.cpcSim);
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3);
     setHighlightId(next.top3[0]?.id ?? null);
-    document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
+    setEstClicks(next.estClicks);
     setLastUpdated(Date.now());
   }
 
@@ -110,15 +179,13 @@ export default function KeywordResearch() {
     setEstClicks(next.estClicks);
     setLastUpdated(Date.now());
   }
-
   function scheduleSim(v: number, c: number) {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
       applySimNow(v, c);
       debounceRef.current = null;
-    }, 120); // ~1–2 frames after the last slider event
+    }, 120);
   }
-
   const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value;
     setVolSim(v);
@@ -129,6 +196,38 @@ export default function KeywordResearch() {
     setCpcSim(v);
     scheduleSim(volSim, v);
   };
+
+  /* ------------------------------- Actions -------------------------------- */
+  function handleCopyAll() {
+    const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
+    navigator.clipboard.writeText(flat);
+  }
+  function handleExportCSV() {
+    const csv = toCSV(dataset.data);
+    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
+  }
+  function handleShare() { navigator.clipboard.writeText(shareURLFromSeed(query || "keyword")); }
+  async function handleExportPDF() {
+    if (!rootRef.current) return;
+    await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
+  }
+
+  // Manual save (optional — keeps current state as a session)
+  function handleSaveSession() {
+    const snap = snapshotCurrent();
+    if (!snap) return;
+    upsertSession(snap);
+    setHistory(loadSessions());
+  }
+
+  // Compare helpers
+  function startCompare(s: SessionSnapshot) {
+    setCompareWith(s);
+    setHistoryOpen(false);
+  }
+  function clearCompare() {
+    setCompareWith(null);
+  }
 
   /* ------------------------------ Derivations ----------------------------- */
   const sortedBlocks = sortByAI
@@ -142,18 +241,14 @@ export default function KeywordResearch() {
     `,
     transition: "background 700ms ease",
   };
-
   const { metrics } = dataset;
 
-  /* --------------------------------- UI ----------------------------------- */
+  /* ------------------------------- UI ------------------------------------ */
   return (
     <div className="relative min-h-[100vh] overflow-visible">
-      {/* Subtle page wash, plus export-mode CSS fixes */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
       <style jsx global>{`
-        /* Prevent sticky from creating huge white gaps during export */
         [data-export-paused="1"] .sticky { position: static !important; top: auto !important; }
-        /* Make sure nested wrappers don't clip portaled tooltips */
         #__next, body, html { overflow: visible !important; }
       `}</style>
 
@@ -161,7 +256,7 @@ export default function KeywordResearch() {
         {/* Header & controls */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -172,7 +267,51 @@ export default function KeywordResearch() {
             <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium" onClick={() => handleGenerate()}>
               Generate
             </button>
-            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleAIInsight}>🤖 AI Insight</button>
+            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
+
+            {/* History dropdown */}
+            <div className="relative">
+              <button
+                className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
+                onClick={() => setHistoryOpen((v) => !v)}
+              >
+                History ▾
+              </button>
+              {historyOpen && (
+                <div className="absolute right-0 mt-2 w-[340px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-xl z-20 p-2 space-y-1">
+                  {history.length === 0 && (
+                    <div className="text-sm text-neutral-600 dark:text-neutral-300 p-2">No sessions yet. Click <b>Generate</b> or <b>Save Session</b>.</div>
+                  )}
+                  {history.map((s) => (
+                    <div key={s.id} className="rounded-lg p-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                      <div className="text-sm font-medium truncate">{s.seed}</div>
+                      <div className="text-[11px] text-neutral-500 flex items-center gap-2">
+                        <span>{formatTime(s.ts)}</span>
+                        <span>• Vol {s.volSim}</span>
+                        <span>• CPC {s.cpcSim}</span>
+                        <span>• KSI {s.metrics.health}</span>
+                        <span>• EMC {s.estClicks}</span>
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs"
+                          onClick={() => { restoreSession(s); setHistoryOpen(false); }}
+                        >
+                          Restore
+                        </button>
+                        <button
+                          className="px-2 py-1 rounded-md bg-amber-600 text-white text-xs"
+                          onClick={() => startCompare(s)}
+                        >
+                          Compare
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>Copy All</button>
             <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
             <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
@@ -182,8 +321,44 @@ export default function KeywordResearch() {
 
         {/* Summary */}
         <div data-export="section">
-          <SummaryBar metrics={metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
+          <SummaryBar
+            metrics={metrics}
+            previous={previousMetrics}
+            lastUpdated={lastUpdated}
+            showTrend={showTrend}
+            estClicks={estClicks}
+          />
         </div>
+
+        {/* Compare panel */}
+        {compareWith && (
+          <div className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10 p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Compare with: <span className="font-medium">{compareWith.seed}</span> <span className="text-xs text-neutral-500">({formatTime(compareWith.ts)})</span></div>
+              <button className="text-xs px-2 py-1 rounded-md bg-sky-600 text-white" onClick={clearCompare}>Clear</button>
+            </div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+              {[
+                { label: "EMC", cur: estClicks, old: compareWith.estClicks, fmt: (n:number)=>n.toLocaleString() },
+                { label: "KSI", cur: metrics.health, old: compareWith.metrics.health, fmt: (n:number)=>n },
+                { label: "Avg Difficulty", cur: metrics.avgDifficulty, old: compareWith.metrics.avgDifficulty, fmt: (n:number)=>n },
+                { label: "Total Keywords", cur: metrics.total, old: compareWith.metrics.total, fmt: (n:number)=>n },
+              ].map((k) => {
+                const delta = k.cur - k.old;
+                const good = (k.label === "Avg Difficulty") ? delta < 0 : delta > 0;
+                const color = delta === 0 ? "text-neutral-600" : good ? "text-emerald-600" : "text-rose-600";
+                const sign = delta > 0 ? "+" : "";
+                return (
+                  <div key={k.label} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-3">
+                    <div className="text-xs text-neutral-500">{k.label}</div>
+                    <div className="mt-1 text-lg font-semibold">{k.fmt(k.cur)}</div>
+                    <div className={`text-xs ${color}`}>{sign}{delta === 0 ? "0" : k.fmt(delta as any)} vs history</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
