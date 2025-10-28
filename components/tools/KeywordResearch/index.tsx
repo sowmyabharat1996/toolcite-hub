@@ -112,6 +112,22 @@ export default function KeywordResearch() {
   useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
   useEffect(() => { localStorage.setItem("pdfCover", coverEnabled ? "1" : "0"); }, [coverEnabled]);
   useEffect(() => { localStorage.setItem("pdfLandscape", autoLandscape ? "1" : "0"); }, [autoLandscape]);
+// Auto-highlight best AI keyword in the CURRENT VIEW when Sort by AI is ON
+useEffect(() => {
+  if (!sortByAI) {
+    setHighlightId(null);
+    return;
+  }
+  // Look at the visible (filtered) dataset and pick the highest AI
+  const all = dataset.data.flatMap(b => b.items);
+  if (!all.length) return;
+
+  const best = all.reduce(
+    (a, b) => ((b.ai ?? 0) > (a.ai ?? 0) ? b : a),
+    all[0]
+  );
+  setHighlightId(best?.id ?? null);
+}, [sortByAI, dataset.data]); // re-run when toggle or visible data changes
 
   // Mood color
   useEffect(() => {
@@ -662,7 +678,11 @@ export default function KeywordResearch() {
               No results to display for current filters. Try clearing text/chips or widening the difficulty band.
             </div>
           ) : (
-            <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
+            <KeywordList 
+            blocks={sortedBlocks} 
+            highlightId={highlightId} 
+            sortByAI={sortByAI} 
+            />
           )}
         </div>
       </div>

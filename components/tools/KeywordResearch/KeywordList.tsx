@@ -8,9 +8,11 @@ import { KeywordSourceBlock, KeywordItem, explainPick } from "./utils";
 export default function KeywordList({
   blocks,
   highlightId,
+  sortByAI = false,
 }: {
   blocks: KeywordSourceBlock[];
   highlightId?: string | null;
+  sortByAI?: boolean;
 }) {
   return (
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4 overflow-visible">
@@ -20,7 +22,12 @@ export default function KeywordList({
           className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 p-3 bg-white/70 dark:bg-white/5 overflow-visible"
           aria-labelledby={`h-${block.source}`}
         >
-          <h2 id={`h-${block.source}`} className="text-lg font-semibold mb-2">{block.source}</h2>
+          <h2 id={`h-${block.source}`} className="text-lg font-semibold mb-2">
+  {block.source}
+  {sortByAI && (
+    <span className="ml-2 text-xs text-emerald-600">AI sorted</span>
+  )}
+</h2>
           <div className="space-y-2 overflow-visible">
             {block.items.map((k) => (
               <Card key={k.id} k={k} highlight={k.id === highlightId} />
