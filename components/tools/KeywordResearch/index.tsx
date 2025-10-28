@@ -12,6 +12,7 @@ import {
   recomputeAll, explainPick, runAIInsight, computeMetricsAdvanced
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
+import { exportDashboardToPNG } from "./PngReport"; // ⬅️ NEW
 
 type SessionSnapshot = {
   id: string;
@@ -65,36 +66,29 @@ export default function KeywordResearch() {
   const [cpcSim, setCpcSim] = useState(50);
   const [estClicks, setEstClicks] = useState(0);
 
-  // Difficulty filter
   const [minDiff, setMinDiff] = useState<number>(() => Number(localStorage.getItem("dfMin") ?? 0));
   const [maxDiff, setMaxDiff] = useState<number>(() => Number(localStorage.getItem("dfMax") ?? 100));
   const [totalBefore, setTotalBefore] = useState(0);
   const [totalAfter, setTotalAfter] = useState(0);
 
-  // Search in results + chips
   const [textFilter, setTextFilter] = useState("");
   const [chips, setChips] = useState<string[]>([]);
 
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
-  // History / compare
   const [history, setHistory] = useState<SessionSnapshot[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [compareWith, setCompareWith] = useState<SessionSnapshot | null>(null);
 
-  // Share copied flag
   const [copied, setCopied] = useState(false);
 
-  // Refs
   const rootRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<number | null>(null);
   const debounceTextRef = useRef<number | null>(null);
   const historyBtnRef = useRef<HTMLButtonElement | null>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const compareRef = useRef<HTMLDivElement | null>(null);
 
-  // Init
   useEffect(() => {
     setHistory(loadSessions());
     const sp = new URLSearchParams(window.location.search);
@@ -121,24 +115,6 @@ export default function KeywordResearch() {
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
   useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
 
-  // Position dropdown
-  useEffect(() => {
-    function compute() {
-      if (!historyOpen || !historyBtnRef.current) return;
-      const r = historyBtnRef.current.getBoundingClientRect();
-      setMenuPos({ top: r.bottom + 8, left: r.right - 340, width: 340 });
-    }
-    compute();
-    if (!historyOpen) return;
-    window.addEventListener("resize", compute);
-    window.addEventListener("scroll", compute, { passive: true });
-    return () => {
-      window.removeEventListener("resize", compute);
-      window.removeEventListener("scroll", compute);
-    };
-  }, [historyOpen]);
-
-  // Mood color update
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -147,7 +123,6 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
-  // Snapshot for history
   function snapshotCurrent(seedForSave?: string): SessionSnapshot | null {
     if (!baseBlocks.length) return null;
     return {
@@ -158,19 +133,17 @@ export default function KeywordResearch() {
     };
   }
 
-  // Pipeline
   function applyPipeline(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
     if (!baseBlocks.length) return;
     const next = recomputeAll(baseBlocks, v, c, d0, d1, tf, ch);
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
+    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks); // ensure no stale EMC
     setTotalBefore(next.totalBefore);
     setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
   }
-
   function schedule(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
@@ -179,7 +152,6 @@ export default function KeywordResearch() {
     }, 120);
   }
 
-  // Generate
   function handleGenerate(q?: string, opts?: { initial?: boolean }) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
@@ -190,7 +162,7 @@ export default function KeywordResearch() {
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
+    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks); // ensure no stale EMC
     setTotalBefore(next.totalBefore);
     setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
@@ -205,7 +177,6 @@ export default function KeywordResearch() {
     }
   }
 
-  // Restore
   function restoreSession(s: SessionSnapshot) {
     setQuery(s.seed);
     setVolSim(s.volSim);
@@ -218,7 +189,6 @@ export default function KeywordResearch() {
     applyPipeline(s.volSim, s.cpcSim, s.minDiff, s.maxDiff, s.textFilter, s.chips);
   }
 
-  // Sliders
   const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value; setVolSim(v);
     schedule(v, cpcSim, minDiff, maxDiff, textFilter, chips);
@@ -236,7 +206,6 @@ export default function KeywordResearch() {
     setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv, textFilter, chips);
   };
 
-  // Text filter (debounced)
   const onText = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setTextFilter(v);
@@ -246,7 +215,6 @@ export default function KeywordResearch() {
     }, 150);
   };
 
-  // Chips
   function toggleChip(tag: string) {
     const exists = chips.includes(tag);
     const next = exists ? chips.filter(c => c !== tag) : [...chips, tag];
@@ -254,7 +222,6 @@ export default function KeywordResearch() {
     schedule(volSim, cpcSim, minDiff, maxDiff, textFilter, next);
   }
 
-  // Clear Filters (PATCH #1 & #2)
   function clearAllFilters() {
     const v = volSim, c = cpcSim;
     setTextFilter("");
@@ -264,7 +231,6 @@ export default function KeywordResearch() {
     applyPipeline(v, c, 0, 100, "", []);
   }
 
-  // Actions
   function handleCopyAll() {
     const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
     navigator.clipboard.writeText(flat);
@@ -294,6 +260,17 @@ export default function KeywordResearch() {
     if (!rootRef.current) return;
     await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
   }
+  // ⬇️ NEW
+  async function handleExportPNG() {
+    if (!rootRef.current) return;
+    const seed = (query.trim() || "keyword").replace(/\s+/g, "-");
+    await exportDashboardToPNG(rootRef.current, `${seed}-dashboard.png`, {
+      title: "ToolCite – Keyword Research (AI Dashboard)",
+      subtitle: `Seed: ${query.trim() || "keyword"} • Exported ${new Date().toLocaleString()}`,
+      watermark: "© ToolCite Hub • Smart • Fast • Reliable",
+    });
+  }
+
   function handleSaveSession() {
     const snap = snapshotCurrent();
     if (!snap) return;
@@ -301,14 +278,12 @@ export default function KeywordResearch() {
     setHistory(loadSessions());
   }
 
-  // Compare
   function startCompare(s: SessionSnapshot) {
     setCompareWith(s);
     setHistoryOpen(false);
     setTimeout(() => { compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0);
   }
 
-  // AI Insight (PATCH #3 disables when empty via button prop)
   function handleAIInsight() {
     if (!dataset.data.length || totalAfter === 0) return;
     const { top3, scores } = runAIInsight(dataset.data);
@@ -322,7 +297,6 @@ export default function KeywordResearch() {
     setLastUpdated(Date.now());
   }
 
-  // Sorted
   const sortedBlocks = sortByAI
     ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
     : dataset.data;
@@ -357,7 +331,7 @@ export default function KeywordResearch() {
             </button>
             <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
 
-            {/* History */}
+            {/* History dropdown (unchanged aside from surrounding code) */}
             <div className="relative">
               <button
                 ref={historyBtnRef}
@@ -409,10 +383,12 @@ export default function KeywordResearch() {
             <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>Copy All</button>
             <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
             <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
+            {/* NEW: Export PNG */}
+            <button className="h-10 px-3 rounded-xl bg-orange-500 text-white" onClick={handleExportPNG}>Export PNG</button>
+
             <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
               {copied ? "✅ Copied" : "Share Link"}
             </button>
-            {/* PATCH #3: disabled when totalAfter === 0 */}
             <button
               className="h-10 px-3 rounded-xl bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleAIInsight}
@@ -424,12 +400,10 @@ export default function KeywordResearch() {
           </div>
         </div>
 
-        {/* Summary */}
         <div data-export="section">
           <SummaryBar metrics={dataset.metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
         </div>
 
-        {/* Compare panel */}
         {compareWith && (
           <div ref={compareRef} className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10 p-4">
             <div className="flex items-center justify-between">
@@ -462,7 +436,6 @@ export default function KeywordResearch() {
           </div>
         )}
 
-        {/* Toggles */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
             <input type="checkbox" className="accent-blue-600" checked={showTrend} onChange={(e) => setShowTrend(e.target.checked)} />
@@ -474,11 +447,9 @@ export default function KeywordResearch() {
           </label>
         </div>
 
-        {/* Simulator + Difficulty + Search & Chips */}
         <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
-            {/* PATCH #4: graceful when empty */}
             <div className="text-xs text-neutral-500">KSI now: <b>{totalAfter === 0 ? "—" : dataset.metrics.health}</b></div>
           </div>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -496,7 +467,6 @@ export default function KeywordResearch() {
             </div>
           </div>
 
-          {/* Difficulty Filter */}
           <div className="mt-6">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">
@@ -523,7 +493,7 @@ export default function KeywordResearch() {
             </div>
           </div>
 
-          {/* Search in results + Chips + PATCH #2 Clear button */}
+          {/* Search + Chips */}
           <div className="mt-6">
             <div className="text-sm font-semibold">Search in results</div>
 
@@ -574,12 +544,10 @@ export default function KeywordResearch() {
           </div>
         </div>
 
-        {/* Charts */}
         <div data-export="section">
           <MetricsCharts metrics={dataset.metrics} blocks={sortedBlocks} />
         </div>
 
-        {/* AI Insight */}
         <aside data-export="section" id="insights-panel" className="rounded-2xl border p-4 overflow-visible"
           style={{
             borderColor: trendColor + "66",
@@ -629,7 +597,6 @@ export default function KeywordResearch() {
           </ul>
         </aside>
 
-        {/* Keyword Lists */}
         <div data-export="section" id="kw-lists" className="pt-2 overflow-visible">
           {totalAfter === 0 ? (
             <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-6 text-sm text-neutral-600 dark:text-neutral-300">
@@ -643,8 +610,6 @@ export default function KeywordResearch() {
     </div>
   );
 }
-
-// in applyPipeli
 
 function emptyMetrics(): Metrics {
   return {
