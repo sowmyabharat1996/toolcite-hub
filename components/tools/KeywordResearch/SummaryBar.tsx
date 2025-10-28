@@ -10,8 +10,6 @@ type Props = {
   previous?: Metrics | null;
   /** NEW: live KPI from sliders */
   estClicks?: number;
-  /** NEW: small caption shown under the KPI grid */
-  extraNote?: string;
 };
 
 // ---------- helpers ----------
@@ -98,7 +96,6 @@ export default function SummaryBar({
   showTrend,
   previous,
   estClicks = 0,
-  extraNote,
 }: Props) {
   const [spin, setSpin] = useState(false);
   const [history, setHistory] = useState<
@@ -230,13 +227,6 @@ export default function SummaryBar({
           {showTrend && <TrendArrow delta={clicksDelta} />}
         </Stat>
       </div>
-
-      {/* small caption under the tiles (optional) */}
-      {extraNote && (
-        <div className="px-4 -mt-2 text-xs text-neutral-600 dark:text-neutral-300">
-          {extraNote}
-        </div>
-      )}
 
       {/* Health bar row */}
       <div className="flex items-center justify-between px-4 pb-4">
