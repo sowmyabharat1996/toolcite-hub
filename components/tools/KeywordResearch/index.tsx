@@ -8,7 +8,8 @@ import KeywordList from "./KeywordList";
 import {
   Dataset, KeywordSourceBlock, Metrics,
   generateMockData, computeMetrics, toCSV, shareURLFromSeed,
-  runAIInsight, applyVolumeCPCSimulation, downloadBlob, KeywordItem, explainPick
+  downloadBlob, KeywordItem,
+  recomputeAll, // NEW
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
@@ -31,21 +32,22 @@ export default function KeywordResearch() {
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<number | null>(null); // NEW
 
-  // seed from URL
+  /* ------------------------------- URL Seed ------------------------------- */
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("q") || "";
     if (q) { setQuery(q); handleGenerate(q); }
   }, []);
 
-  // sort toggle persistence
+  /* --------------------------- Sort toggle persist ------------------------ */
   useEffect(() => {
     const stored = localStorage.getItem("sortByAI");
     if (stored === "true") setSortByAI(true);
   }, []);
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
 
-  // mood color
+  /* --------------------------------- Mood -------------------------------- */
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -54,26 +56,23 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
+  /* ------------------------------ Generators ------------------------------ */
   function handleGenerate(q?: string) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
     setPreviousMetrics(dataset.metrics);
     setBaseBlocks(result.data);
 
-    const sim = applyVolumeCPCSimulation(result.data, volSim, cpcSim);
-    const metrics = computeMetrics(sim.blocks);
-    const { top3, scores } = runAIInsight(sim.blocks);
-    const scoredBlocks = sim.blocks.map((b) => ({
-      ...b, items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
-    }));
-
-    setDataset({ data: scoredBlocks, metrics });
-    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(top3[0]?.id ?? null);
-    setEstClicks(sim.estClicks);
+    // One-shot recompute on top of freshly generated base
+    const next = recomputeAll(result.data, volSim, cpcSim);
+    setDataset({ data: next.blocks, metrics: next.metrics });
+    setInsights(next.top3);
+    setHighlightId(next.top3[0]?.id ?? null);
+    setEstClicks(next.estClicks);
     setLastUpdated(Date.now());
   }
 
+  /* ------------------------------- Actions -------------------------------- */
   function handleCopyAll() {
     const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
     navigator.clipboard.writeText(flat);
@@ -92,34 +91,46 @@ export default function KeywordResearch() {
   }
 
   function handleAIInsight() {
-    const { top3, scores } = runAIInsight(dataset.data);
-    const scoredBlocks = dataset.data.map((b) => ({
-      ...b, items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
-    }));
-    setDataset({ data: scoredBlocks, metrics: computeMetrics(scoredBlocks) });
-    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(top3[0]?.id ?? null);
+    // Reuse recomputeAll so scores align with current sim state
+    const next = recomputeAll(dataset.data, volSim, cpcSim);
+    setDataset({ data: next.blocks, metrics: next.metrics });
+    setInsights(next.top3);
+    setHighlightId(next.top3[0]?.id ?? null);
     document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
     setLastUpdated(Date.now());
   }
 
-  function applySim(vol: number, cpc: number) {
+  /* ------------------------- Live Simulator (debounce) -------------------- */
+  function applySimNow(v: number, c: number) {
     if (!baseBlocks.length) return;
-    const sim = applyVolumeCPCSimulation(baseBlocks, vol, cpc);
-    const metrics = computeMetrics(sim.blocks);
-    const { top3, scores } = runAIInsight(sim.blocks);
-    const scoredBlocks = sim.blocks.map((b) => ({
-      ...b, items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
-    }));
-    setDataset({ data: scoredBlocks, metrics });
-    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(top3[0]?.id ?? null);
-    setEstClicks(sim.estClicks);
+    const next = recomputeAll(baseBlocks, v, c);
+    setDataset({ data: next.blocks, metrics: next.metrics });
+    setInsights(next.top3);
+    setHighlightId(next.top3[0]?.id ?? null);
+    setEstClicks(next.estClicks);
     setLastUpdated(Date.now());
   }
-  const onVol = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; setVolSim(v); applySim(v, cpcSim); };
-  const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; setCpcSim(v); applySim(volSim, v); };
 
+  function scheduleSim(v: number, c: number) {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      applySimNow(v, c);
+      debounceRef.current = null;
+    }, 120); // ~1–2 frames after the last slider event
+  }
+
+  const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value;
+    setVolSim(v);
+    scheduleSim(v, cpcSim);
+  };
+  const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value;
+    setCpcSim(v);
+    scheduleSim(volSim, v);
+  };
+
+  /* ------------------------------ Derivations ----------------------------- */
   const sortedBlocks = sortByAI
     ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
     : dataset.data;
@@ -134,6 +145,7 @@ export default function KeywordResearch() {
 
   const { metrics } = dataset;
 
+  /* --------------------------------- UI ----------------------------------- */
   return (
     <div className="relative min-h-[100vh] overflow-visible">
       {/* Subtle page wash, plus export-mode CSS fixes */}
@@ -208,7 +220,7 @@ export default function KeywordResearch() {
             <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm">
               <span>🟢 Est. Monthly Clicks</span>
               <strong className="text-emerald-700 dark:text-emerald-300">{estClicks.toLocaleString()}</strong>
-              <span className="text-xs text-neutral-500">toy model: Σ(vol × (1–diff%))</span>
+              <span className="text-xs text-neutral-500">proxy: Σ(vol × CTR(difficulty))</span>
             </div>
           </div>
         </div>

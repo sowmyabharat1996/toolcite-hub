@@ -1,4 +1,5 @@
 // components/tools/KeywordResearch/utils.ts
+
 export type Intent = "Navigational" | "Transactional" | "Informational" | "Commercial";
 export type Source = "Google" | "YouTube" | "Bing" | "Amazon";
 
@@ -25,7 +26,10 @@ export type Metrics = {
 
 export type Dataset = { data: KeywordSourceBlock[]; metrics: Metrics };
 
-// ---------- helpers ----------
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                     */
+/* -------------------------------------------------------------------------- */
+
 const INTENTS: Intent[] = ["Navigational", "Transactional", "Informational", "Commercial"];
 const SOURCES: Source[] = ["Google", "YouTube", "Bing", "Amazon"];
 
@@ -99,7 +103,10 @@ export function shareURLFromSeed(seed: string) {
   return url.toString();
 }
 
-// ---------- AI Insight ----------
+/* -------------------------------------------------------------------------- */
+/* AI Insight                                                                  */
+/* -------------------------------------------------------------------------- */
+
 const INTENT_WEIGHT: Record<Intent, number> = {
   Transactional: 1.0, Commercial: 0.9, Informational: 0.6, Navigational: 0.5,
 };
@@ -121,8 +128,18 @@ export function runAIInsight(blocks: KeywordSourceBlock[]) {
   return { top3, scores };
 }
 
-// ---------- Simulation (Volume & CPC) ----------
+/* -------------------------------------------------------------------------- */
+/* Simulation (Volume & CPC)                                                   */
+/* -------------------------------------------------------------------------- */
+
 function clamp01x100(n: number) { return Math.max(0, Math.min(100, Math.round(n))); }
+
+/** Lightweight CTR proxy; easier keywords get higher CTR. */
+function ctrFromDifficulty(difficulty: number) {
+  const v = 0.22 - (difficulty / 100) * 0.14; // ~22% → 8%
+  return Math.min(0.22, Math.max(0.08, v));
+}
+
 export function applyVolumeCPCSimulation(
   base: KeywordSourceBlock[],
   volSim: number,
@@ -139,14 +156,15 @@ export function applyVolumeCPCSimulation(
       const volume = clamp01x100(vol0 * factorVol);
       const cpc = clamp01x100(cpc0 * factorCpc);
       const scored: KeywordItem = { ...k, volume, cpc, ai: aiScore({ ...k, volume, cpc }) };
-      estClicks += volume * (1 - k.difficulty / 100);
+      // use CTR proxy for a more realistic EMC
+      estClicks += volume * ctrFromDifficulty(k.difficulty);
       return scored;
     }),
   }));
   return { blocks, estClicks: Math.round(estClicks) };
 }
 
-// ---------- Shared explanation for "Why this pick?" ----------
+/* Shared explanation for "Why this pick?" */
 export function explainPick(k: KeywordItem): string[] {
   const reasons: string[] = [];
   if (k.difficulty <= 25) reasons.push("Very low difficulty — quick win potential");
@@ -160,9 +178,44 @@ export function explainPick(k: KeywordItem): string[] {
   return reasons.slice(0, 3);
 }
 
-// Legacy helper if you still use it anywhere
+/** Legacy helper if you still use it anywhere */
 export function pickEasiestKeyword(blocks: KeywordSourceBlock[]) {
   const all = blocks.flatMap((b) => b.items);
   if (!all.length) return null;
   return all.reduce((min, k) => (k.difficulty < min.difficulty ? k : min), all[0]);
+}
+
+/* -------------------------------------------------------------------------- */
+/* NEW: One-shot recompute helper for “live simulator”                         */
+/* -------------------------------------------------------------------------- */
+
+export type RecomputeResult = {
+  blocks: KeywordSourceBlock[];
+  metrics: Metrics;
+  top3: Array<KeywordItem & { reasons?: string[] }>;
+  scores: Record<string, number>;
+  estClicks: number;
+};
+
+/**
+ * Recomputes everything in one go:
+ * - applies Volume/CPC simulation
+ * - recomputes Metrics (incl. health/KPI)
+ * - recomputes AI Top-3 and attaches reasons
+ * - returns Est. Monthly Clicks
+ */
+export function recomputeAll(
+  base: KeywordSourceBlock[],
+  volSim: number,
+  cpcSim: number
+): RecomputeResult {
+  const sim = applyVolumeCPCSimulation(base, volSim, cpcSim);
+  const metrics = computeMetrics(sim.blocks);
+  const { top3, scores } = runAIInsight(sim.blocks);
+  const top3WithReasons = top3.map((t) => ({ ...t, reasons: explainPick(t) }));
+  const blocks = sim.blocks.map((b) => ({
+    ...b,
+    items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+  }));
+  return { blocks, metrics, top3: top3WithReasons, scores, estClicks: sim.estClicks };
 }
