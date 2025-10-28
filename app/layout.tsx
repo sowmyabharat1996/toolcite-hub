@@ -28,12 +28,19 @@ export const metadata: Metadata = {
     title: "ToolCite – Free AI, Document & Dev Tools",
     description:
       "Fast, free web tools built for speed and simplicity — from weather to AI & SEO utilities.",
-    images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "ToolCite" }],
+    images: [
+      {
+        url: "/og-default.png",
+        width: 1200,
+        height: 630,
+        alt: "ToolCite",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     creator: "@yourhandle",
-    images: ["/og-default.png"],
+    images: ["/og-default.png"], // Dimensions are taken from OG
   },
   icons: {
     icon: "/favicon.ico",

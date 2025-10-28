@@ -30,17 +30,19 @@ export function generateStaticParams() {
 type ParamsPromise = Promise<{ slug: string }>;
 type SearchParamsPromise = Promise<Record<string, string | string[] | undefined>>;
 
-// ----- Per-page metadata (absolute OG image with size)
+// ----- Per-page metadata (per-tool OG with size)
 export async function generateMetadata(
   { params, searchParams }: { params: ParamsPromise; searchParams: SearchParamsPromise }
 ): Promise<Metadata> {
   const { slug } = await params;
-  await searchParams; // intentionally awaited for type parity
+  await searchParams; // keep type parity (even if unused)
 
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) return { title: "Tool Not Found | ToolCite" };
 
-  const ogImage = "https://toolcite.com/og-default.png";
+  // Per-tool OG (relative path is fine because metadataBase is set site-wide)
+  const perToolOg = `/og/tools/${slug}.png`;
+  const ogImage = perToolOg || "/og-default.png";
 
   return {
     title: `${tool.name} – Free Online Tool`,
@@ -52,8 +54,15 @@ export async function generateMetadata(
       description: tool.description,
       url: `https://toolcite.com/tools/${tool.slug}`,
       siteName: "ToolCite",
-      images: [{ url: ogImage, width: 1200, height: 630, alt: tool.name }],
       type: "website",
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: tool.name,
+        },
+      ],
     },
     twitter: {
       card: "summary_large_image",
@@ -105,7 +114,7 @@ async function ResolvedToolPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema(faqs)) }}
         />
       )}
-      {/* JSON-LD: Breadcrumbs (category now has a URL; last crumb no URL) */}
+      {/* JSON-LD: Breadcrumbs (category to /tools; final crumb without URL) */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
