@@ -155,3 +155,41 @@ canvas, img, svg {
 
 /* Add breathing room at page bottoms in long grids */
 .export-bottom-pad { padding-bottom: 64px; }
+
+/* ── Export-time typography fixes (prevents half-cut glyphs) ───────────── */
+html[data-exporting="1"] * {
+  text-shadow: none !important;
+}
+html[data-exporting="1"] h1,
+html[data-exporting="1"] h2,
+html[data-exporting="1"] h3,
+html[data-exporting="1"] h4,
+html[data-exporting="1"] h5,
+html[data-exporting="1"] h6,
+html[data-exporting="1"] p,
+html[data-exporting="1"] span {
+  letter-spacing: 0 !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+/* Never let these split across pages */
+[data-export="section"],
+.kw-card,
+.pdf-no-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Keep our earlier “nice card spacing” look for sections */
+.export-section {
+  border-radius: 1.25rem;         /* rounded-2xl */
+  background: #fff;               /* white cards */
+  border: 1px solid rgba(0,0,0,.08);
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+@media (min-width: 768px){
+  .export-section { padding: 1.25rem; margin-bottom: 1.25rem; }
+}
