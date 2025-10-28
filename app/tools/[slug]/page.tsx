@@ -2,12 +2,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import ToolRenderer from "@/components/ToolRenderer";
 import { TOOLS } from "@/lib/tools";
 import { softwareAppSchema, faqSchema, breadcrumbSchema } from "@/lib/schema";
 import { TOOL_FAQS } from "@/lib/tool-faqs";
-import ToolRenderer from "@/components/ToolRenderer";
 
-// Keep in sync with ToolRenderer's internal registry
+// Keep in sync with components/ToolRenderer.tsx REGISTRY
 const AVAILABLE_COMPONENTS = [
   "qr-code-generator",
   "image-compressor",
@@ -18,78 +18,41 @@ const AVAILABLE_COMPONENTS = [
   "meta-og-generator",
 ] as const;
 
-const hasComponent = (slug: string) =>
+const hasComponent = (slug: string): slug is (typeof AVAILABLE_COMPONENTS)[number] =>
   (AVAILABLE_COMPONENTS as readonly string[]).includes(slug);
 
-// --- Static params for SSG ---
+// ----- SSG params
 export function generateStaticParams() {
   return TOOLS.map((t) => ({ slug: t.slug }));
 }
 
-// --- Metadata (seed-aware for keyword tool) ---
-type GenMetaArgs =
-  | { params: { slug: string }; searchParams?: { q?: string } }
-  // Next 15 sometimes passes Promises; support both:
-  | { params: Promise<{ slug: string }>; searchParams?: { q?: string } };
+/** Next 15: both `params` and `searchParams` are Promises in PageProps */
+type ParamsPromise = Promise<{ slug: string }>;
+type SearchParamsPromise = Promise<Record<string, string | string[] | undefined>>;
 
-export async function generateMetadata(args: GenMetaArgs): Promise<Metadata> {
-  const params = "then" in args.params ? await args.params : args.params;
-  const { slug } = params;
-  const seed = (args.searchParams?.q || "Keyword Research").trim();
+// ----- Per-page metadata (match the Promise types)
+export async function generateMetadata(
+  { params, searchParams }: { params: ParamsPromise; searchParams: SearchParamsPromise }
+): Promise<Metadata> {
+  const { slug } = await params;
+  // even if unused, awaiting keeps types happy
+  await searchParams;
 
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) return { title: "Tool Not Found | ToolCite" };
 
-  const baseOg = {
-    images: ["/og-default.png"],
-    siteName: "ToolCite",
-    type: "website" as const,
-  };
-
-  const isKW = slug === "keyword-research-basic" || slug === "keyword-research";
-
-  if (isKW) {
-    const title = `${seed} – Keyword Research (AI Dashboard)`;
-    const url = `https://toolcite.com/tools/${slug}?q=${encodeURIComponent(seed)}`;
-    return {
-      title,
-      description: `AI dashboard for “${seed}”: intent mix, difficulty, KSI, Top-3 picks, and PDF/PNG export.`,
-      keywords: [
-        "keyword research",
-        "seo tool",
-        "ai keyword ideas",
-        "difficulty",
-        "intent",
-        seed,
-      ],
-      // Keep canonical stable (avoid query duplication)
-      alternates: { canonical: `/tools/${slug}` },
-      openGraph: {
-        ...baseOg,
-        title,
-        description: `AI keyword insights for “${seed}”.`,
-        url,
-      },
-      twitter: {
-        card: "summary_large_image",
-        title,
-        description: `AI keyword insights for “${seed}”.`,
-        images: ["/og-default.png"],
-      },
-    };
-  }
-
-  // Default metadata for other tools
   return {
     title: `${tool.name} – Free Online Tool`,
     description: `${tool.description} Fast, accurate, and free.`,
     keywords: tool.keywords,
     alternates: { canonical: `/tools/${tool.slug}` },
     openGraph: {
-      ...baseOg,
       title: tool.name,
       description: tool.description,
       url: `https://toolcite.com/tools/${tool.slug}`,
+      siteName: "ToolCite",
+      images: ["/og-default.png"],
+      type: "website",
     },
     twitter: {
       card: "summary_large_image",
@@ -100,14 +63,26 @@ export async function generateMetadata(args: GenMetaArgs): Promise<Metadata> {
   };
 }
 
-// --- Page ---
-type PageArgs =
-  | { params: { slug: string }; searchParams?: { q?: string } }
-  | { params: Promise<{ slug: string }>; searchParams?: { q?: string } };
+// ----- Page (match Promise types, unwrap in a child)
+export default function ToolPage({
+  params,
+  searchParams,
+}: {
+  params: ParamsPromise;
+  searchParams: SearchParamsPromise;
+}) {
+  return <ResolvedToolPage params={params} searchParams={searchParams} />;
+}
 
-export default async function ToolPage(args: PageArgs) {
-  const params = "then" in args.params ? await args.params : args.params;
-  const { slug } = params;
+async function ResolvedToolPage({
+  params,
+  searchParams,
+}: {
+  params: ParamsPromise;
+  searchParams: SearchParamsPromise;
+}) {
+  const { slug } = await params;
+  const _qs = await searchParams; // reserved for future use
 
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) notFound();
@@ -115,54 +90,33 @@ export default async function ToolPage(args: PageArgs) {
   const faqs = TOOL_FAQS[slug] ?? [];
   const renderActualTool = hasComponent(slug);
 
-  const seed = (args.searchParams?.q || "Keyword Research").trim();
-  const isKW = slug === "keyword-research-basic" || slug === "keyword-research";
-
-  // JSON-LD blobs
-  const ldSoftware = softwareAppSchema(tool);
-  const ldFaq = faqs.length ? faqSchema(faqs) : null;
-  const ldBreadcrumb = breadcrumbSchema([
-    { name: "Home", url: "https://toolcite.com" },
-    { name: tool.category },
-    { name: tool.name },
-  ]);
-  const ldKW =
-    isKW
-      ? {
-          "@context": "https://schema.org",
-          "@type": "SoftwareApplication",
-          name: "Keyword Research (AI Dashboard)",
-          applicationCategory: "SEO Tool",
-          operatingSystem: "Web",
-          url: `https://toolcite.com/tools/${slug}?q=${encodeURIComponent(seed)}`,
-          offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-          description: `Find seed keywords and insights for “${seed}”. AI scoring, charts, PDF/PNG export.`,
-        }
-      : null;
-
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
-      {/* JSON-LD */}
+      {/* JSON-LD: SoftwareApplication */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(ldSoftware) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppSchema(tool)) }}
       />
-      {ldFaq && (
+      {/* JSON-LD: FAQ */}
+      {faqs.length > 0 && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(ldFaq) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema(faqs)) }}
         />
       )}
+      {/* JSON-LD: Breadcrumbs */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(ldBreadcrumb) }}
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            breadcrumbSchema([
+              { name: "Home", url: "https://toolcite.com" },
+              { name: tool.category },
+              { name: tool.name },
+            ])
+          ),
+        }}
       />
-      {ldKW && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(ldKW) }}
-        />
-      )}
 
       {/* Header */}
       <h1 className="text-3xl font-semibold">
@@ -180,15 +134,13 @@ export default async function ToolPage(args: PageArgs) {
               We’re building this tool now. Check back soon or explore other tools on the homepage.
             </p>
             {tool.status !== "live" && (
-              <p className="mt-3 text-sm text-gray-500">
-                Coming soon — we’re shipping these one by one.
-              </p>
+              <p className="mt-3 text-sm text-gray-500">Coming soon — we’re shipping these one by one.</p>
             )}
           </>
         )}
       </section>
 
-      {/* SEO-supporting content scaffold */}
+      {/* SEO-supporting content */}
       <section className="prose prose-slate dark:prose-invert mt-10">
         <h2>How to Use {tool.name}</h2>
         <ol>
@@ -201,7 +153,7 @@ export default async function ToolPage(args: PageArgs) {
         <ul>
           <li>Fast, private, no sign-up required.</li>
           <li>Mobile-friendly and accessible on any device.</li>
-          <li>Export & share (where applicable).</li>
+          <li>Export &amp; share (where applicable).</li>
         </ul>
 
         <h2>FAQ</h2>
