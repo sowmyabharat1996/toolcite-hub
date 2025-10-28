@@ -125,14 +125,17 @@ function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
     <>
       <div
         ref={cardRef}
-        className={`group relative rounded-xl p-3 border transition-shadow duration-300 ${
+        data-pdf-snap
+        className={`kw-card group relative rounded-xl p-3 border transition-shadow duration-300 ${
           highlight
             ? "border-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
             : "border-neutral-200/70 dark:border-neutral-800"
         }`}
-        aria-label={
-          reasons.length ? `Why this pick? ${reasons.join("; ")}` : undefined
-        }
+        style={{
+          breakInside: "avoid",
+          pageBreakInside: "avoid",
+        }}
+        aria-label={reasons.length ? `Why this pick? ${reasons.join("; ")}` : undefined}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         tabIndex={0}
