@@ -8,11 +8,9 @@ type Props = {
   lastUpdated: number;
   showTrend: boolean;
   previous?: Metrics | null;
-  /** NEW: live KPI from sliders */
   estClicks?: number;
 };
 
-// ---------- helpers ----------
 function useTicker(target: number, deps: React.DependencyList) {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -45,6 +43,7 @@ function TrendArrow({ delta }: { delta: number }) {
       className={`ml-1 text-xs font-medium inline-flex items-center gap-0.5 transition-opacity duration-300 ${
         up ? "text-green-600" : "text-rose-600"
       }`}
+      aria-label={up ? `Up ${Math.abs(delta)} percent` : `Down ${Math.abs(delta)} percent`}
     >
       {up ? "▲" : "▼"} {Math.abs(delta)}%
     </span>
@@ -63,7 +62,14 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
     .map((v, i) => `${(i / (data.length - 1)) * width},${norm(v)}`)
     .join(" ");
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="ml-2">
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="ml-2"
+      role="img"
+      aria-label="Trend sparkline"
+    >
       <polyline
         fill="none"
         stroke={color}
@@ -109,7 +115,6 @@ export default function SummaryBar({
     }>
   >([]);
 
-  // load history on mount (compat: older entries may not have estClicks)
   useEffect(() => {
     const h = JSON.parse(localStorage.getItem("metricHistory") || "[]").map((x: any) => ({
       ...x,
@@ -118,7 +123,6 @@ export default function SummaryBar({
     setHistory(h);
   }, []);
 
-  // update history when metrics/estClicks change
   useEffect(() => {
     if (!metrics || metrics.total === 0) return;
     const newEntry = {
@@ -129,13 +133,12 @@ export default function SummaryBar({
       intents: metrics.byIntent,
       estClicks,
     };
-    const updated = [...history.slice(-4), newEntry]; // keep last 5
+    const updated = [...history.slice(-4), newEntry];
     setHistory(updated);
     localStorage.setItem("metricHistory", JSON.stringify(updated));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metrics.total, metrics.avgDifficulty, metrics.health, estClicks]);
 
-  // little spinner on update
   useEffect(() => {
     setSpin(true);
     const id = setTimeout(() => setSpin(false), 600);
@@ -147,13 +150,11 @@ export default function SummaryBar({
     return s < 1 ? 0 : s;
   }, [lastUpdated]);
 
-  // animated numbers
   const totalN = useTicker(metrics.total, [metrics.total, lastUpdated]);
   const avgDiffN = useTicker(metrics.avgDifficulty, [metrics.avgDifficulty, lastUpdated]);
   const healthN = useTicker(metrics.health, [metrics.health, lastUpdated]);
   const clicksN = useTicker(estClicks, [estClicks, lastUpdated]);
 
-  // deltas (for avg diff + intents + health) using "previous"
   const deltas = useMemo(() => {
     if (!previous) return null;
     return {
@@ -180,19 +181,16 @@ export default function SummaryBar({
     };
   }, [metrics, previous]);
 
-  // derive trend color from health delta for synchronized mood
   const trendColor = useMemo(() => {
     const d = deltas?.health ?? 0;
-    if (Math.abs(d) < 1) return "#3b82f6"; // blue = stable
-    return d > 0 ? "#22c55e" : "#ef4444"; // green / red
+    if (Math.abs(d) < 1) return "#3b82f6";
+    return d > 0 ? "#22c55e" : "#ef4444";
   }, [deltas]);
 
-  // clicks delta (use history’s last value)
   const prevClicks = history.length ? history[history.length - 1].estClicks : 0;
   const clicksDelta =
     prevClicks === 0 ? 0 : Math.round(((estClicks - prevClicks) / Math.max(1, prevClicks)) * 100);
 
-  // sparkline helpers
   const getSpark = (key: "total" | "avgDifficulty" | "health" | "estClicks") =>
     history.map((h) => h[key]).slice(-5);
 
@@ -203,8 +201,8 @@ export default function SummaryBar({
         bgForHealth(metrics.health),
         "backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:supports-[backdrop-filter]:bg-black/40 transition-shadow duration-500"
       )}
+      aria-label="Summary KPIs"
     >
-      {/* now 7 tiles including Est. Monthly Clicks */}
       <div className="grid grid-cols-2 md:grid-cols-7 gap-4 p-4">
         <Stat label="Total Keywords" value={totalN} spark={getSpark("total")} color={trendColor} />
         <Stat label="Avg Difficulty" value={avgDiffN} spark={getSpark("avgDifficulty")} color={trendColor}>
@@ -222,17 +220,23 @@ export default function SummaryBar({
         <Stat label="Commercial" value={metrics.byIntent.Commercial}>
           {showTrend && deltas && <TrendArrow delta={deltas.intents.Commercial} />}
         </Stat>
-        {/* NEW TILE */}
         <Stat label="Est. Monthly Clicks" value={fmt(clicksN)} spark={getSpark("estClicks")} color={trendColor}>
           {showTrend && <TrendArrow delta={clicksDelta} />}
         </Stat>
       </div>
 
-      {/* Health bar row */}
+      {/* Health bar row with progress semantics */}
       <div className="flex items-center justify-between px-4 pb-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-neutral-600 dark:text-neutral-300">Keyword Health</span>
-          <div className="relative w-44 h-3 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+          <div
+            className="relative w-44 h-3 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
+            role="progressbar"
+            aria-label="Keyword Health"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={metrics.health}
+          >
             <div
               className="absolute left-0 top-0 h-full transition-all duration-700"
               style={{
@@ -252,9 +256,10 @@ export default function SummaryBar({
           <Sparkline data={getSpark("health")} color={trendColor} />
         </div>
 
-        <div className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
+        {/* polite live region for time updates */}
+        <div className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-1" role="status" aria-live="polite" aria-atomic="true">
           <button
-            aria-label="Refresh"
+            aria-label="Refresh visual tick"
             className={classNames("inline-flex items-center", spin && "animate-spin")}
             onClick={() => {}}
           >
@@ -281,7 +286,11 @@ function Stat({
   color?: string;
 }) {
   return (
-    <div className="rounded-xl bg-white/60 dark:bg-white/5 p-3 shadow-sm border border-neutral-200/60 dark:border-neutral-800 flex flex-col justify-between transition-all duration-500 hover:shadow-md">
+    <div
+      className="rounded-xl bg-white/60 dark:bg-white/5 p-3 shadow-sm border border-neutral-200/60 dark:border-neutral-800 flex flex-col justify-between transition-all duration-500 hover:shadow-md"
+      role="group"
+      aria-label={label}
+    >
       <div className="text-xs text-neutral-500 dark:text-neutral-400 flex items-center justify-between">
         <span>{label}</span>
         {spark && spark.length > 1 && <Sparkline data={spark} color={color ?? "#3b82f6"} />}

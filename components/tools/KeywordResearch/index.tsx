@@ -337,6 +337,9 @@ export default function KeywordResearch() {
       `}</style>
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
+        <a href="#kw-lists" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 bg-black text-white px-3 py-2 rounded-md">
+  Skip to keyword lists
+</a>
         {/* Header */}
         <div className="flex flex-wrap gap-2 items-center [isolation:isolate]">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
@@ -507,13 +510,29 @@ export default function KeywordResearch() {
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                 <span>Assumed Avg Volume (scales all rows)</span><strong>{volSim}</strong>
               </div>
-              <input type="range" min={0} max={100} value={volSim} onChange={onVol} className="w-full accent-sky-600" />
+              <input
+  type="range"
+  min={0}
+  max={100}
+  value={volSim}
+  onChange={onVol}
+  className="w-full accent-sky-600"
+  aria-label="Assumed average volume"
+/>
             </div>
             <div>
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                 <span>Assumed Avg CPC (scales all rows)</span><strong>{cpcSim}</strong>
               </div>
-              <input type="range" min={0} max={100} value={cpcSim} onChange={onCpc} className="w-full accent-amber-600" />
+              <input
+  type="range"
+  min={0}
+  max={100}
+  value={cpcSim}
+  onChange={onCpc}
+  className="w-full accent-amber-600"
+  aria-label="Assumed average CPC"
+/>
             </div>
           </div>
 
@@ -533,13 +552,29 @@ export default function KeywordResearch() {
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                   <span>Min Difficulty</span><strong>{minDiff}</strong>
                 </div>
-                <input type="range" min={0} max={100} value={minDiff} onChange={onMin} className="w-full accent-emerald-600" />
+                <input
+  type="range"
+  min={0}
+  max={100}
+  value={minDiff}
+  onChange={onMin}
+  className="w-full accent-emerald-600"
+  aria-label="Minimum difficulty"
+/>
               </div>
               <div>
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                   <span>Max Difficulty</span><strong>{maxDiff}</strong>
                 </div>
-                <input type="range" min={0} max={100} value={maxDiff} onChange={onMax} className="w-full accent-rose-600" />
+                <input
+  type="range"
+  min={0}
+  max={100}
+  value={maxDiff}
+  onChange={onMax}
+  className="w-full accent-rose-600"
+  aria-label="Maximum difficulty"
+/>
               </div>
             </div>
           </div>
