@@ -227,6 +227,10 @@ export default function KeywordResearch() {
   }
 
   // Actions
+  function handleCopyAll() {
+    const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
+    navigator.clipboard.writeText(flat);
+  }
   function handleExportCSV() {
     const csv = toCSV(dataset.data);
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
@@ -337,9 +341,6 @@ export default function KeywordResearch() {
       `}</style>
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
-        <a href="#kw-lists" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 bg-black text-white px-3 py-2 rounded-md">
-  Skip to keyword lists
-</a>
         {/* Header */}
         <div className="flex flex-wrap gap-2 items-center [isolation:isolate]">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
@@ -351,16 +352,31 @@ export default function KeywordResearch() {
               placeholder="e.g. ai tools for students"
               className="h-10 w-64 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
             />
-            <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium" onClick={() => handleGenerate()}>
+            {/* PRIMARY BUTTONS — focus:* (no focus-visible to avoid SWC parse hiccup) */}
+            <button
+              className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium
+                         focus:outline-none focus:ring-2 focus:ring-blue-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+              onClick={() => handleGenerate()}
+            >
               Generate
             </button>
-            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
+            <button
+              className="h-10 px-3 rounded-xl bg-emerald-600 text-white
+                         focus:outline-none focus:ring-2 focus:ring-emerald-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+              onClick={handleSaveSession}
+            >
+              Save Session
+            </button>
 
             {/* History */}
             <div className="relative">
               <button
                 ref={historyBtnRef}
-                className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
+                className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700
+                           focus:outline-none focus:ring-2 focus:ring-neutral-400
+                           focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
                 onClick={() => setHistoryOpen(v => !v)}
               >
                 History ▾
@@ -406,15 +422,51 @@ export default function KeywordResearch() {
             </div>
 
             {/* Copy / Export */}
-            <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
-            <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
-            <button className="h-10 px-3 rounded-xl bg-orange-500 text-white" onClick={handleExportPNG}>Export PNG</button>
+            <button
+              className="h-10 px-3 rounded-xl bg-neutral-800 text-white
+                         focus:outline-none focus:ring-2 focus:ring-neutral-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+              onClick={handleCopyAll}
+            >
+              Copy All
+            </button>
+            <button
+              className="h-10 px-3 rounded-xl bg-purple-600 text-white
+                         focus:outline-none focus:ring-2 focus:ring-purple-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+              onClick={handleExportCSV}
+            >
+              Export CSV
+            </button>
+            <button
+              className="h-10 px-3 rounded-xl bg-amber-600 text-white
+                         focus:outline-none focus:ring-2 focus:ring-amber-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+              onClick={handleExportPDF}
+            >
+              Export PDF
+            </button>
+            <button
+              className="h-10 px-3 rounded-xl bg-orange-500 text-white
+                         focus:outline-none focus:ring-2 focus:ring-orange-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+              onClick={handleExportPNG}
+            >
+              Export PNG
+            </button>
 
-            <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
+            <button
+              className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700
+                         focus:outline-none focus:ring-2 focus:ring-neutral-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+              onClick={handleShare}
+            >
               {copied ? "✅ Copied" : "Share Link"}
             </button>
             <button
-              className="h-10 px-3 rounded-xl bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-10 px-3 rounded-xl bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed
+                         focus:outline-none focus:ring-2 focus:ring-emerald-400
+                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
               onClick={handleAIInsight}
               disabled={totalAfter === 0}
               title={totalAfter === 0 ? "No keywords in view — widen band or clear filters" : "Score & pick easiest keywords"}
@@ -510,29 +562,13 @@ export default function KeywordResearch() {
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                 <span>Assumed Avg Volume (scales all rows)</span><strong>{volSim}</strong>
               </div>
-              <input
-  type="range"
-  min={0}
-  max={100}
-  value={volSim}
-  onChange={onVol}
-  className="w-full accent-sky-600"
-  aria-label="Assumed average volume"
-/>
+              <input type="range" min={0} max={100} value={volSim} onChange={onVol} className="w-full accent-sky-600" aria-label="Assumed average volume" />
             </div>
             <div>
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                 <span>Assumed Avg CPC (scales all rows)</span><strong>{cpcSim}</strong>
               </div>
-              <input
-  type="range"
-  min={0}
-  max={100}
-  value={cpcSim}
-  onChange={onCpc}
-  className="w-full accent-amber-600"
-  aria-label="Assumed average CPC"
-/>
+              <input type="range" min={0} max={100} value={cpcSim} onChange={onCpc} className="w-full accent-amber-600" aria-label="Assumed average CPC" />
             </div>
           </div>
 
@@ -552,29 +588,13 @@ export default function KeywordResearch() {
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                   <span>Min Difficulty</span><strong>{minDiff}</strong>
                 </div>
-                <input
-  type="range"
-  min={0}
-  max={100}
-  value={minDiff}
-  onChange={onMin}
-  className="w-full accent-emerald-600"
-  aria-label="Minimum difficulty"
-/>
+                <input type="range" min={0} max={100} value={minDiff} onChange={onMin} className="w-full accent-emerald-600" aria-label="Minimum difficulty" />
               </div>
               <div>
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                   <span>Max Difficulty</span><strong>{maxDiff}</strong>
                 </div>
-                <input
-  type="range"
-  min={0}
-  max={100}
-  value={maxDiff}
-  onChange={onMax}
-  className="w-full accent-rose-600"
-  aria-label="Maximum difficulty"
-/>
+                <input type="range" min={0} max={100} value={maxDiff} onChange={onMax} className="w-full accent-rose-600" aria-label="Maximum difficulty" />
               </div>
             </div>
           </div>
@@ -585,27 +605,26 @@ export default function KeywordResearch() {
 
             <div className="mt-2 flex items-center justify-between">
               <input
-  type="search"                   // better semantics + mobile keyboard
-  inputMode="search"              // hints keyboards on Android
-  autoComplete="off"
-  value={textFilter}
-  onChange={onText}
-  placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
-  className="h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
-  aria-label="Filter keywords text"
-  aria-describedby="filter-help"
-/>
+                value={textFilter}
+                onChange={onText}
+                placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
+                className="h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
+                aria-label="Filter keywords text"
+                aria-describedby="filter-help"
+              />
               <button
                 onClick={clearAllFilters}
-                className="ml-2 shrink-0 h-10 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 text-sm"
+                className="ml-2 shrink-0 h-10 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
                 title="Reset text/chips and difficulty band to defaults"
               >
                 Clear
               </button>
             </div>
-<div id="filter-help" className="mt-1 text-[11px] text-neutral-500">
-  Filters affect AI Top-3, charts, and KSI.
-</div>
+
+            <div id="filter-help" className="mt-1 text-[11px] text-neutral-500">
+              Filters affect AI Top-3, charts, and KSI.
+            </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               {CHIP_CATALOG.map((tag) => {
@@ -662,7 +681,7 @@ export default function KeywordResearch() {
           </div>
           <ul className="space-y-3">
             {insights.map((x, i) => (
-              <li key={x.id} className="rounded-xl border bg-white/70 dark:bg-white/10 p-3" style={{ borderColor: trendColor + "4d" }}>
+              <li key={x.id} className="rounded-2xl border bg-white/70 dark:bg-white/10 p-3" style={{ borderColor: trendColor + "4d" }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
