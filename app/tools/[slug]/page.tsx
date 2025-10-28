@@ -30,16 +30,17 @@ export function generateStaticParams() {
 type ParamsPromise = Promise<{ slug: string }>;
 type SearchParamsPromise = Promise<Record<string, string | string[] | undefined>>;
 
-// ----- Per-page metadata (match the Promise types)
+// ----- Per-page metadata (absolute OG image with size)
 export async function generateMetadata(
   { params, searchParams }: { params: ParamsPromise; searchParams: SearchParamsPromise }
 ): Promise<Metadata> {
   const { slug } = await params;
-  // even if unused, awaiting keeps types happy
-  await searchParams;
+  await searchParams; // intentionally awaited for type parity
 
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) return { title: "Tool Not Found | ToolCite" };
+
+  const ogImage = "https://toolcite.com/og-default.png";
 
   return {
     title: `${tool.name} – Free Online Tool`,
@@ -51,19 +52,19 @@ export async function generateMetadata(
       description: tool.description,
       url: `https://toolcite.com/tools/${tool.slug}`,
       siteName: "ToolCite",
-      images: ["/og-default.png"],
+      images: [{ url: ogImage, width: 1200, height: 630, alt: tool.name }],
       type: "website",
     },
     twitter: {
       card: "summary_large_image",
       title: tool.name,
       description: tool.description,
-      images: ["/og-default.png"],
+      images: [ogImage],
     },
   };
 }
 
-// ----- Page (match Promise types, unwrap in a child)
+// ----- Page (unwrap in a child)
 export default function ToolPage({
   params,
   searchParams,
@@ -82,7 +83,7 @@ async function ResolvedToolPage({
   searchParams: SearchParamsPromise;
 }) {
   const { slug } = await params;
-  const _qs = await searchParams; // reserved for future use
+  await searchParams;
 
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) notFound();
@@ -104,14 +105,14 @@ async function ResolvedToolPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema(faqs)) }}
         />
       )}
-      {/* JSON-LD: Breadcrumbs */}
+      {/* JSON-LD: Breadcrumbs (category now has a URL; last crumb no URL) */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(
             breadcrumbSchema([
               { name: "Home", url: "https://toolcite.com" },
-              { name: tool.category },
+              { name: tool.category, url: "https://toolcite.com/tools" },
               { name: tool.name },
             ])
           ),

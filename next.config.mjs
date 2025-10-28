@@ -35,7 +35,15 @@ const nextConfig = {
 
   async redirects() {
     return [
-      // keep ONLY app-level path redirects (no host-based rule here)
+      // ✅ Canonical host: force www → apex (Vercel already enforces HTTPS)
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.toolcite.com' }],
+        destination: 'https://toolcite.com/:path*',
+        permanent: true,
+      },
+
+      // Keep app-level redirects below
       { source: '/weather', destination: '/tools/weather', permanent: true },
     ];
   },

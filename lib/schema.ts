@@ -31,17 +31,24 @@ export function faqSchema(items: { q: string; a: string }[]) {
   };
 }
 
+/**
+ * Breadcrumbs:
+ * - Adds `item` only when a URL is provided (avoids “Missing field 'item'”).
+ */
 export function breadcrumbSchema(
   segments: { name: string; url?: string }[]
 ) {
   return {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
-    itemListElement: segments.map((s, i) => ({
-      "@type": "ListItem",
-      position: i + 1,
-      name: s.name,
-      item: s.url,
-    })),
+    itemListElement: segments.map((s, i) => {
+      const el: Record<string, unknown> = {
+        "@type": "ListItem",
+        position: i + 1,
+        name: s.name,
+      };
+      if (s.url) el.item = s.url; // only include when present
+      return el;
+    }),
   };
 }
