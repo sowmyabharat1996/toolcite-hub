@@ -165,7 +165,7 @@ export default function KeywordResearch() {
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.estClicks);
+    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
     setTotalBefore(next.totalBefore);
     setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
@@ -190,7 +190,7 @@ export default function KeywordResearch() {
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.estClicks);
+    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
     setTotalBefore(next.totalBefore);
     setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
@@ -643,6 +643,8 @@ export default function KeywordResearch() {
     </div>
   );
 }
+
+// in applyPipeli
 
 function emptyMetrics(): Metrics {
   return {
