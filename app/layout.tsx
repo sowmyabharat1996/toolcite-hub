@@ -11,7 +11,7 @@ export const viewport: Viewport = {
   ],
 };
 
-// ✅ Robust, site-wide defaults (tool pages will override via generateMetadata)
+// Site-wide defaults; tool pages can override via generateMetadata.
 export const metadata: Metadata = {
   metadataBase: new URL("https://toolcite.com"),
   title: {
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   },
   description:
     "ToolCite is a growing collection of fast, free tools for AI productivity, documents, and developer/SEO workflows.",
-  alternates: { canonical: "/" }, // homepage canonical; tool pages inherit from metadataBase
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "ToolCite",
@@ -32,47 +32,38 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    creator: "@yourhandle", // <-- update if you have one
+    creator: "@yourhandle",
+    images: ["/og-default.png"],
   },
-  // Optional: Google site verification if you use HTML tag method
-  // verification: { google: "YOUR-GSC-HTML-TAG-CODE" },
   icons: {
     icon: "/favicon.ico",
     apple: "/app-192.png",
   },
 };
 
-// ✅ Font: zero CLS, display=swap
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full scroll-smooth antialiased">
       <head>
-        {/* ✅ AdSense */}
+        {/* Google AdSense */}
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4622190640183245"
           crossOrigin="anonymous"
           strategy="afterInteractive"
         />
-        {/* (Optional) GA4 – replace G-XXXX and uncomment if you want GA here globally */}
+        {/* GA/Clarity optional (kept commented) */}
         {/*
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"
-          strategy="afterInteractive"
-        />
-        <Script id="ga4" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-XXXX', { anonymize_ip: true });
-          `}
-        </Script>
-        */}
-        {/* (Optional) Microsoft Clarity */}
-        {/*
+        <Script src="https://www.googletagmanager.com/gtag/js?id=G-XXXX" strategy="afterInteractive" />
+        <Script id="ga4" strategy="afterInteractive">{`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-XXXX', { anonymize_ip: true });
+        `}</Script>
+
         <Script id="clarity" strategy="afterInteractive">{`
           (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
           t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;

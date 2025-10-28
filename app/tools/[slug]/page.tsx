@@ -7,36 +7,89 @@ import { softwareAppSchema, faqSchema, breadcrumbSchema } from "@/lib/schema";
 import { TOOL_FAQS } from "@/lib/tool-faqs";
 import ToolRenderer from "@/components/ToolRenderer";
 
-// Keep this list in sync with the keys inside components/ToolRenderer.tsx REGISTRY
-const AVAILABLE_COMPONENTS = ["qr-code-generator", "image-compressor", "regex-tester","speed-test","keyword-research-basic","color-palette-generator","meta-og-generator"] as const;
+// Keep in sync with ToolRenderer's internal registry
+const AVAILABLE_COMPONENTS = [
+  "qr-code-generator",
+  "image-compressor",
+  "regex-tester",
+  "speed-test",
+  "keyword-research-basic",
+  "color-palette-generator",
+  "meta-og-generator",
+] as const;
+
 const hasComponent = (slug: string) =>
   (AVAILABLE_COMPONENTS as readonly string[]).includes(slug);
 
-// Pre-generate static params for all tools
+// --- Static params for SSG ---
 export function generateStaticParams() {
   return TOOLS.map((t) => ({ slug: t.slug }));
 }
 
-// Next 15: params is a Promise — await it here
-export async function generateMetadata(
-  { params }: { params: Promise<{ slug: string }> }
-): Promise<Metadata> {
-  const { slug } = await params;
+// --- Metadata (seed-aware for keyword tool) ---
+type GenMetaArgs =
+  | { params: { slug: string }; searchParams?: { q?: string } }
+  // Next 15 sometimes passes Promises; support both:
+  | { params: Promise<{ slug: string }>; searchParams?: { q?: string } };
+
+export async function generateMetadata(args: GenMetaArgs): Promise<Metadata> {
+  const params = "then" in args.params ? await args.params : args.params;
+  const { slug } = params;
+  const seed = (args.searchParams?.q || "Keyword Research").trim();
+
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) return { title: "Tool Not Found | ToolCite" };
 
+  const baseOg = {
+    images: ["/og-default.png"],
+    siteName: "ToolCite",
+    type: "website" as const,
+  };
+
+  const isKW = slug === "keyword-research-basic" || slug === "keyword-research";
+
+  if (isKW) {
+    const title = `${seed} – Keyword Research (AI Dashboard)`;
+    const url = `https://toolcite.com/tools/${slug}?q=${encodeURIComponent(seed)}`;
+    return {
+      title,
+      description: `AI dashboard for “${seed}”: intent mix, difficulty, KSI, Top-3 picks, and PDF/PNG export.`,
+      keywords: [
+        "keyword research",
+        "seo tool",
+        "ai keyword ideas",
+        "difficulty",
+        "intent",
+        seed,
+      ],
+      // Keep canonical stable (avoid query duplication)
+      alternates: { canonical: `/tools/${slug}` },
+      openGraph: {
+        ...baseOg,
+        title,
+        description: `AI keyword insights for “${seed}”.`,
+        url,
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description: `AI keyword insights for “${seed}”.`,
+        images: ["/og-default.png"],
+      },
+    };
+  }
+
+  // Default metadata for other tools
   return {
     title: `${tool.name} – Free Online Tool`,
     description: `${tool.description} Fast, accurate, and free.`,
     keywords: tool.keywords,
     alternates: { canonical: `/tools/${tool.slug}` },
     openGraph: {
+      ...baseOg,
       title: tool.name,
       description: tool.description,
       url: `https://toolcite.com/tools/${tool.slug}`,
-      siteName: "ToolCite",
-      images: ["/og-default.png"],
-      type: "website",
     },
     twitter: {
       card: "summary_large_image",
@@ -47,45 +100,69 @@ export async function generateMetadata(
   };
 }
 
-export default async function ToolPage(
-  { params }: { params: Promise<{ slug: string }> }
-) {
-  const { slug } = await params;
+// --- Page ---
+type PageArgs =
+  | { params: { slug: string }; searchParams?: { q?: string } }
+  | { params: Promise<{ slug: string }>; searchParams?: { q?: string } };
+
+export default async function ToolPage(args: PageArgs) {
+  const params = "then" in args.params ? await args.params : args.params;
+  const { slug } = params;
+
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) notFound();
 
   const faqs = TOOL_FAQS[slug] ?? [];
   const renderActualTool = hasComponent(slug);
 
+  const seed = (args.searchParams?.q || "Keyword Research").trim();
+  const isKW = slug === "keyword-research-basic" || slug === "keyword-research";
+
+  // JSON-LD blobs
+  const ldSoftware = softwareAppSchema(tool);
+  const ldFaq = faqs.length ? faqSchema(faqs) : null;
+  const ldBreadcrumb = breadcrumbSchema([
+    { name: "Home", url: "https://toolcite.com" },
+    { name: tool.category },
+    { name: tool.name },
+  ]);
+  const ldKW =
+    isKW
+      ? {
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Keyword Research (AI Dashboard)",
+          applicationCategory: "SEO Tool",
+          operatingSystem: "Web",
+          url: `https://toolcite.com/tools/${slug}?q=${encodeURIComponent(seed)}`,
+          offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+          description: `Find seed keywords and insights for “${seed}”. AI scoring, charts, PDF/PNG export.`,
+        }
+      : null;
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
-      {/* ── JSON-LD: SoftwareApplication */}
+      {/* JSON-LD */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(softwareAppSchema(tool)),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(ldSoftware) }}
       />
-      {/* ── JSON-LD: FAQ (if provided) */}
-      {faqs.length > 0 && (
+      {ldFaq && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema(faqs)) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(ldFaq) }}
         />
       )}
-      {/* ── JSON-LD: Breadcrumbs */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(
-            breadcrumbSchema([
-              { name: "Home", url: "https://toolcite.com" },
-              { name: tool.category }, // add category URLs later if you create them
-              { name: tool.name },
-            ])
-          ),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(ldBreadcrumb) }}
       />
+      {ldKW && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(ldKW) }}
+        />
+      )}
 
       {/* Header */}
       <h1 className="text-3xl font-semibold">
