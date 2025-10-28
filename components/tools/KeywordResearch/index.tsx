@@ -1,68 +1,74 @@
-// components/tools/KeywordResearch/index.tsx
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 
-// MetricsCharts must be a default export from ./MetricsCharts
-import MetricsCharts from "./MetricsCharts";
+// Recharts must be client-only to avoid SSR crash
+const MetricsCharts = dynamic(() => import("./MetricsCharts"), { ssr: false });
+
 import SummaryBar from "./SummaryBar";
 import KeywordList from "./KeywordList";
 import { exportDashboardToPDF } from "./PdfReport";
 import { exportDashboardToPNG } from "./PngReport";
 
-// If your utils.ts does not export KeywordSourceBlock yet, keep this permissive alias.
-// Later you can swap to:  type KeywordSourceBlock = import("./utils").KeywordSourceBlock;
-type KeywordSourceBlock = any;
-
-type Metrics = {
-  total: number;
-  avgDifficulty: number;
-  navigational: number;
-  transactional: number;
-  informational: number;
-  commercial: number;
-  emc: number;
-  health?: number;
-};
+// ✅ Use the exact types from utils
+import type {
+  Metrics as KRMetrics,
+  KeywordSourceBlock,
+  Source,
+} from "./utils";
 
 export default function KeywordResearchPage() {
-  // Top-bar state
+  // Top bar state
   const [query, setQuery] = useState("car");
   const [brand, setBrand] = useState("ToolCite Hub");
   const [includeCover, setIncludeCover] = useState(true);
   const [autoLandscapePDF, setAutoLandscapePDF] = useState(true);
   const [shareNote, setShareNote] = useState<null | string>(null);
 
-  // Filters / sliders
+  // Filters
   const [minDiff, setMinDiff] = useState(0);
   const [maxDiff, setMaxDiff] = useState(100);
 
-  // Root wrapper for export
+  // Root for exports
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // Placeholder metrics (replace with your real selectors)
-  const metrics = useMemo<Metrics>(
+  // Demo metrics compatible with utils.Metrics
+  const metrics = useMemo<KRMetrics>(
     () => ({
       total: 29,
       avgDifficulty: 42,
-      navigational: 13,
-      transactional: 5,
-      informational: 6,
-      commercial: 5,
-      emc: 828,
-      health: 61,
+      byIntent: {
+        Navigational: 13,
+        Transactional: 5,
+        Informational: 6,
+        Commercial: 5,
+      },
+      health: 61, // treat this as your KSI
     }),
     []
   );
 
-  const previous: Metrics | null = null;
+  // Simple placeholder until you wire the simulator
+  const estClicks = 578;
 
-  const showingCount = useMemo(() => {
-    // Replace with filtered length when wired
-    return metrics.total - (minDiff === 0 && maxDiff === 100 ? 0 : 0);
-  }, [metrics.total, minDiff, maxDiff]);
+  const previous: KRMetrics | null = null;
 
-  const blocks = useMemo<KeywordSourceBlock[]>(() => ([] as KeywordSourceBlock[]), []);
+  // Demo blocks typed exactly as KeywordSourceBlock (source is a Source union)
+  const blocks = useMemo<KeywordSourceBlock[]>(
+    () => [
+      { source: "Google" as Source, items: [] },
+      { source: "YouTube" as Source, items: [] },
+      { source: "Bing" as Source, items: [] },
+      { source: "Amazon" as Source, items: [] },
+    ],
+    []
+  );
+
+  const showingCount = useMemo(
+    () => metrics.total - (minDiff === 0 && maxDiff === 100 ? 0 : 0),
+    [metrics.total, minDiff, maxDiff]
+  );
 
   // Actions
   const handleShare = async () => {
@@ -94,10 +100,11 @@ export default function KeywordResearchPage() {
             title: `${brand} — Keyword Research (AI Dashboard)`,
             subtitle: `Seed: ${query} • ${new Date().toLocaleString()}`,
             bullets: [
-              `KSI: ${Math.round(Math.sqrt(metrics.emc / Math.max(1, metrics.avgDifficulty)))}`,
+              // ✅ KSI comes from metrics.health in your utils
+              `KSI: ${metrics.health}`,
               `Avg Difficulty: ${metrics.avgDifficulty}`,
               `Total Keywords: ${metrics.total}`,
-              `Est. Monthly Clicks: ${metrics.emc}`,
+              `Est. Monthly Clicks: ${estClicks}`,
               `Band: ${minDiff}–${maxDiff}`,
             ],
             watermark: "CONFIDENTIAL • INTERNAL",
@@ -142,14 +149,11 @@ export default function KeywordResearchPage() {
           />
           <button
             className="h-9 rounded-lg border px-3 text-sm bg-emerald-600 text-white hover:bg-emerald-700"
-            onClick={() => {
-              /* hook your real Generate logic here */
-            }}
+            onClick={() => { /* hook your Generate logic */ }}
           >
             Generate
           </button>
 
-          {/* Export buttons */}
           <button
             className="h-9 rounded-lg border px-3 text-sm bg-orange-600 text-white hover:bg-orange-700"
             onClick={handleExportPDF}
@@ -163,7 +167,6 @@ export default function KeywordResearchPage() {
             Export PNG
           </button>
 
-          {/* Share */}
           <button
             className="h-9 rounded-lg border px-3 text-sm bg-neutral-900 text-white hover:bg-black"
             onClick={handleShare}
@@ -171,13 +174,11 @@ export default function KeywordResearchPage() {
           >
             Share Link
           </button>
-          {shareNote && (
-            <span className="text-xs text-emerald-600">{shareNote}</span>
-          )}
+          {shareNote && <span className="text-xs text-emerald-600">{shareNote}</span>}
         </div>
       </div>
 
-      {/* Export options row */}
+      {/* Export options */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <label className="inline-flex items-center gap-2 text-sm">
           <input
@@ -222,12 +223,13 @@ export default function KeywordResearchPage() {
             previous={previous as any}
             lastUpdated={Date.now()}
             showTrend={true}
-            estClicks={metrics.emc}
+            // ✅ pass the separate estClicks number (no metrics.emc)
+            estClicks={estClicks}
             extraNote={`Band: ${minDiff}–${maxDiff} • Showing ${showingCount} of ${metrics.total}`}
           />
         </section>
 
-        {/* Simulators (keep your real sliders inside) */}
+        {/* Simulators / Filters */}
         <section
           className="export-section"
           data-export="section"
@@ -239,13 +241,10 @@ export default function KeywordResearchPage() {
             <div className="flex items-center gap-3 text-sm">
               <div className="flex-1">
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span>Min Difficulty</span>
-                  <span>{minDiff}</span>
+                  <span>Min Difficulty</span><span>{minDiff}</span>
                 </div>
                 <input
-                  type="range"
-                  min={0}
-                  max={100}
+                  type="range" min={0} max={100}
                   value={minDiff}
                   onChange={(e) => setMinDiff(Number(e.target.value))}
                   className="w-full"
@@ -253,13 +252,10 @@ export default function KeywordResearchPage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span>Max Difficulty</span>
-                  <span>{maxDiff}</span>
+                  <span>Max Difficulty</span><span>{maxDiff}</span>
                 </div>
                 <input
-                  type="range"
-                  min={0}
-                  max={100}
+                  type="range" min={0} max={100}
                   value={maxDiff}
                   onChange={(e) => setMaxDiff(Number(e.target.value))}
                   className="w-full"
@@ -272,18 +268,17 @@ export default function KeywordResearchPage() {
           </div>
         </section>
 
-        {/* Charts */}
+        {/* Charts (client-only) */}
         <section
           className="export-section"
           data-export="section"
           data-export-title="Keywords by Intent & Avg Difficulty"
           aria-label="Keywords by Intent & Avg Difficulty"
         >
-          
-          <MetricsCharts metrics={metrics as any} blocks={blocks as any} />
+          <MetricsCharts metrics={metrics} blocks={blocks} />
         </section>
 
-        {/* AI Insight (placeholder area) */}
+        {/* AI Insight placeholder */}
         <section
           className="export-section"
           data-export="section"
@@ -291,12 +286,9 @@ export default function KeywordResearchPage() {
           aria-label="AI Insight — Easiest Wins"
         >
           <div className="rounded-2xl border p-4 bg-white/70 dark:bg-white/5">
-            <div className="text-lg font-semibold mb-2">
-              AI Insight — Easiest Wins
-            </div>
+            <div className="text-lg font-semibold mb-2">AI Insight — Easiest Wins</div>
             <div className="text-sm text-neutral-500">
-              Click the “AI Insight” button in your top bar to populate this
-              list after filters/slider changes.
+              Click the “AI Insight” button in your top bar to populate this list.
             </div>
           </div>
         </section>
@@ -308,7 +300,7 @@ export default function KeywordResearchPage() {
           data-export-title="Source Cards"
           aria-label="Source Cards"
         >
-          <KeywordList blocks={blocks} />
+          <KeywordList blocks={blocks as any} />
         </section>
       </div>
     </div>
