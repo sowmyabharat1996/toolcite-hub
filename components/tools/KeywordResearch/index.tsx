@@ -2,119 +2,70 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import SummaryBar from "./SummaryBar";
 import MetricsCharts from "./MetricsCharts";
 import KeywordList from "./KeywordList";
 import {
   Dataset, KeywordSourceBlock, Metrics, KeywordItem,
-  generateMockData, toCSV, shareURLFromSeed, downloadBlob,
-  recomputeAll, explainPick, runAIInsight, computeMetricsAdvanced
+  generateMockData, computeMetrics, toCSV, shareURLFromSeed,
+  runAIInsight, applyVolumeCPCSimulation, downloadBlob, explainPick
 } from "./utils";
-import { exportDashboardToPDF } from "./PdfReport";      // ⬅️ brandable PDF (with cover + auto-landscape)
-import { exportDashboardToPNG } from "./PngReport";
-
-type SessionSnapshot = {
-  id: string;
-  ts: number;
-  seed: string;
-  volSim: number;
-  cpcSim: number;
-  minDiff: number;
-  maxDiff: number;
-  textFilter: string;
-  chips: string[];
-  metrics: Metrics;
-  estClicks: number;
-  top3: Array<KeywordItem & { reasons?: string[] }>;
-  base: KeywordSourceBlock[];
-};
-
-const SESS_KEY = "kr:sessions:v3";
-const MAX_SESSIONS = 5;
-
-function loadSessions(): SessionSnapshot[] {
-  try { return JSON.parse(localStorage.getItem(SESS_KEY) || "[]"); } catch { return []; }
-}
-function saveSessions(list: SessionSnapshot[]) {
-  try { localStorage.setItem(SESS_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS))); } catch {}
-}
-function upsertSession(s: SessionSnapshot) {
-  const list = loadSessions().filter(x => x.id !== s.id);
-  saveSessions([s, ...list].slice(0, MAX_SESSIONS));
-}
-function makeId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
-function formatTime(ts: number) {
-  const d = new Date(ts); const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-const CHIP_CATALOG = ["best","vs","review","price","guide","cheap","free","tool"] as const;
+import { exportDashboardToPDF } from "./PdfReport";
 
 export default function KeywordResearch() {
   const [query, setQuery] = useState("");
   const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
   const [previousMetrics, setPreviousMetrics] = useState<Metrics | null>(null);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
-  const [showTrend, setShowTrend] = useState(true);
 
   const [insights, setInsights] = useState<Array<KeywordItem & { reasons?: string[] }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [sortByAI, setSortByAI] = useState(false);
 
+  // Simulator
   const [volSim, setVolSim] = useState(50);
   const [cpcSim, setCpcSim] = useState(50);
   const [estClicks, setEstClicks] = useState(0);
 
-  const [minDiff, setMinDiff] = useState<number>(() => Number(localStorage.getItem("dfMin") ?? 0));
-  const [maxDiff, setMaxDiff] = useState<number>(() => Number(localStorage.getItem("dfMax") ?? 100));
-  const [totalBefore, setTotalBefore] = useState(0);
-  const [totalAfter, setTotalAfter] = useState(0);
+  // Difficulty band
+  const [minDiff, setMinDiff] = useState(0);
+  const [maxDiff, setMaxDiff] = useState(100);
 
-  const [textFilter, setTextFilter] = useState("");
-  const [chips, setChips] = useState<string[]>([]);
-
-  const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
+  // UI
+  const [showTrend, setShowTrend] = useState(true);
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
-  const [history, setHistory] = useState<SessionSnapshot[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [compareWith, setCompareWith] = useState<SessionSnapshot | null>(null);
-
-  const [copied, setCopied] = useState(false);
+  // PDF toggles
+  const [coverEnabled, setCoverEnabled] = useState(true);
+  const [autoLandscape, setAutoLandscape] = useState(true);
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<number | null>(null);
-  const debounceTextRef = useRef<number | null>(null);
-  const historyBtnRef = useRef<HTMLButtonElement | null>(null);
-  const compareRef = useRef<HTMLDivElement | null>(null);
+  const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
 
-  // Init
+  // seed from URL
   useEffect(() => {
-    setHistory(loadSessions());
-    const sp = new URLSearchParams(window.location.search);
-    const q = sp.get("q") || "";
-    const df = sp.get("df");
-    if (df) {
-      const [a,b] = df.split("-").map(n => Math.max(0, Math.min(100, Number(n))));
-      if (!Number.isNaN(a) && !Number.isNaN(b)) { setMinDiff(Math.min(a, b)); setMaxDiff(Math.max(a, b)); }
-    }
-    const v = sp.get("vol"), c = sp.get("cpc"), ai = sp.get("ai");
-    if (v) setVolSim(Math.max(0, Math.min(100, Number(v))));
-    if (c) setCpcSim(Math.max(0, Math.min(100, Number(c))));
+    const p = new URLSearchParams(window.location.search);
+    const q = p.get("q") || "";
+    const ai = p.get("ai");
+    const df = p.get("df");
+    if (q) setQuery(q);
     if (ai === "1") setSortByAI(true);
-    const qf = sp.get("qf"); if (qf) setTextFilter(qf);
-    const ch = sp.get("chips"); if (ch) setChips(ch.split(".").filter(Boolean));
-
-    if (q) { setQuery(q); handleGenerate(q, { initial: true }); }
+    if (df) {
+      const [a, b] = df.split("-").map((n) => Number(n));
+      if (!Number.isNaN(a)) setMinDiff(a);
+      if (!Number.isNaN(b)) setMaxDiff(b);
+    }
+    const seed = q || "keyword";
+    handleGenerate(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist sortByAI + diff band
-  useEffect(() => { const s = localStorage.getItem("sortByAI"); if (s === "true") setSortByAI(true); }, []);
-  useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
-  useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
+  // persist sort toggle
+  useEffect(() => {
+    localStorage.setItem("sortByAI", sortByAI ? "true" : "false");
+  }, [sortByAI]);
 
-  // Mood color
+  // trend color by KSI delta
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -123,217 +74,158 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
-  // Snapshot
-  function snapshotCurrent(seedForSave?: string): SessionSnapshot | null {
-    if (!baseBlocks.length) return null;
-    return {
-      id: makeId(), ts: Date.now(),
-      seed: seedForSave ?? (query.trim() || "keyword"),
-      volSim, cpcSim, minDiff, maxDiff, textFilter, chips,
-      metrics: dataset.metrics, estClicks, top3: insights, base: baseBlocks,
-    };
-  }
-
-  // Pipeline
-  function applyPipeline(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
-    if (!baseBlocks.length) return;
-    const next = recomputeAll(baseBlocks, v, c, d0, d1, tf, ch);
-    setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
-    setTotalBefore(next.totalBefore);
-    setTotalAfter(next.totalAfter);
-    setLastUpdated(Date.now());
-  }
-  function schedule(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      applyPipeline(v, c, d0, d1, tf, ch);
-      debounceRef.current = null;
-    }, 120);
-  }
-
-  // Generate
-  function handleGenerate(q?: string, opts?: { initial?: boolean }) {
+  function handleGenerate(q?: string) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
     setPreviousMetrics(dataset.metrics);
     setBaseBlocks(result.data);
 
-    const next = recomputeAll(result.data, volSim, cpcSim, minDiff, maxDiff, textFilter, chips);
-    setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
-    setTotalBefore(next.totalBefore);
-    setTotalAfter(next.totalAfter);
+    const sim = applyVolumeCPCSimulation(result.data, volSim, cpcSim);
+    const metrics = computeMetrics(sim.blocks);
+    const { top3, scores } = runAIInsight(sim.blocks);
+
+    const scoredBlocks = sim.blocks.map((b) => ({
+      ...b,
+      items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+    }));
+
+    setDataset({ data: scoredBlocks, metrics });
+    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
+    setHighlightId(top3[0]?.id ?? null);
+    setEstClicks(sim.estClicks);
     setLastUpdated(Date.now());
-
-    if (!opts?.initial) {
-      const snap: SessionSnapshot = {
-        id: makeId(), ts: Date.now(), seed, volSim, cpcSim, minDiff, maxDiff,
-        textFilter, chips, metrics: next.metrics, estClicks: next.estClicks, top3: next.top3, base: result.data,
-      };
-      upsertSession(snap);
-      setHistory(loadSessions());
-    }
   }
 
-  // Restore/Compare
-  function restoreSession(s: SessionSnapshot) {
-    setQuery(s.seed);
-    setVolSim(s.volSim);
-    setCpcSim(s.cpcSim);
-    setMinDiff(s.minDiff);
-    setMaxDiff(s.maxDiff);
-    setTextFilter(s.textFilter);
-    setChips(s.chips);
-    setBaseBlocks(s.base);
-    applyPipeline(s.volSim, s.cpcSim, s.minDiff, s.maxDiff, s.textFilter, s.chips);
-  }
-  function startCompare(s: SessionSnapshot) {
-    setCompareWith(s);
-    setHistoryOpen(false);
-    setTimeout(() => { compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0);
+  function applySim(vol: number, cpc: number) {
+    if (!baseBlocks.length) return;
+    const sim = applyVolumeCPCSimulation(baseBlocks, vol, cpc);
+    const metrics = computeMetrics(sim.blocks);
+    const { top3, scores } = runAIInsight(sim.blocks);
+    const scoredBlocks = sim.blocks.map((b) => ({
+      ...b,
+      items: b.items
+        .filter((k) => k.difficulty >= minDiff && k.difficulty <= maxDiff)
+        .map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+    }));
+    setDataset({ data: scoredBlocks, metrics: computeMetrics(scoredBlocks) });
+    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
+    setHighlightId(top3[0]?.id ?? null);
+    setEstClicks(sim.estClicks);
+    setLastUpdated(Date.now());
   }
 
-  // Inputs
-  const onVol = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; setVolSim(v); schedule(v, cpcSim, minDiff, maxDiff, textFilter, chips); };
-  const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; setCpcSim(v); schedule(volSim, v, minDiff, maxDiff, textFilter, chips); };
-  const onMin = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; const nv = Math.min(v, maxDiff); setMinDiff(nv); schedule(volSim, cpcSim, nv, maxDiff, textFilter, chips); };
-  const onMax = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; const nv = Math.max(v, minDiff); setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv, textFilter, chips); };
-  const onText = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value; setTextFilter(v);
-    if (debounceTextRef.current) clearTimeout(debounceTextRef.current);
-    debounceTextRef.current = window.setTimeout(() => { applyPipeline(volSim, cpcSim, minDiff, maxDiff, v, chips); }, 150);
+  const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value;
+    setVolSim(v);
+    applySim(v, cpcSim);
   };
-  function toggleChip(tag: string) {
-    const exists = chips.includes(tag);
-    const next = exists ? chips.filter(c => c !== tag) : [...chips, tag];
-    setChips(next);
-    schedule(volSim, cpcSim, minDiff, maxDiff, textFilter, next);
-  }
-  function clearAllFilters() {
-    const v = volSim, c = cpcSim;
-    setTextFilter(""); setChips([]); setMinDiff(0); setMaxDiff(100);
-    applyPipeline(v, c, 0, 100, "", []);
-  }
+  const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value;
+    setCpcSim(v);
+    applySim(volSim, v);
+  };
 
-  // Actions
+  // Difficulty band handlers
+  const onMinDiff = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value;
+    const nv = Math.min(v, maxDiff);
+    setMinDiff(nv);
+    applySim(volSim, cpcSim);
+  };
+  const onMaxDiff = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value;
+    const nv = Math.max(v, minDiff);
+    setMaxDiff(nv);
+    applySim(volSim, cpcSim);
+  };
+
+  // Sort view
+  const filteredBlocks =
+    minDiff === 0 && maxDiff === 100
+      ? dataset.data
+      : dataset.data.map((b) => ({ ...b, items: b.items.filter((k) => k.difficulty >= minDiff && k.difficulty <= maxDiff) }));
+
+  const sortedBlocks = sortByAI
+    ? filteredBlocks.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
+    : filteredBlocks;
+
   function handleCopyAll() {
-    const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
+    const flat = sortedBlocks.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
     navigator.clipboard.writeText(flat);
   }
   function handleExportCSV() {
-    const csv = toCSV(dataset.data);
+    const csv = toCSV(sortedBlocks);
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
   }
-  async function handleShare() {
-    const url = shareURLFromSeed(query || "keyword", {
-      df: [minDiff, maxDiff],
-      vol: volSim,
-      cpc: cpcSim,
-      sortAI: sortByAI,
-      text: textFilter,
-      chips,
-    });
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      window.prompt("Copy this link:", url);
-    }
-  }
-  // ⬇️ Brandable PDF with Cover + Auto-landscape
-  async function handleExportPDF() {
-    if (!rootRef.current) return;
-    const seed = (query.trim() || "keyword");
-    const bullets: string[] = [
-      `KSI: ${dataset.metrics.health}`,
-      `Avg Difficulty: ${dataset.metrics.avgDifficulty}`,
-      `Total Keywords: ${dataset.metrics.total}`,
-      `Est. Monthly Clicks: ${estClicks.toLocaleString()}`,
-      `Band: ${minDiff}–${maxDiff}${chips.length ? ` • Chips: ${chips.join(", ")}` : ""}`,
-    ];
-    await exportDashboardToPDF(
-      rootRef.current,
-      "keyword-dashboard.pdf",
-      {
-        title: "ToolCite – Keyword Research (AI Dashboard)",
-        subtitle: `Seed: ${seed} • ${new Date().toLocaleString()}`,
-        footerLeft: "© ToolCite Hub • Smart • Fast • Reliable",
-        footerRight: "Internal",
-        watermark: "TOOLCITE • INTERNAL",
-      },
-      {
-        cover: {
-          title: "Keyword Research — AI Dashboard",
-          subtitle: `Seed: ${seed} • Exported ${new Date().toLocaleString()}`,
-          bullets,
-          watermark: "CONFIDENTIAL • SEO REPORT",
-        },
-        autoLandscape: true,
-        landscapeThreshold: 900,
-      }
-    );
-  }
-  async function handleExportPNG() {
-    if (!rootRef.current) return;
-    const seed = (query.trim() || "keyword").replace(/\s+/g, "-");
-    await exportDashboardToPNG(rootRef.current, `${seed}-dashboard.png`, {
-      title: "ToolCite – Keyword Research (AI Dashboard)",
-      subtitle: `Seed: ${query.trim() || "keyword"} • Exported ${new Date().toLocaleString()}`,
-      watermark: "© ToolCite Hub • Smart • Fast • Reliable",
+  function handleShare() {
+    const url = new URL(shareURLFromSeed(query || "keyword"));
+    url.searchParams.set("ai", sortByAI ? "1" : "0");
+    url.searchParams.set("df", `${minDiff}-${maxDiff}`);
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      toastCopy("Share link copied!");
     });
   }
-  function handleSaveSession() {
-    const snap = snapshotCurrent(); if (!snap) return;
-    upsertSession(snap); setHistory(loadSessions());
-  }
-  function handleAIInsight() {
-    if (!dataset.data.length || totalAfter === 0) return;
-    const { top3, scores } = runAIInsight(dataset.data);
-    const scoredBlocks = dataset.data.map((b) => ({
-      ...b, items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
-    }));
-    setDataset({ data: scoredBlocks, metrics: computeMetricsAdvanced(scoredBlocks) });
-    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
-    setHighlightId(top3[0]?.id ?? null);
-    document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
-    setLastUpdated(Date.now());
+  function toastCopy(msg: string) {
+    const el = document.createElement("div");
+    el.textContent = msg;
+    el.style.cssText =
+      "position:fixed;left:50%;top:12px;transform:translateX(-50%);background:#111;color:#fff;padding:8px 12px;border-radius:10px;font-size:12px;z-index:99999;opacity:0.95";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1200);
   }
 
-  // Sorted
-  const sortedBlocks = sortByAI
-    ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
-    : dataset.data;
+ 
+async function handleExportPDF() {
+  if (!rootRef.current) return;
+  const seed = query || "keyword";
+
+  await exportDashboardToPDF(rootRef.current, {
+    filename: "keyword-dashboard.pdf",
+    brand: "ToolCite Hub",
+    autoLandscape,                // uses your toggle state
+    margin: 36,
+    cover: coverEnabled
+      ? {
+          title: "Keyword Research — AI Dashboard",
+          subtitle: `Seed: ${seed} • ${new Date().toLocaleString()}`,
+          bullets: [
+            `KSI: ${dataset.metrics.health}`,
+            `Avg Difficulty: ${dataset.metrics.avgDifficulty}`,
+            `Total Keywords: ${dataset.metrics.total}`,
+            `Est. Monthly Clicks: ${estClicks.toLocaleString()}`,
+            `Band: ${minDiff}–${maxDiff}`,
+          ],
+          watermark: "CONFIDENTIAL • INTERNAL",
+        }
+      : false,
+  });
+}
+
+
 
   const moodBG: React.CSSProperties = {
-    background: `radial-gradient(1200px 700px at 10% -10%, ${trendColor}12, transparent 60%), radial-gradient(1200px 700px at 110% 110%, ${trendColor}10, transparent 60%)`,
+    background: `
+      radial-gradient(1200px 700px at 10% -10%, ${trendColor}12, transparent 60%),
+      radial-gradient(1200px 700px at 110% 110%, ${trendColor}10, transparent 60%)
+    `,
     transition: "background 700ms ease",
   };
 
+  const { metrics } = dataset;
+  const showingCount = sortedBlocks.reduce((s, b) => s + b.items.length, 0);
+
   return (
     <div className="relative min-h-[100vh] overflow-visible">
-      {/* subtle wash + global print guards */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
       <style jsx global>{`
-        /* Prevent sticky from creating huge white gaps during export */
         [data-export-paused="1"] .sticky { position: static !important; top: auto !important; }
-        /* Make sure nested wrappers don't clip portaled tooltips */
         #__next, body, html { overflow: visible !important; }
-
-        /* --- Print/PDF page-break guards --- */
         [data-export="section"] { break-inside: avoid; page-break-inside: avoid; }
-        .avoid-break { break-inside: avoid; page-break-inside: avoid; }
-        .page-break-before { break-before: page; page-break-before: always; }
       `}</style>
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
-        {/* Header */}
-        <div className="flex flex-wrap gap-2 items-center [isolation:isolate]">
+        {/* Header & controls */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
           <div className="flex flex-wrap gap-2 items-center">
             <input
@@ -346,116 +238,49 @@ export default function KeywordResearch() {
             <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium" onClick={() => handleGenerate()}>
               Generate
             </button>
-            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
-
-            {/* History */}
-            <div className="relative">
-              <button
-                ref={historyBtnRef}
-                className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
-                onClick={() => setHistoryOpen(v => !v)}
-              >
-                History ▾
-              </button>
-              {historyOpen && historyBtnRef.current && createPortal(
-                <div
-                  className="fixed z-[99999] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl p-2 space-y-1 pointer-events-auto"
-                  style={{
-                    top: historyBtnRef.current.getBoundingClientRect().bottom + 8,
-                    left: Math.max(8, historyBtnRef.current.getBoundingClientRect().right - 340),
-                    width: 340
-                  }}
-                  role="menu"
-                >
-                  {history.length === 0 && (
-                    <div className="text-sm text-neutral-600 dark:text-neutral-300 p-2">No sessions yet. Click <b>Generate</b> or <b>Save Session</b>.</div>
-                  )}
-                  {history.map((s) => (
-                    <div key={s.id} className="rounded-lg p-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                      <div className="text-sm font-medium truncate">{s.seed}</div>
-                      <div className="text-[11px] text-neutral-500 flex items-center gap-2">
-                        <span>{formatTime(s.ts)}</span>
-                        <span>• Vol {s.volSim}</span>
-                        <span>• CPC {s.cpcSim}</span>
-                        <span>• KSI {s.metrics.health}</span>
-                        <span>• EMC {s.estClicks}</span>
-                        <span>• DF {s.minDiff}-{s.maxDiff}</span>
-                        {(s.textFilter || s.chips.length) && <span>• Filter</span>}
-                      </div>
-                      <div className="mt-2 flex gap-2">
-                        <button className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs" onClick={() => { restoreSession(s); setHistoryOpen(false); }}>
-                          Restore
-                        </button>
-                        <button className="px-2 py-1 rounded-md bg-amber-600 text-white text-xs" onClick={() => { setHistoryOpen(false); startCompare(s); }}>
-                          Compare
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>,
-                document.body
-              )}
-            </div>
-
-            {/* Copy / Export */}
+            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={() => {
+              const { top3, scores } = runAIInsight(sortedBlocks);
+              const scored = sortedBlocks.map((b) => ({
+                ...b,
+                items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+              }));
+              setDataset({ data: scored, metrics: computeMetrics(scored) });
+              setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
+              setHighlightId(top3[0]?.id ?? null);
+              setLastUpdated(Date.now());
+              document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
+            }}>
+              🤖 AI Insight
+            </button>
             <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>Copy All</button>
             <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
             <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
-            <button className="h-10 px-3 rounded-xl bg-orange-500 text-white" onClick={handleExportPNG}>Export PNG</button>
+            <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>Share Link</button>
 
-            <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
-              {copied ? "✅ Copied" : "Share Link"}
-            </button>
-            <button
-              className="h-10 px-3 rounded-xl bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={handleAIInsight}
-              disabled={totalAfter === 0}
-              title={totalAfter === 0 ? "No keywords in view — widen band or clear filters" : "Score & pick easiest keywords"}
-            >
-              🤖 AI Insight
-            </button>
+            {/* PDF toggles */}
+            <label className="ml-2 text-xs flex items-center gap-2">
+              <input type="checkbox" className="accent-blue-600" checked={coverEnabled} onChange={(e) => setCoverEnabled(e.target.checked)} />
+              Cover page
+            </label>
+            <label className="text-xs flex items-center gap-2">
+              <input type="checkbox" className="accent-blue-600" checked={autoLandscape} onChange={(e) => setAutoLandscape(e.target.checked)} />
+              Auto-landscape
+            </label>
           </div>
         </div>
 
         {/* Summary */}
-        <div data-export="section">
-          <SummaryBar metrics={dataset.metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
+        <div data-export="section" data-export-title="Summary">
+          <SummaryBar
+            metrics={metrics}
+            previous={previousMetrics}
+            lastUpdated={lastUpdated}
+            showTrend={showTrend}
+            estClicks={estClicks}
+            extraNote={`Band: ${minDiff}–${maxDiff} • Showing ${showingCount} of ${dataset.metrics.total}`}
+          />
         </div>
 
-        {/* Compare panel */}
-        {compareWith && (
-          <div ref={compareRef} className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10 p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">
-                Compare with: <span className="font-medium">{compareWith.seed}</span>{" "}
-                <span className="text-xs text-neutral-500">({formatTime(compareWith.ts)})</span>
-              </div>
-              <button className="text-xs px-2 py-1 rounded-md bg-sky-600 text-white" onClick={() => setCompareWith(null)}>Clear</button>
-            </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
-              {[
-                { label: "EMC", cur: estClicks, old: compareWith.estClicks, fmt: (n:number)=>n.toLocaleString() },
-                { label: "KSI", cur: dataset.metrics.health, old: compareWith.metrics.health, fmt: (n:number)=>n },
-                { label: "Avg Difficulty", cur: dataset.metrics.avgDifficulty, old: compareWith.metrics.avgDifficulty, fmt: (n:number)=>n },
-                { label: "Total Keywords", cur: totalAfter, old: compareWith.metrics.total, fmt: (n:number)=>n },
-              ].map((k) => {
-                const delta = k.cur - (k.old as number);
-                const good = (k.label === "Avg Difficulty") ? delta < 0 : delta > 0;
-                const color = delta === 0 ? "text-neutral-600" : good ? "text-emerald-600" : "text-rose-600";
-                const sign = delta > 0 ? "+" : "";
-                return (
-                  <div key={k.label} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-3">
-                    <div className="text-xs text-neutral-500">{k.label}</div>
-                    <div className="mt-1 text-lg font-semibold">{k.fmt(k.cur)}</div>
-                    <div className={`text-xs ${color}`}>{sign}{delta === 0 ? "0" : k.fmt(delta as any)} vs history</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Toggles */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
             <input type="checkbox" className="accent-blue-600" checked={showTrend} onChange={(e) => setShowTrend(e.target.checked)} />
@@ -467,11 +292,11 @@ export default function KeywordResearch() {
           </label>
         </div>
 
-        {/* Simulator + Filters */}
-        <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
+        {/* Simulator & Filters */}
+        <div data-export="section" data-export-title="Simulator & Filters" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
-            <div className="text-xs text-neutral-500">KSI now: <b>{totalAfter === 0 ? "—" : dataset.metrics.health}</b></div>
+            <div className="text-xs text-neutral-500">Adjust sliders → AI Picks, Charts &amp; KSI update live</div>
           </div>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -490,71 +315,24 @@ export default function KeywordResearch() {
 
           {/* Difficulty Filter */}
           <div className="mt-6">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">
-                Difficulty Filter <span className="ml-2 rounded-md px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-800">Band: {minDiff}–{maxDiff}</span>
-              </div>
-              <div className="text-xs text-neutral-500">Showing {totalAfter} of {totalBefore} keywords</div>
+            <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
+              <div>Difficulty Filter</div>
+              <div>Band: <strong>{minDiff}–{maxDiff}</strong> <span className="ml-2 text-neutral-400">Showing {showingCount} of {dataset.metrics.total} keywords</span></div>
             </div>
-            <div className="mt-2 relative h-3 rounded-full overflow-hidden" style={{ background: "linear-gradient(90deg,#22c55e 0%,#f59e0b 60%,#ef4444 100%)" }}>
-              <div className="absolute top-0 bottom-0 bg-white/30 border border-white/60" style={{ left: `${minDiff}%`, width: `${Math.max(0, maxDiff - minDiff)}%` }} />
-            </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                   <span>Min Difficulty</span><strong>{minDiff}</strong>
                 </div>
-                <input type="range" min={0} max={100} value={minDiff} onChange={onMin} className="w-full accent-emerald-600" />
+                <input type="range" min={0} max={100} value={minDiff} onChange={onMinDiff} className="w-full accent-green-600" />
               </div>
               <div>
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                   <span>Max Difficulty</span><strong>{maxDiff}</strong>
                 </div>
-                <input type="range" min={0} max={100} value={maxDiff} onChange={onMax} className="w-full accent-rose-600" />
+                <input type="range" min={0} max={100} value={maxDiff} onChange={onMaxDiff} className="w-full accent-rose-600" />
               </div>
             </div>
-          </div>
-
-          {/* Search in results + Chips + Clear */}
-          <div className="mt-6">
-            <div className="text-sm font-semibold">Search in results</div>
-
-            <div className="mt-2 flex items-center justify-between">
-              <input
-                value={textFilter}
-                onChange={onText}
-                placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
-                className="h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
-              />
-              <button
-                onClick={clearAllFilters}
-                className="ml-2 shrink-0 h-10 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 text-sm"
-                title="Reset text/chips and difficulty band to defaults"
-              >
-                Clear
-              </button>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {CHIP_CATALOG.map((tag) => {
-                const active = chips.includes(tag);
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => toggleChip(tag)}
-                    className={
-                      "px-3 py-1 rounded-full text-xs border " +
-                      (active
-                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20"
-                        : "border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 text-neutral-700 dark:text-neutral-200")
-                    }
-                  >
-                    {active ? "✓ " : ""}{tag}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-1 text-[11px] text-neutral-500">Filters affect AI Top-3, charts, and KSI.</div>
           </div>
 
           <div className="mt-4">
@@ -567,12 +345,16 @@ export default function KeywordResearch() {
         </div>
 
         {/* Charts */}
-        <div data-export="section">
-          <MetricsCharts metrics={dataset.metrics} blocks={sortedBlocks} />
+        <div data-export="section" data-export-title="Charts & Distributions">
+          <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
         </div>
 
-        {/* AI Insight */}
-        <aside data-export="section" id="insights-panel" className="rounded-2xl border p-4 overflow-visible"
+        {/* AI Insight panel */}
+        <aside
+          data-export="section"
+          data-export-title="AI Insight — Easiest Wins"
+          id="insights-panel"
+          className="rounded-2xl border p-4 overflow-visible"
           style={{
             borderColor: trendColor + "66",
             background:
@@ -589,15 +371,27 @@ export default function KeywordResearch() {
             <span className="text-xs font-medium" style={{ color: trendColor }}>Click again after changing data/filters</span>
           </div>
           <ul className="space-y-3">
+            {insights.length === 0 && (
+              <li className="text-sm text-neutral-600 dark:text-neutral-300">
+                No keywords match this filter/band. Clear filters or widen the difficulty range.
+              </li>
+            )}
             {insights.map((x, i) => (
               <li key={x.id} className="rounded-xl border bg-white/70 dark:bg-white/10 p-3" style={{ borderColor: trendColor + "4d" }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold" style={{ backgroundColor: trendColor + "22", color: trendColor }}>{i + 1}</span>
+                      <span
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold"
+                        style={{ backgroundColor: trendColor + "22", color: trendColor }}
+                      >
+                        {i + 1}
+                      </span>
                       <div className="truncate font-medium">{x.phrase}</div>
                     </div>
-                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}</div>
+                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+                      diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
+                    </div>
                     {x.reasons && x.reasons.length > 0 && (
                       <div className="mt-2">
                         <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Why this pick?</div>
@@ -613,23 +407,12 @@ export default function KeywordResearch() {
                 </div>
               </li>
             ))}
-            {!insights.length && (
-              <li className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/10 p-4 text-sm text-neutral-600 dark:text-neutral-300">
-                No keywords match this filter/band. Clear filters or widen the difficulty range.
-              </li>
-            )}
           </ul>
         </aside>
 
         {/* Keyword Lists */}
-        <div data-export="section" id="kw-lists" className="pt-2 overflow-visible">
-          {totalAfter === 0 ? (
-            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-6 text-sm text-neutral-600 dark:text-neutral-300">
-              No results to display for current filters. Try clearing text/chips or widening the difficulty band.
-            </div>
-          ) : (
-            <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
-          )}
+        <div data-export="section" data-export-title="Keyword Lists" id="kw-lists" className="pt-2 overflow-visible">
+          <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
         </div>
       </div>
     </div>
