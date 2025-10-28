@@ -279,8 +279,8 @@ export default function KeywordResearch() {
               </button>
               {historyOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-[340px] rounded-xl border border-neutral-200 dark:border-neutral-800
-                             bg-white dark:bg-neutral-900 shadow-2xl z-[9999] p-2 space-y-1"
+                             className={`absolute right-0 mt-2 w-[340px] rounded-xl border border-neutral-200 dark:border-neutral-800
+              bg-white dark:bg-neutral-900 shadow-2xl z-[9999] p-2 space-y-1`}
                 >
                   {history.length === 0 && (
                     <div className="text-sm text-neutral-600 dark:text-neutral-300 p-2">
