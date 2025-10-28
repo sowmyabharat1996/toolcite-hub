@@ -220,10 +220,7 @@ export default function KeywordResearch() {
   }
 
   // Actions
-  function handleCopyAll() {
-    const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
-    navigator.clipboard.writeText(flat);
-  }
+  
   function handleExportCSV() {
     const csv = toCSV(dataset.data);
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
@@ -387,14 +384,7 @@ export default function KeywordResearch() {
             </div>
 
             {/* Copy / Export */}
-            <button
-              className="h-10 px-3 rounded-xl bg-neutral-800 text-white
-                         focus:outline-none focus:ring-2 focus:ring-neutral-400
-                         focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
-              onClick={handleCopyAll}
-            >
-              Copy All
-            </button>
+            
             <button
               className="h-10 px-3 rounded-xl bg-purple-600 text-white
                          focus:outline-none focus:ring-2 focus:ring-purple-400
