@@ -11,21 +11,14 @@ import {
   generateMockData, toCSV, shareURLFromSeed, downloadBlob,
   recomputeAll, explainPick, runAIInsight, computeMetricsAdvanced
 } from "./utils";
-import { exportDashboardToPDF } from "./PdfReport";      // PDF export (brand + cover + auto-landscape)
+import { exportDashboardToPDF } from "./PdfReport";
 import { exportDashboardToPNG } from "./PngReport";
 
 type SessionSnapshot = {
-  id: string;
-  ts: number;
-  seed: string;
-  volSim: number;
-  cpcSim: number;
-  minDiff: number;
-  maxDiff: number;
-  textFilter: string;
-  chips: string[];
-  metrics: Metrics;
-  estClicks: number;
+  id: string; ts: number; seed: string;
+  volSim: number; cpcSim: number; minDiff: number; maxDiff: number;
+  textFilter: string; chips: string[];
+  metrics: Metrics; estClicks: number;
   top3: Array<KeywordItem & { reasons?: string[] }>;
   base: KeywordSourceBlock[];
 };
@@ -83,7 +76,7 @@ export default function KeywordResearch() {
 
   const [copied, setCopied] = useState(false);
 
-  // NEW: runtime toggles for Export PDF
+  // PDF toggles
   const [coverEnabled, setCoverEnabled] = useState<boolean>(() => localStorage.getItem("pdfCover") === "1");
   const [autoLandscape, setAutoLandscape] = useState<boolean>(() => localStorage.getItem("pdfLandscape") === "1");
 
@@ -101,7 +94,7 @@ export default function KeywordResearch() {
     const df = sp.get("df");
     if (df) {
       const [a,b] = df.split("-").map(n => Math.max(0, Math.min(100, Number(n))));
-      if (!Number.isNaN(a) && !Number.isNaN(b)) { setMinDiff(Math.min(a, b)); setMaxDiff(Math.max(a, b)); }
+      if (!Number.isNaN(a) && !Number.isNaN(b)) { setMinDiff(Math.min(a,b)); setMaxDiff(Math.max(a,b)); }
     }
     const v = sp.get("vol"), c = sp.get("cpc"), ai = sp.get("ai");
     if (v) setVolSim(Math.max(0, Math.min(100, Number(v))));
@@ -113,7 +106,7 @@ export default function KeywordResearch() {
     if (q) { setQuery(q); handleGenerate(q, { initial: true }); }
   }, []);
 
-  // Persist sortByAI + diff band + PDF toggles
+  // Persist toggles
   useEffect(() => { const s = localStorage.getItem("sortByAI"); if (s === "true") setSortByAI(true); }, []);
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
   useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
@@ -237,22 +230,11 @@ export default function KeywordResearch() {
   }
   async function handleShare() {
     const url = shareURLFromSeed(query || "keyword", {
-      df: [minDiff, maxDiff],
-      vol: volSim,
-      cpc: cpcSim,
-      sortAI: sortByAI,
-      text: textFilter,
-      chips,
+      df: [minDiff, maxDiff], vol: volSim, cpc: cpcSim, sortAI: sortByAI, text: textFilter, chips,
     });
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      window.prompt("Copy this link:", url);
-    }
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch { window.prompt("Copy this link:", url); }
   }
-  // PDF export (uses toggles)
   async function handleExportPDF() {
     if (!rootRef.current) return;
     const seed = (query.trim() || "keyword");
@@ -263,10 +245,8 @@ export default function KeywordResearch() {
       `Est. Monthly Clicks: ${estClicks.toLocaleString()}`,
       `Band: ${minDiff}–${maxDiff}${chips.length ? ` • Chips: ${chips.join(", ")}` : ""}`,
     ];
-
     await exportDashboardToPDF(
-      rootRef.current,
-      "keyword-dashboard.pdf",
+      rootRef.current, "keyword-dashboard.pdf",
       {
         title: "ToolCite – Keyword Research (AI Dashboard)",
         subtitle: `Seed: ${seed} • ${new Date().toLocaleString()}`,
@@ -275,14 +255,11 @@ export default function KeywordResearch() {
         watermark: "TOOLCITE • INTERNAL",
       },
       {
-        cover: coverEnabled
-          ? {
-              title: "Keyword Research — AI Dashboard",
-              subtitle: `Seed: ${seed} • Exported ${new Date().toLocaleString()}`,
-              bullets,
-              watermark: "CONFIDENTIAL • SEO REPORT",
-            }
-          : false,
+        cover: coverEnabled ? {
+          title: "Keyword Research — AI Dashboard",
+          subtitle: `Seed: ${seed} • Exported ${new Date().toLocaleString()}`,
+          bullets, watermark: "CONFIDENTIAL • SEO REPORT",
+        } : false,
         autoLandscape,
         landscapeThreshold: 900,
       }
@@ -314,7 +291,6 @@ export default function KeywordResearch() {
     setLastUpdated(Date.now());
   }
 
-  // Sorted
   const sortedBlocks = sortByAI
     ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
     : dataset.data;
@@ -326,19 +302,8 @@ export default function KeywordResearch() {
 
   return (
     <div className="relative min-h-[100vh] overflow-visible">
-      {/* subtle wash + global print guards */}
+      {/* subtle wash behind the app */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
-      <style jsx global>{`
-        /* Prevent sticky from creating huge white gaps during export */
-        [data-export-paused="1"] .sticky { position: static !important; top: auto !important; }
-        /* Make sure nested wrappers don't clip portaled tooltips */
-        #__next, body, html { overflow: visible !important; }
-
-        /* --- Print/PDF page-break guards --- */
-        [data-export="section"] { break-inside: avoid; page-break-inside: avoid; }
-        .avoid-break { break-inside: avoid; page-break-inside: avoid; }
-        .page-break-before { break-before: page; page-break-before: always; }
-      `}</style>
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
         {/* Header */}
@@ -352,7 +317,7 @@ export default function KeywordResearch() {
               placeholder="e.g. ai tools for students"
               className="h-10 w-64 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
             />
-            {/* PRIMARY BUTTONS — focus:* (no focus-visible to avoid SWC parse hiccup) */}
+            {/* PRIMARY BUTTONS — use focus:* (no styled-jsx involved) */}
             <button
               className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium
                          focus:outline-none focus:ring-2 focus:ring-blue-400
@@ -476,29 +441,17 @@ export default function KeywordResearch() {
           </div>
         </div>
 
-        {/* NEW: PDF toggles row */}
+        {/* PDF toggles */}
         <div className="flex flex-wrap items-center gap-4 text-sm text-neutral-700 dark:text-neutral-200">
           <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              className="accent-amber-600"
-              checked={coverEnabled}
-              onChange={(e) => setCoverEnabled(e.target.checked)}
-            />
+            <input type="checkbox" className="accent-amber-600" checked={coverEnabled} onChange={(e) => setCoverEnabled(e.target.checked)} />
             Include PDF cover page
           </label>
           <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              className="accent-amber-600"
-              checked={autoLandscape}
-              onChange={(e) => setAutoLandscape(e.target.checked)}
-            />
+            <input type="checkbox" className="accent-amber-600" checked={autoLandscape} onChange={(e) => setAutoLandscape(e.target.checked)} />
             Auto-landscape for wide charts
           </label>
-          <span className="text-xs text-neutral-500">
-            (These preferences are remembered)
-          </span>
+          <span className="text-xs text-neutral-500">(These preferences are remembered)</span>
         </div>
 
         {/* Summary */}
