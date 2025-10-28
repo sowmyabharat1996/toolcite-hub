@@ -2,14 +2,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import SummaryBar from "./SummaryBar";
 import MetricsCharts from "./MetricsCharts";
 import KeywordList from "./KeywordList";
 import {
   Dataset, KeywordSourceBlock, Metrics,
-  generateMockData, computeMetrics, toCSV, shareURLFromSeed,
-  downloadBlob, KeywordItem,
-  recomputeAll, // from utils.ts (Step 1)
+  generateMockData, toCSV, shareURLFromSeed,
+  downloadBlob, KeywordItem, recomputeAll,
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
@@ -85,8 +85,12 @@ export default function KeywordResearch() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [compareWith, setCompareWith] = useState<SessionSnapshot | null>(null);
 
+  // Refs
   const rootRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<number | null>(null);
+  const historyBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const compareRef = useRef<HTMLDivElement | null>(null);
 
   /* ------------------------------- Init ----------------------------------- */
   useEffect(() => {
@@ -100,6 +104,23 @@ export default function KeywordResearch() {
     if (stored === "true") setSortByAI(true);
   }, []);
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
+
+  /* ------------------------------ Dropdown pos ---------------------------- */
+  useEffect(() => {
+    function compute() {
+      if (!historyOpen || !historyBtnRef.current) return;
+      const r = historyBtnRef.current.getBoundingClientRect();
+      setMenuPos({ top: r.bottom + 8, left: r.right - 340, width: 340 });
+    }
+    compute();
+    if (!historyOpen) return;
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, { passive: true });
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute);
+    };
+  }, [historyOpen]);
 
   /* -------------------------------- Mood ---------------------------------- */
   useEffect(() => {
@@ -138,7 +159,6 @@ export default function KeywordResearch() {
     setEstClicks(next.estClicks);
     setLastUpdated(Date.now());
 
-    // auto-save a session for each fresh generate
     const snap: SessionSnapshot = {
       id: makeId(),
       ts: Date.now(),
@@ -155,7 +175,6 @@ export default function KeywordResearch() {
   }
 
   function restoreSession(s: SessionSnapshot) {
-    // restore knobs & base; recompute so all derived values are in sync
     setQuery(s.seed);
     setVolSim(s.volSim);
     setCpcSim(s.cpcSim);
@@ -211,8 +230,6 @@ export default function KeywordResearch() {
     if (!rootRef.current) return;
     await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
   }
-
-  // Manual save (optional — keeps current state as a session)
   function handleSaveSession() {
     const snap = snapshotCurrent();
     if (!snap) return;
@@ -224,10 +241,11 @@ export default function KeywordResearch() {
   function startCompare(s: SessionSnapshot) {
     setCompareWith(s);
     setHistoryOpen(false);
+    setTimeout(() => {
+      compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
-  function clearCompare() {
-    setCompareWith(null);
-  }
+  function clearCompare() { setCompareWith(null); }
 
   /* ------------------------------ Derivations ----------------------------- */
   const sortedBlocks = sortByAI
@@ -235,10 +253,7 @@ export default function KeywordResearch() {
     : dataset.data;
 
   const moodBG: React.CSSProperties = {
-    background: `
-      radial-gradient(1200px 700px at 10% -10%, ${trendColor}12, transparent 60%),
-      radial-gradient(1200px 700px at 110% 110%, ${trendColor}10, transparent 60%)
-    `,
+    background: `radial-gradient(1200px 700px at 10% -10%, ${trendColor}12, transparent 60%), radial-gradient(1200px 700px at 110% 110%, ${trendColor}10, transparent 60%)`,
     transition: "background 700ms ease",
   };
   const { metrics } = dataset;
@@ -267,25 +282,27 @@ export default function KeywordResearch() {
             <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium" onClick={() => handleGenerate()}>
               Generate
             </button>
-            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
+            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>
+              Save Session
+            </button>
 
-            {/* History dropdown (z-index fixed) */}
-            <div className="relative z-[100]">
+            {/* History dropdown (portal) */}
+            <div className="relative">
               <button
+                ref={historyBtnRef}
                 className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
-                onClick={() => setHistoryOpen((v) => !v)}
+                onClick={() => setHistoryOpen(v => !v)}
               >
                 History ▾
               </button>
-              {historyOpen && (
+              {historyOpen && menuPos && createPortal(
                 <div
-                             className={`absolute right-0 mt-2 w-[340px] rounded-xl border border-neutral-200 dark:border-neutral-800
-              bg-white dark:bg-neutral-900 shadow-2xl z-[9999] p-2 space-y-1`}
+                  className="fixed z-[99999] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl p-2 space-y-1 pointer-events-auto"
+                  style={{ top: menuPos.top, left: Math.max(8, menuPos.left), width: menuPos.width }}
+                  role="menu"
                 >
                   {history.length === 0 && (
-                    <div className="text-sm text-neutral-600 dark:text-neutral-300 p-2">
-                      No sessions yet. Click <b>Generate</b> or <b>Save Session</b>.
-                    </div>
+                    <div className="text-sm text-neutral-600 dark:text-neutral-300 p-2">No sessions yet. Click <b>Generate</b> or <b>Save Session</b>.</div>
                   )}
                   {history.map((s) => (
                     <div key={s.id} className="rounded-lg p-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
@@ -298,22 +315,17 @@ export default function KeywordResearch() {
                         <span>• EMC {s.estClicks}</span>
                       </div>
                       <div className="mt-2 flex gap-2">
-                        <button
-                          className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs"
-                          onClick={() => { restoreSession(s); setHistoryOpen(false); }}
-                        >
+                        <button className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs" onClick={() => { restoreSession(s); setHistoryOpen(false); }}>
                           Restore
                         </button>
-                        <button
-                          className="px-2 py-1 rounded-md bg-amber-600 text-white text-xs"
-                          onClick={() => startCompare(s)}
-                        >
+                        <button className="px-2 py-1 rounded-md bg-amber-600 text-white text-xs" onClick={() => { startCompare(s); }}>
                           Compare
                         </button>
                       </div>
                     </div>
                   ))}
-                </div>
+                </div>,
+                document.body
               )}
             </div>
 
@@ -326,18 +338,12 @@ export default function KeywordResearch() {
 
         {/* Summary */}
         <div data-export="section">
-          <SummaryBar
-            metrics={metrics}
-            previous={previousMetrics}
-            lastUpdated={lastUpdated}
-            showTrend={showTrend}
-            estClicks={estClicks}
-          />
+          <SummaryBar metrics={metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
         </div>
 
         {/* Compare panel */}
         {compareWith && (
-          <div className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10 p-4">
+          <div ref={compareRef} className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10 p-4">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">
                 Compare with: <span className="font-medium">{compareWith.seed}</span>{" "}
@@ -410,7 +416,7 @@ export default function KeywordResearch() {
 
         {/* Charts */}
         <div data-export="section">
-          <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
+          <MetricsCharts metrics={dataset.metrics} blocks={sortedBlocks} />
         </div>
 
         {/* AI Insight panel */}
@@ -436,13 +442,10 @@ export default function KeywordResearch() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold"
-                            style={{ backgroundColor: trendColor + "22", color: trendColor }}>{i + 1}</span>
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold" style={{ backgroundColor: trendColor + "22", color: trendColor }}>{i + 1}</span>
                       <div className="truncate font-medium">{x.phrase}</div>
                     </div>
-                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
-                      diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
-                    </div>
+                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}</div>
                     {x.reasons && x.reasons.length > 0 && (
                       <div className="mt-2">
                         <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Why this pick?</div>
