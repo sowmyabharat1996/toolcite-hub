@@ -1,195 +1,42 @@
 /* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* ──────────────────────────────────────────────────────────────
-   Tailwind layers (standards-compliant form to satisfy validators)
-   ────────────────────────────────────────────────────────────── */
-@import "tailwindcss/base";
-@import "tailwindcss/components";
-@import "tailwindcss/utilities";
-
-/* ──────────────────────────────────────────────────────────────
-   Base resets / theme
-   ────────────────────────────────────────────────────────────── */
+/* High-contrast defaults and better focus styles */
 :root {
-  /* you can reference this in components if needed */
-  --ring-color: #6366f1; /* indigo-500 */
+  --ring: 0 0 0; /* used in cards via ring utilities */
 }
 
 *,
 *::before,
 *::after {
-  box-sizing: border-box;
+  @apply box-border;
 }
 
-html,
-body {
-  background-color: rgb(250 250 250);        /* neutral-50 */
-  color: rgb(23 23 23);                       /* neutral-900 */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  margin: 0;
-  padding: 0;
+html, body {
+  @apply bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
 }
 
-/* Dark scheme defaults */
-@media (prefers-color-scheme: dark) {
-  html,
-  body {
-    background-color: rgb(10 10 10);          /* neutral-950 */
-    color: rgb(245 245 245);                  /* neutral-100 */
-  }
-}
-
-/* No highlight on tap for interactive elements */
-a,
-button {
+a, button {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Visible focus (replacement for Tailwind ring utilities) */
-:where(button, [role="button"], a, input, select, textarea):focus-visible {
-  outline: 2px solid var(--ring-color);
-  outline-offset: 2px;
+/* Make focus visible for keyboard users without the heavy default outline */
+:where(button, [role="button"], a):focus-visible {
+  @apply outline-none ring-2 ring-indigo-500;
 }
 
-/* ──────────────────────────────────────────────────────────────
-   Utilities
-   ────────────────────────────────────────────────────────────── */
-
-/* 2-line clamp (keep even if you also use Tailwind’s plugin) */
-/* 2-line clamp (warning-free) */
-/* 2-line clamp (warning-free) */
+/* Utility for tight line clamp (if your Tailwind config has line-clamp plugin, great; if not, keep this) */
 .line-clamp-2{
-  /* cross-browser fallback */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
-  line-height: 1.25rem;          /* match your text line-height */
-  max-height: calc(2 * 1.25rem); /* 2 lines */
-  display: -webkit-box;          /* improves appearance on WebKit */
-  -webkit-box-orient: vertical;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
 }
 
-/* (optional) if you ever decide to allow vendor props again,
-   you can re-add -webkit-line-clamp here */
-@supports (line-height: 1) {
-  /* keep empty to avoid vendor warnings */
-}
-
-
-/* Softer shadows in dark mode to avoid harsh edges on cards */
+/* Smooth card edges on mobile dark backgrounds */
 @media (prefers-color-scheme: dark){
-  .shadow-sm { box-shadow: 0 1px 2px rgb(0 0 0 / 0.20); }
-  .hover\:shadow-md:hover { box-shadow: 0 4px 10px rgb(0 0 0 / 0.30); }
-}
-
-/* Avoid ugly letter wraps in numbers/badges */
-.kern-tight { letter-spacing: 0.01em; }
-
-/* Help long tokens break nicely without overflowing */
-.break-words { overflow-wrap: anywhere; word-break: break-word; }
-
-/* ──────────────────────────────────────────────────────────────
-   Export / PDF capture helpers (CSS-only fixes)
-   ────────────────────────────────────────────────────────────── */
-
-/* 1) Never split sections or cards across PDF tiles */
-[data-export="section"],
-.kw-card,
-.pdf-no-break {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-/* 2) Footer overlap guard:
-   Add a silent spacer at the bottom of each export section so
-   the PDF footer / QR never sits on top of the last row. */
-[data-export="section"]::after {
-  content: "";
-  display: block;
-  height: 56px;   /* matches common footer height in your exports */
-}
-
-/* 3) While exporting we temporarily disable sticky to avoid gaps */
-[data-export-paused="1"] .sticky {
-  position: static !important;
-  top: auto !important;
-}
-
-/* 4) Make canvases/images predictable during capture */
-canvas, img, svg {
-  max-width: 100%;
-  height: auto;
-  display: block;
-  background-color: transparent;
-}
-
-/* 5) Recharts containers sometimes have overflow issues.
-      Keep them visible so html2canvas captures entire chart. */
-.recharts-wrapper,
-.recharts-surface {
-  overflow: visible !important;
-}
-
-/* 6) Slightly tighter letter-spacing prints cleaner text in PDF */
-@media print {
-  body { letter-spacing: 0.01em; }
-  .no-print { display: none !important; }
-}
-
-/* ──────────────────────────────────────────────────────────────
-   Optional: tidy grid/card rendering in exports
-   ────────────────────────────────────────────────────────────── */
-
-/* Ensure keyword cards are treated as atomic units for capture.
-   (Add className="kw-card" to the card root — if already present, great.) */
-.kw-card {
-  overflow: visible;
-  transform: translateZ(0); /* helps some rasterizers */
-  will-change: transform;
-}
-
-/* Prevent “half letters” at slice boundaries on very tight rows */
-.kw-card .truncate { padding-bottom: 1px; }
-
-/* Add breathing room at page bottoms in long grids */
-.export-bottom-pad { padding-bottom: 64px; }
-
-/* ── Export-time typography fixes (prevents half-cut glyphs) ───────────── */
-html[data-exporting="1"] * {
-  text-shadow: none !important;
-}
-html[data-exporting="1"] h1,
-html[data-exporting="1"] h2,
-html[data-exporting="1"] h3,
-html[data-exporting="1"] h4,
-html[data-exporting="1"] h5,
-html[data-exporting="1"] h6,
-html[data-exporting="1"] p,
-html[data-exporting="1"] span {
-  letter-spacing: 0 !important;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: geometricPrecision;
-}
-
-/* Never let these split across pages */
-[data-export="section"],
-.kw-card,
-.pdf-no-break {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-/* Keep our earlier “nice card spacing” look for sections */
-.export-section {
-  border-radius: 1.25rem;         /* rounded-2xl */
-  background: #fff;               /* white cards */
-  border: 1px solid rgba(0,0,0,.08);
-  box-shadow: 0 1px 2px rgba(0,0,0,.06);
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-@media (min-width: 768px){
-  .export-section { padding: 1.25rem; margin-bottom: 1.25rem; }
+  .shadow-sm { box-shadow: 0 1px 2px rgb(0 0 0 / 0.2); }
+  .hover\:shadow-md:hover { box-shadow: 0 4px 10px rgb(0 0 0 / 0.3); }
 }

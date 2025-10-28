@@ -11,7 +11,7 @@ import React, {
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore  -- local shim or @types may lag on Windows; runtime is fine
-import { createPortal } from "react-dom";
+import { createPortal } from "react-dom";   
 
 import { KeywordSourceBlock, KeywordItem, explainPick } from "./utils";
 
@@ -125,17 +125,14 @@ function Card({ k, highlight }: { k: KeywordItem; highlight: boolean }) {
     <>
       <div
         ref={cardRef}
-        data-pdf-snap
-        className={`kw-card group relative rounded-xl p-3 border transition-shadow duration-300 ${
+        className={`group relative rounded-xl p-3 border transition-shadow duration-300 ${
           highlight
             ? "border-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
             : "border-neutral-200/70 dark:border-neutral-800"
         }`}
-        style={{
-          breakInside: "avoid",
-          pageBreakInside: "avoid",
-        }}
-        aria-label={reasons.length ? `Why this pick? ${reasons.join("; ")}` : undefined}
+        aria-label={
+          reasons.length ? `Why this pick? ${reasons.join("; ")}` : undefined
+        }
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         tabIndex={0}

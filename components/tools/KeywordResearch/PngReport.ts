@@ -1,77 +1,88 @@
 // components/tools/KeywordResearch/PngReport.ts
-"use client";
-
-import html2canvas from "html2canvas";
-
-export interface PngExportOptions {
-  filename?: string;
-  scale?: number;   // devicePixelRatio cap (e.g. 2)
-  quality?: number; // kept for API parity (PNG ignores quality)
-  bg?: string;      // background color while rendering
-}
-
-// Overloads so both styles compile
-export function exportDashboardToPNG(root: HTMLElement): Promise<void>;
-export function exportDashboardToPNG(
-  root: HTMLElement,
-  filename: string,
-  scale?: number,
-  quality?: number,
-  bg?: string
-): Promise<void>;
-export function exportDashboardToPNG(
-  root: HTMLElement,
-  opts: PngExportOptions
-): Promise<void>;
+// Lightweight PNG export with dynamic import of html-to-image (client-only).
+// Adds a simple brand header & footer onto the captured PNG.
 
 export async function exportDashboardToPNG(
-  root: HTMLElement,
-  arg2?: string | PngExportOptions,
-  arg3?: number,
-  arg4?: number,
-  arg5?: string
-): Promise<void> {
-  // normalize to options object
-  let opts: PngExportOptions;
-  if (typeof arg2 === "string") {
-    opts = { filename: arg2, scale: arg3, quality: arg4, bg: arg5 };
-  } else {
-    opts = arg2 ?? {};
-  }
+  node: HTMLElement,
+  filename: string = "keyword-dashboard.png",
+  brand: { title?: string; subtitle?: string; watermark?: string } = {}
+) {
+  if (typeof window === "undefined") return;
 
-  const filename = opts.filename ?? "keyword-dashboard.png";
-  const dpr =
-    typeof window !== "undefined" && window.devicePixelRatio
-      ? window.devicePixelRatio
-      : 1;
-  const scale = Math.max(1, Math.min(opts.scale ?? dpr, 2));
-  const backgroundColor = opts.bg ?? "#ffffff";
+  // Lazy-load only on the client
+  const { toPng } = await import("html-to-image");
 
-  // pause any CSS animations you've gated with this flag
-  root.setAttribute("data-export-paused", "1");
+  // Pause sticky/overflow tricks during export (you already have CSS for this)
+  const prev = node.closest("body")?.getAttribute("data-export-paused");
+  document.body.setAttribute("data-export-paused", "1");
 
   try {
-    const canvas = await html2canvas(
-      root,
-      {
-        backgroundColor,
-        scale,
-        useCORS: true,
-        logging: false,
-        // keep layout correct for tall pages
-        windowWidth: document.documentElement.scrollWidth,
-        windowHeight: document.documentElement.scrollHeight,
-      } as any // <-- keeps TS happy across html2canvas versions
-    );
+    // Capture PNG of the dashboard root
+    const dataUrl = await toPng(node, {
+      cacheBust: true,
+      pixelRatio: Math.min(2, window.devicePixelRatio || 1.5),
+      // Filter out any elements you explicitly mark to skip
+      filter: (el) => {
+        // Skip elements tagged for skipping, e.g., tooltips/portals
+        const anyEl = el as HTMLElement;
+        if (anyEl?.dataset?.export === "skip") return false;
+        return true;
+      },
+    });
 
-    const dataUrl = canvas.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    // Post-process: draw onto a canvas and add header/footer branding
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+
+    const headerH = 64; // px
+    const footerH = 40; // px
+    const w = img.naturalWidth;
+    const h = img.naturalHeight + headerH + footerH;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+
+    // Header
+    ctx.fillStyle = "#0f172a"; // slate-900 text
+    ctx.font = "600 20px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+    const title = brand.title || "ToolCite – Keyword Research (AI Dashboard)";
+    ctx.fillText(title, 24, 40);
+
+    ctx.fillStyle = "#64748b"; // slate-500
+    ctx.font = "400 14px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+    const subtitle =
+      brand.subtitle ||
+      `Exported ${new Date().toLocaleString()}  •  For internal SEO review`;
+    ctx.fillText(subtitle, 24, 60);
+
+    // Body (captured dashboard)
+    ctx.drawImage(img, 0, headerH);
+
+    // Footer
+    ctx.fillStyle = "#64748b";
+    ctx.font = "400 12px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+    const wm = brand.watermark || "© ToolCite Hub  •  Smart • Fast • Reliable";
+    ctx.fillText(wm, 24, h - 14);
+
+    // Download
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
   } finally {
-    root.removeAttribute("data-export-paused");
+    // restore flag
+    if (prev == null) document.body.removeAttribute("data-export-paused");
+    else document.body.setAttribute("data-export-paused", prev);
   }
 }

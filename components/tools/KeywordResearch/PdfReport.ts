@@ -1,212 +1,242 @@
 // components/tools/KeywordResearch/PdfReport.ts
+// ToolCite Hub — Branded PDF Export with Cover, ToC, QR Footer, Watermark
+// Fixes: reserved footer band (no overlap), robust ToC titles, precise pagination
+
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import QRCode from "qrcode";
 
-/** Optional cover set */
-export type CoverSpec =
-  | boolean
-  | {
-      title?: string;
-      subtitle?: string;
-      bullets?: string[];
-      watermark?: string;
-    };
+type CoverOpts = {
+  title?: string;
+  subtitle?: string;
+  bullets?: string[];
+  watermark?: string;
+};
 
-export interface PdfExportOptions {
-  filename: string;
+type ExportOpts = {
+  filename?: string;
   brand?: string;
-  cover?: CoverSpec;              // true for default cover
-  autoLandscape?: boolean;        // auto pick L/P by aspect
-  margin?: number;                // pt; default 36
-}
+  cover?: false | CoverOpts;
+  autoLandscape?: boolean;
+  margin?: number; // outer text margin + footer baseline padding
+};
 
-type TocEntry = { title: string; page: number };
+// ---------- helpers ----------
+const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function pxToPt(px: number) {
-  // jsPDF default is 72 dpi (pt)
-  const PT_PER_PX = 72 / 96;
-  return px * PT_PER_PX;
-}
-
-async function makeQrDataURL(text: string, size = 128): Promise<string> {
-  try {
-    const { toCanvas } = await import("qrcode");
-    const c = document.createElement("canvas");
-    await toCanvas(c, text, {
-      errorCorrectionLevel: "M", width: size, margin: 1,
-    } as any);
-    return c.toDataURL("image/png");
-  } catch {
-    // Fallback tiny placeholder
-    const c = document.createElement("canvas");
-    c.width = c.height = size;
-    const g = c.getContext("2d")!;
-    g.fillStyle = "#fff"; g.fillRect(0,0,size,size);
-    g.fillStyle = "#000"; g.fillRect(0,0,size, size/8);
-    return c.toDataURL("image/png");
-  }
-}
-
-function drawFooter(pdf: jsPDF, pageW: number, pageH: number, brand?: string, pageNum?: number, total?: number, qr?: string) {
-  const m = 24;
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(9);
-  pdf.setTextColor(120);
-  const left = brand ? `© ${brand}` : "";
-  if (left) pdf.text(left, m, pageH - m + 8);
-
-  if (pageNum && total) {
-    pdf.text(`Page ${pageNum} / ${total}`, pageW - m, pageH - m + 8, { align: "right" as const });
-  }
-
-  if (qr) {
-    const size = 36; // pt
-    pdf.addImage(qr, "PNG", m - 8, pageH - m - size + 8, size, size);
-  }
-}
-
-function drawWatermark(pdf: jsPDF, pageW: number, pageH: number, text: string) {
-  pdf.saveGraphicsState();
-  pdf.setTextColor(225);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(48);
-  // jsPDF supports angle in options
-  pdf.text(text, pageW / 2, pageH / 2, { align: "center" as const, angle: -30 });
-  pdf.restoreGraphicsState();
-}
-
-function addCover(pdf: jsPDF, pageW: number, pageH: number, spec: CoverSpec | undefined, brand?: string, stats?: string[], toc?: TocEntry[]) {
-  if (!spec) return;
-
-  const cfg = typeof spec === "boolean" ? {} : spec;
-  const title = cfg?.title ?? "Keyword Research — AI Dashboard";
-  const subtitle = cfg?.subtitle ?? "";
-  const bullets = cfg?.bullets ?? stats ?? [];
-  const wm = cfg?.watermark ?? "CONFIDENTIAL • INTERNAL";
-
-  const m = 48;
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(24);
-  pdf.setTextColor(20);
-  pdf.text(title, m, m);
-
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(11);
-  if (subtitle) pdf.text(subtitle, m, m + 20);
-
-  let y = m + 40;
-  pdf.setFontSize(10);
-  bullets.forEach((b) => {
-    pdf.text(`• ${b}`, m, y);
-    y += 14;
+function pauseAnimations(el: HTMLElement) {
+  el.setAttribute("data-export-paused", "1");
+  el.querySelectorAll<HTMLElement>("*").forEach((n) => {
+    n.style.animationPlayState = "paused";
+    n.style.transition = "none";
   });
+}
+function resumeAnimations(el: HTMLElement) {
+  el.removeAttribute("data-export-paused");
+  el.querySelectorAll<HTMLElement>("*").forEach((n) => {
+    n.style.animationPlayState = "";
+    n.style.transition = "";
+  });
+}
 
-  // ToC (if provided)
-  if (toc && toc.length) {
-    y += 10;
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Contents", m, y);
-    pdf.setFont("helvetica", "normal");
-    y += 14;
-    toc.forEach((t) => {
-      pdf.text(`${t.title}`, m, y);
-      pdf.text(String(t.page), pageW - m, y, { align: "right" as const });
-      y += 12;
+// ---------- drawing primitives ----------
+function drawWatermark(pdf: jsPDF, pageW: number, pageH: number, text?: string) {
+  if (!text) return;
+  try {
+    (pdf as any).saveGraphicsState?.();
+    if ((pdf as any).GState && (pdf as any).setGState) {
+      (pdf as any).setGState(new (pdf as any).GState({ opacity: 0.08 }));
+    }
+  } catch {}
+
+  try {
+    pdf.setTextColor(185);
+    pdf.setFontSize(48);
+    const cx = pageW / 2;
+    const cy = pageH / 2;
+    (pdf as any).text(text, cx, cy, { angle: -30, align: "center" });
+  } finally {
+    try { (pdf as any).restoreGraphicsState?.(); } catch {}
+  }
+}
+
+async function drawFooterWithQR(
+  pdf: jsPDF,
+  pageW: number,
+  pageH: number,
+  brand?: string,
+  pageLabel?: string,
+  margin = 36
+) {
+  const qrText = "https://toolcitehub.com";
+  const qrData = await QRCode.toDataURL(qrText, { margin: 0, width: 38 });
+  const size = 38;
+  const x = margin;
+  const y = pageH - margin - size;
+
+  pdf.addImage(qrData, "PNG", x, y, size, size);
+
+  pdf.setFontSize(9);
+  pdf.setTextColor(100);
+  pdf.text(brand || "© ToolCite Hub • Smart • Fast • Reliable", x + size + 10, pageH - margin / 2);
+
+  if (pageLabel) {
+    pdf.text(pageLabel, pageW - margin, pageH - margin / 2, { align: "right" } as any);
+  }
+}
+
+function drawCover(
+  pdf: jsPDF,
+  pageW: number,
+  pageH: number,
+  cover: CoverOpts,
+  tocTitles: string[] | null,
+  margin: number
+) {
+  drawWatermark(pdf, pageW, pageH, cover.watermark || "CONFIDENTIAL • INTERNAL");
+
+  // Title + subtitle
+  pdf.setFontSize(22);
+  pdf.setTextColor(30);
+  pdf.text(cover.title || "Keyword Research — AI Dashboard", margin, margin + 10);
+
+  pdf.setFontSize(12);
+  pdf.text(
+    cover.subtitle ||
+      `Seed: ${(document.querySelector("input") as HTMLInputElement | null)?.value || "n/a"} • Exported ${new Date().toLocaleString()}`,
+    margin,
+    margin + 32
+  );
+
+  // Bullets (summary)
+  let atY = margin + 52;
+  if (cover.bullets?.length) {
+    pdf.setFontSize(10);
+    cover.bullets.forEach((line) => {
+      pdf.text(`• ${line}`, margin, atY);
+      atY += 14;
+    });
+    atY += 10; // spacing before Contents
+  }
+
+  // Table of Contents
+  if (tocTitles?.length) {
+    pdf.setFontSize(12);
+    pdf.text("Contents", margin, atY);
+    atY += 16;
+    pdf.setFontSize(10);
+    tocTitles.forEach((t, i) => {
+      pdf.text(`${i + 1}. ${t}`, margin + 18, atY);
+      atY += 14;
     });
   }
-
-  // huge soft watermark
-  drawWatermark(pdf, pageW, pageH, wm);
-
-  // footer
-  drawFooter(pdf, pageW, pageH, brand, 1, 1);
-  pdf.addPage();
 }
 
-export async function exportDashboardToPDF(root: HTMLElement, options: PdfExportOptions) {
+// Fetch section titles: prefer data-title, else first H1/H2/H3, else fallback
+function getSectionTitles(sections: HTMLElement[]): string[] {
+  const fallbacks = [
+    "Summary KPIs",
+    "Simulator & Filters",
+    "Charts",
+    "AI Insight — Easiest Wins",
+    "Keyword Lists by Source",
+  ];
+
+  return sections.map((s, i) => {
+    const attr = s.getAttribute("data-title")?.trim();
+    if (attr) return attr;
+    const h = s.querySelector("h1,h2,h3")?.textContent?.trim();
+    if (h && h.length > 0) return h;
+    return fallbacks[Math.min(i, fallbacks.length - 1)];
+  });
+}
+
+// ---------- core exporter ----------
+export async function exportDashboardToPDF(root: HTMLElement, opts: ExportOpts = {}) {
   const {
-    filename,
+    filename = "keyword-dashboard.pdf",
     brand = "ToolCite Hub",
-    cover = true,
-    autoLandscape = true,
+    cover = false,
+    autoLandscape = false,
     margin = 36,
-  } = options;
+  } = opts;
 
+  // Collect sections
   const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-export="section"]'));
-  if (!sections.length) sections.push(root);
+  if (sections.length === 0) sections.push(root);
 
-  // Decide orientation from first section if requested
-  let orient: "p" | "l" = "p";
-  if (autoLandscape && sections[0]) {
-    const r = sections[0].getBoundingClientRect();
-    orient = r.width > r.height * 1.15 ? "l" : "p";
-  }
+  // Init PDF
+  const pdf = new jsPDF({
+    orientation: autoLandscape ? "landscape" : "portrait",
+    unit: "pt",
+    format: "a4",
+  });
 
-  const pdf = new jsPDF({ orientation: orient, unit: "pt", format: "a4" });
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
 
-  // TOC collection (we'll rewrite page numbers after we add cover)
-  const toc: TocEntry[] = [];
+  // Reserve a footer band so content never overlaps QR/page number
+  const footerQRSize = 38;
+  const footerReserved = footerQRSize + margin; // ~74pt by default
+  const usableH = pageH - footerReserved;
+  const safetyTop = 2; // tiny visual buffer on tiles
 
-  // Stats for Cover (if you want – read from small cards)
-  const stats: string[] = [];
-  const mini = root.querySelectorAll<HTMLElement>('[data-stat]');
-  mini.forEach((el) => stats.push(el.innerText.trim().replace(/\s+/g, " ")));
+  pauseAnimations(root);
+  const scale = window.devicePixelRatio > 1 ? 1.5 : 1.25;
 
-  // Pause transitions/positioning to avoid gaps
-  root.setAttribute("data-export-paused", "1");
-
-  // Create QR (share current URL)
-  const shareUrl = (typeof window !== "undefined" && window.location?.href) || "";
-  const qrData = shareUrl ? await makeQrDataURL(shareUrl, 256) : undefined;
+  const tocTitles = getSectionTitles(sections);
+  let pageIndex = 1;
 
   try {
-    const scale = Math.max(1.5, Math.min(2, window.devicePixelRatio || 1.5));
+    // COVER
+    if (cover) {
+      drawCover(pdf, pageW, pageH, cover as CoverOpts, tocTitles.length ? tocTitles : null, margin);
+      await drawFooterWithQR(pdf, pageW, pageH, brand, `Page ${pageIndex}`, margin);
+      if (sections.length > 0) {
+        pdf.addPage();
+        pageIndex++;
+      }
+    }
 
-    for (const section of sections) {
-      const title = section.getAttribute("data-export-title") || "Section";
-
-      // ensure in view
-      section.scrollIntoView({ block: "nearest" });
-      await new Promise((r) => setTimeout(r, 30));
+    // CONTENT
+    for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+      const section = sections[sIdx];
+      section.scrollIntoView({ block: "center" });
+      await tick(40);
 
       const canvas = await html2canvas(section, {
         scale,
         backgroundColor: "#ffffff",
         useCORS: true,
         logging: false,
-        // TS types lag behind – cast to any to keep clean builds
-        letterRendering: true as any,
         windowWidth: document.documentElement.scrollWidth,
         windowHeight: document.documentElement.scrollHeight,
-      } as any);
+      });
 
-      // Fit to page with margins
-      const targetW = pageW - margin * 2;
       const imgW = canvas.width;
       const imgH = canvas.height;
-      const ratio = targetW / imgW;
+      const ratio = pageW / imgW;
       const renderH = imgH * ratio;
-      const availH = pageH - margin * 2;
 
-      const record = () => toc.push({ title, page: pdf.getNumberOfPages() });
+      const commitPage = async (img: HTMLCanvasElement, drawHeight: number) => {
+        pdf.addImage(img, "PNG", 0, safetyTop, pageW, drawHeight - safetyTop);
+        await drawFooterWithQR(pdf, pageW, pageH, brand, `Page ${pageIndex}`, margin);
+      };
 
-      if (renderH <= availH) {
-        // Single page
-        pdf.addImage(canvas, "PNG", margin, margin, targetW, renderH);
-        record();
-        pdf.addPage();
+      if (renderH <= usableH) {
+        // one page
+        await commitPage(canvas, Math.min(renderH, usableH));
+        const isLastOverall = sIdx === sections.length - 1;
+        if (!isLastOverall) {
+          pdf.addPage();
+          pageIndex++;
+        }
       } else {
-        // Multi-page tiling
-        const pageCount = Math.ceil(renderH / availH);
-        let firstSlice = true;
+        // tiling
+        const pageCount = Math.ceil(renderH / usableH);
         for (let i = 0; i < pageCount; i++) {
-          if (i > 0) pdf.addPage();
-          // Slice a tad taller to avoid baseline cropping
-          const fudgePx = Math.ceil(2 / ratio); // ~2pt
-          const sY = Math.max(0, Math.floor((i * availH) / ratio) - fudgePx);
-          const sH = Math.min(imgH - sY, Math.ceil(availH / ratio) + fudgePx * 2);
+          const sY = (i * usableH) / ratio;
+          const sH = Math.min(imgH - sY, usableH / ratio);
 
           const slice = document.createElement("canvas");
           slice.width = imgW;
@@ -214,45 +244,24 @@ export async function exportDashboardToPDF(root: HTMLElement, options: PdfExport
           const ctx = slice.getContext("2d")!;
           ctx.drawImage(canvas, 0, sY, imgW, sH, 0, 0, imgW, sH);
 
-          const h = sH * ratio;
-          pdf.addImage(slice, "PNG", margin, margin, targetW, h);
+          await commitPage(slice, sH * ratio);
 
-          if (firstSlice) { record(); firstSlice = false; }
+          const isLastTile = i === pageCount - 1;
+          const isLastSection = sIdx === sections.length - 1;
+          const isLastOverall = isLastTile && isLastSection;
+
+          if (!isLastOverall) {
+            pdf.addPage();
+            pageIndex++;
+          }
         }
-        pdf.addPage();
       }
+
+      await tick(30);
     }
 
-    // Remove the trailing empty page that we added after the last section
-    const lastPageIdx = pdf.getNumberOfPages();
-    pdf.deletePage(lastPageIdx);
-
-    // Insert Cover at page 1 (includes watermark + ToC)
-    // We need to rebuild a new doc to put cover first, or we can insert & copy pages.
-    // Simpler: create a new doc and import the pages.
-    const final = new jsPDF({ orientation: orient, unit: "pt", format: "a4" });
-    const totalWithoutCover = pdf.getNumberOfPages();
-
-    // Build cover (pass ToC w/ +1 page offset)
-    const tocWithOffset = toc.map((t) => ({ title: t.title, page: t.page + 1 }));
-    addCover(final, pageW, pageH, cover, brand, stats, tocWithOffset);
-
-    // Append existing pages
-    for (let i = 1; i <= totalWithoutCover; i++) {
-      const page = (pdf as any).getPage(i); // jsPDF keeps internal structure
-      (final as any).addPage(page);
-    }
-
-    // Footer + watermark on every page
-    const total = final.getNumberOfPages();
-    for (let i = 1; i <= total; i++) {
-      final.setPage(i);
-      drawWatermark(final, pageW, pageH, "CONFIDENTIAL • INTERNAL");
-      drawFooter(final, pageW, pageH, brand, i, total, qrData);
-    }
-
-    final.save(filename);
+    pdf.save(filename);
   } finally {
-    root.removeAttribute("data-export-paused");
+    resumeAnimations(root);
   }
 }
