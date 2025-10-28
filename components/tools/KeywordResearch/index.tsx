@@ -9,7 +9,8 @@ import KeywordList from "./KeywordList";
 import {
   Dataset, KeywordSourceBlock, Metrics, KeywordItem,
   generateMockData, toCSV, shareURLFromSeed, downloadBlob,
-  recomputeAll, explainPick, runAIInsight, computeMetricsAdvanced
+  recomputeAll, explainPick, runAIInsight, computeMetricsAdvanced,
+  stateToQuery, shareURLFromState
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 import { exportDashboardToPNG } from "./PngReport";
@@ -108,6 +109,23 @@ export default function KeywordResearch() {
 
   // Persist toggles
   useEffect(() => { const s = localStorage.getItem("sortByAI"); if (s === "true") setSortByAI(true); }, []);
+  useEffect(() => {
+  const qs = stateToQuery({
+    seed: (query.trim() || "keyword"),
+    df: [minDiff, maxDiff],
+    vol: volSim,
+    cpc: cpcSim,
+    ai: sortByAI,
+    text: textFilter,
+    chips,
+  });
+  const next = `${location.pathname}?${qs}`;
+  const cur  = `${location.pathname}${location.search}`;
+  if (next !== cur) {
+    window.history.replaceState(null, "", next);
+  }
+}, [query, minDiff, maxDiff, volSim, cpcSim, sortByAI, textFilter, chips]);
+
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
   useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
   useEffect(() => { localStorage.setItem("pdfCover", coverEnabled ? "1" : "0"); }, [coverEnabled]);
@@ -241,13 +259,25 @@ useEffect(() => {
     const csv = toCSV(dataset.data);
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
   }
-  async function handleShare() {
-    const url = shareURLFromSeed(query || "keyword", {
-      df: [minDiff, maxDiff], vol: volSim, cpc: cpcSim, sortAI: sortByAI, text: textFilter, chips,
-    });
-    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }
-    catch { window.prompt("Copy this link:", url); }
+ async function handleShare() {
+  const url = shareURLFromState({
+    seed: (query.trim() || "keyword"),
+    df: [minDiff, maxDiff],
+    vol: volSim,
+    cpc: cpcSim,
+    ai: sortByAI,
+    text: textFilter,
+    chips,
+  });
+  try {
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  } catch {
+    window.prompt("Copy this link:", url);
   }
+}
+
   async function handleExportPDF() {
     if (!rootRef.current) return;
     const seed = (query.trim() || "keyword");

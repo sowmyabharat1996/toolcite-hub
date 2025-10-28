@@ -130,6 +130,34 @@ export function shareURLFromSeed(seed: string, opts: ShareOpts = {}) {
   return url.toString();
 }
 
+// --- New: live URL-state helpers (non-breaking) ---
+export type URLState = {
+  seed: string;
+  df: [number, number];
+  vol: number;
+  cpc: number;
+  ai: boolean;
+  text: string;
+  chips: string[];
+};
+
+export function stateToQuery(s: URLState) {
+  const p = new URLSearchParams();
+  if (s.seed) p.set("q", s.seed);
+  if (s.df)  p.set("df", `${Math.max(0, s.df[0])}-${Math.min(100, s.df[1])}`);
+  p.set("vol", String(s.vol));
+  p.set("cpc", String(s.cpc));
+  if (s.ai) p.set("ai", "1");
+  if (s.text) p.set("qf", s.text);
+  if (s.chips?.length) p.set("chips", s.chips.join("."));
+  return p.toString();
+}
+
+export function shareURLFromState(s: URLState) {
+  const qs = stateToQuery(s);
+  return `${location.origin}${location.pathname}?${qs}`;
+}
+
 // ---------- AI Insight ----------
 const INTENT_WEIGHT: Record<Intent, number> = {
   Transactional: 1.0, Commercial: 0.9, Informational: 0.6, Navigational: 0.5,
