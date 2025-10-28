@@ -254,7 +254,7 @@ export default function KeywordResearch() {
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
         {/* Header & controls */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex flex-wrap gap-2 items-center [isolation:isolate]">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
           <div className="flex flex-wrap gap-2 items-center">
             <input
@@ -269,8 +269,8 @@ export default function KeywordResearch() {
             </button>
             <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
 
-            {/* History dropdown */}
-            <div className="relative">
+            {/* History dropdown (z-index fixed) */}
+            <div className="relative z-[100]">
               <button
                 className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700"
                 onClick={() => setHistoryOpen((v) => !v)}
@@ -278,9 +278,14 @@ export default function KeywordResearch() {
                 History ▾
               </button>
               {historyOpen && (
-                <div className="absolute right-0 mt-2 w-[340px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-xl z-20 p-2 space-y-1">
+                <div
+                  className="absolute right-0 mt-2 w-[340px] rounded-xl border border-neutral-200 dark:border-neutral-800
+                             bg-white dark:bg-neutral-900 shadow-2xl z-[9999] p-2 space-y-1"
+                >
                   {history.length === 0 && (
-                    <div className="text-sm text-neutral-600 dark:text-neutral-300 p-2">No sessions yet. Click <b>Generate</b> or <b>Save Session</b>.</div>
+                    <div className="text-sm text-neutral-600 dark:text-neutral-300 p-2">
+                      No sessions yet. Click <b>Generate</b> or <b>Save Session</b>.
+                    </div>
                   )}
                   {history.map((s) => (
                     <div key={s.id} className="rounded-lg p-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
@@ -334,7 +339,10 @@ export default function KeywordResearch() {
         {compareWith && (
           <div className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10 p-4">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Compare with: <span className="font-medium">{compareWith.seed}</span> <span className="text-xs text-neutral-500">({formatTime(compareWith.ts)})</span></div>
+              <div className="text-sm font-semibold">
+                Compare with: <span className="font-medium">{compareWith.seed}</span>{" "}
+                <span className="text-xs text-neutral-500">({formatTime(compareWith.ts)})</span>
+              </div>
               <button className="text-xs px-2 py-1 rounded-md bg-sky-600 text-white" onClick={clearCompare}>Clear</button>
             </div>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
