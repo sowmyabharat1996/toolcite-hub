@@ -7,9 +7,9 @@ import SummaryBar from "./SummaryBar";
 import MetricsCharts from "./MetricsCharts";
 import KeywordList from "./KeywordList";
 import {
-  Dataset, KeywordSourceBlock, Metrics,
-  generateMockData, toCSV, shareURLFromSeed,
-  downloadBlob, KeywordItem, recomputeAll,
+  Dataset, KeywordSourceBlock, Metrics, KeywordItem,
+  generateMockData, toCSV, shareURLFromSeed, downloadBlob,
+  recomputeAll, explainPick
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
@@ -23,39 +23,33 @@ type SessionSnapshot = {
   seed: string;
   volSim: number;
   cpcSim: number;
+  minDiff: number;
+  maxDiff: number;
   metrics: Metrics;
   estClicks: number;
   top3: Array<KeywordItem & { reasons?: string[] }>;
-  base: KeywordSourceBlock[]; // the generated baseBlocks so restore is deterministic
+  base: KeywordSourceBlock[]; // deterministic restore
 };
 
-const SESS_KEY = "kr:sessions:v1";
+const SESS_KEY = "kr:sessions:v2";
 const MAX_SESSIONS = 5;
 
 function loadSessions(): SessionSnapshot[] {
   try {
     const raw = localStorage.getItem(SESS_KEY);
     return raw ? (JSON.parse(raw) as SessionSnapshot[]) : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 function saveSessions(list: SessionSnapshot[]) {
-  try {
-    localStorage.setItem(SESS_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS)));
-  } catch {}
+  try { localStorage.setItem(SESS_KEY, JSON.stringify(list.slice(0, MAX_SESSIONS))); } catch {}
 }
 function upsertSession(s: SessionSnapshot) {
-  const list = loadSessions();
-  const filtered = list.filter(x => x.id !== s.id);
-  saveSessions([s, ...filtered].slice(0, MAX_SESSIONS));
+  const list = loadSessions().filter(x => x.id !== s.id);
+  saveSessions([s, ...list].slice(0, MAX_SESSIONS));
 }
-function makeId() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
+function makeId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function formatTime(ts: number) {
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const d = new Date(ts); const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
@@ -77,6 +71,12 @@ export default function KeywordResearch() {
   const [cpcSim, setCpcSim] = useState(50);
   const [estClicks, setEstClicks] = useState(0);
 
+  // Step 3: difficulty filter
+  const [minDiff, setMinDiff] = useState<number>(() => Number(localStorage.getItem("dfMin") ?? 0));
+  const [maxDiff, setMaxDiff] = useState<number>(() => Number(localStorage.getItem("dfMax") ?? 100));
+  const [totalBefore, setTotalBefore] = useState(0);
+  const [totalAfter, setTotalAfter] = useState(0);
+
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
@@ -95,8 +95,23 @@ export default function KeywordResearch() {
   /* ------------------------------- Init ----------------------------------- */
   useEffect(() => {
     setHistory(loadSessions());
-    const q = new URLSearchParams(window.location.search).get("q") || "";
-    if (q) { setQuery(q); handleGenerate(q); }
+
+    const sp = new URLSearchParams(window.location.search);
+    const q = sp.get("q") || "";
+    const df = sp.get("df"); // "min-max"
+    if (df) {
+      const [a, b] = df.split("-").map((n) => Math.max(0, Math.min(100, Number(n))));
+      if (!Number.isNaN(a) && !Number.isNaN(b)) {
+        setMinDiff(Math.min(a, b));
+        setMaxDiff(Math.max(a, b));
+      }
+    }
+    const v = sp.get("vol"), c = sp.get("cpc"), ai = sp.get("ai");
+    if (v) setVolSim(Math.max(0, Math.min(100, Number(v))));
+    if (c) setCpcSim(Math.max(0, Math.min(100, Number(c))));
+    if (ai === "1") setSortByAI(true);
+
+    if (q) { setQuery(q); handleGenerate(q, { initial: true }); }
   }, []);
 
   useEffect(() => {
@@ -104,6 +119,7 @@ export default function KeywordResearch() {
     if (stored === "true") setSortByAI(true);
   }, []);
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
+  useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
 
   /* ------------------------------ Dropdown pos ---------------------------- */
   useEffect(() => {
@@ -138,7 +154,7 @@ export default function KeywordResearch() {
       id: makeId(),
       ts: Date.now(),
       seed: seedForSave ?? (query.trim() || "keyword"),
-      volSim, cpcSim,
+      volSim, cpcSim, minDiff, maxDiff,
       metrics: dataset.metrics,
       estClicks,
       top3: insights,
@@ -146,74 +162,82 @@ export default function KeywordResearch() {
     };
   }
 
-  function handleGenerate(q?: string) {
+  function handleGenerate(q?: string, opts?: { initial?: boolean }) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
     setPreviousMetrics(dataset.metrics);
     setBaseBlocks(result.data);
 
-    const next = recomputeAll(result.data, volSim, cpcSim);
+    const next = recomputeAll(result.data, volSim, cpcSim, minDiff, maxDiff);
     setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3);
+    setInsights(next.top3.map((t) => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
     setEstClicks(next.estClicks);
+    setTotalBefore(next.totalBefore);
+    setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
 
-    const snap: SessionSnapshot = {
-      id: makeId(),
-      ts: Date.now(),
-      seed,
-      volSim,
-      cpcSim,
-      metrics: next.metrics,
-      estClicks: next.estClicks,
-      top3: next.top3,
-      base: result.data,
-    };
-    upsertSession(snap);
-    setHistory(loadSessions());
+    // auto-save only on manual generate
+    if (!opts?.initial) {
+      const snap: SessionSnapshot = {
+        id: makeId(), ts: Date.now(), seed, volSim, cpcSim, minDiff, maxDiff,
+        metrics: next.metrics, estClicks: next.estClicks, top3: next.top3, base: result.data,
+      };
+      upsertSession(snap);
+      setHistory(loadSessions());
+    }
   }
 
   function restoreSession(s: SessionSnapshot) {
     setQuery(s.seed);
     setVolSim(s.volSim);
     setCpcSim(s.cpcSim);
+    setMinDiff(s.minDiff);
+    setMaxDiff(s.maxDiff);
     setBaseBlocks(s.base);
 
-    const next = recomputeAll(s.base, s.volSim, s.cpcSim);
+    const next = recomputeAll(s.base, s.volSim, s.cpcSim, s.minDiff, s.maxDiff);
     setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3);
+    setInsights(next.top3.map((t) => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
     setEstClicks(next.estClicks);
+    setTotalBefore(next.totalBefore);
+    setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
   }
 
-  /* ------------------------- Live Simulator (debounce) -------------------- */
-  function applySimNow(v: number, c: number) {
+  /* ------------------------- Live recompute (debounce) -------------------- */
+  function applyNow(v: number, c: number, d0: number, d1: number) {
     if (!baseBlocks.length) return;
-    const next = recomputeAll(baseBlocks, v, c);
+    const next = recomputeAll(baseBlocks, v, c, d0, d1);
     setDataset({ data: next.blocks, metrics: next.metrics });
-    setInsights(next.top3);
+    setInsights(next.top3.map((t) => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
     setEstClicks(next.estClicks);
+    setTotalBefore(next.totalBefore);
+    setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
   }
-  function scheduleSim(v: number, c: number) {
+  function schedule(v: number, c: number, d0: number, d1: number) {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
-      applySimNow(v, c);
+      applyNow(v, c, d0, d1);
       debounceRef.current = null;
     }, 120);
   }
   const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value;
-    setVolSim(v);
-    scheduleSim(v, cpcSim);
+    const v = +e.target.value; setVolSim(v); schedule(v, cpcSim, minDiff, maxDiff);
   };
   const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value;
-    setCpcSim(v);
-    scheduleSim(volSim, v);
+    const v = +e.target.value; setCpcSim(v); schedule(volSim, v, minDiff, maxDiff);
+  };
+  const onMin = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value; const nv = Math.min(v, maxDiff);
+    setMinDiff(nv); schedule(volSim, cpcSim, nv, maxDiff);
+  };
+  const onMax = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = +e.target.value; const nv = Math.max(v, minDiff);
+    setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv);
   };
 
   /* ------------------------------- Actions -------------------------------- */
@@ -225,7 +249,11 @@ export default function KeywordResearch() {
     const csv = toCSV(dataset.data);
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
   }
-  function handleShare() { navigator.clipboard.writeText(shareURLFromSeed(query || "keyword")); }
+  function handleShare() {
+    navigator.clipboard.writeText(
+      shareURLFromSeed(query || "keyword", { df: [minDiff, maxDiff], vol: volSim, cpc: cpcSim, sortAI: sortByAI })
+    );
+  }
   async function handleExportPDF() {
     if (!rootRef.current) return;
     await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
@@ -241,9 +269,7 @@ export default function KeywordResearch() {
   function startCompare(s: SessionSnapshot) {
     setCompareWith(s);
     setHistoryOpen(false);
-    setTimeout(() => {
-      compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+    setTimeout(() => { compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0);
   }
   function clearCompare() { setCompareWith(null); }
 
@@ -257,6 +283,10 @@ export default function KeywordResearch() {
     transition: "background 700ms ease",
   };
   const { metrics } = dataset;
+
+  // gradient overlay positions for difficulty preview
+  const leftPct = minDiff;
+  const widthPct = Math.max(0, maxDiff - minDiff);
 
   /* ------------------------------- UI ------------------------------------ */
   return (
@@ -282,9 +312,7 @@ export default function KeywordResearch() {
             <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium" onClick={() => handleGenerate()}>
               Generate
             </button>
-            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>
-              Save Session
-            </button>
+            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
 
             {/* History dropdown (portal) */}
             <div className="relative">
@@ -313,6 +341,7 @@ export default function KeywordResearch() {
                         <span>• CPC {s.cpcSim}</span>
                         <span>• KSI {s.metrics.health}</span>
                         <span>• EMC {s.estClicks}</span>
+                        <span>• DF {s.minDiff}-{s.maxDiff}</span>
                       </div>
                       <div className="mt-2 flex gap-2">
                         <button className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs" onClick={() => { restoreSession(s); setHistoryOpen(false); }}>
@@ -356,9 +385,9 @@ export default function KeywordResearch() {
                 { label: "EMC", cur: estClicks, old: compareWith.estClicks, fmt: (n:number)=>n.toLocaleString() },
                 { label: "KSI", cur: metrics.health, old: compareWith.metrics.health, fmt: (n:number)=>n },
                 { label: "Avg Difficulty", cur: metrics.avgDifficulty, old: compareWith.metrics.avgDifficulty, fmt: (n:number)=>n },
-                { label: "Total Keywords", cur: metrics.total, old: compareWith.metrics.total, fmt: (n:number)=>n },
+                { label: "Total Keywords", cur: totalAfter, old: compareWith.metrics.total, fmt: (n:number)=>n },
               ].map((k) => {
-                const delta = k.cur - k.old;
+                const delta = k.cur - (k.old as number);
                 const good = (k.label === "Avg Difficulty") ? delta < 0 : delta > 0;
                 const color = delta === 0 ? "text-neutral-600" : good ? "text-emerald-600" : "text-rose-600";
                 const sign = delta > 0 ? "+" : "";
@@ -374,6 +403,7 @@ export default function KeywordResearch() {
           </div>
         )}
 
+        {/* Toggles */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
             <input type="checkbox" className="accent-blue-600" checked={showTrend} onChange={(e) => setShowTrend(e.target.checked)} />
@@ -385,11 +415,11 @@ export default function KeywordResearch() {
           </label>
         </div>
 
-        {/* Simulator */}
+        {/* Simulator + Difficulty filter */}
         <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
-            <div className="text-xs text-neutral-500">Adjust sliders → AI Picks &amp; KSI update live</div>
+            <div className="text-xs text-neutral-500">Adjust sliders → AI Picks, Charts &amp; KSI update live</div>
           </div>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -405,6 +435,39 @@ export default function KeywordResearch() {
               <input type="range" min={0} max={100} value={cpcSim} onChange={onCpc} className="w-full accent-amber-600" />
             </div>
           </div>
+
+          {/* Difficulty range + gradient preview */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Difficulty Filter</div>
+              <div className="text-xs text-neutral-500">Showing {totalAfter} of {totalBefore} keywords</div>
+            </div>
+
+            {/* Gradient bar */}
+            <div className="mt-2 relative h-3 rounded-full overflow-hidden"
+                 style={{ background: "linear-gradient(90deg,#22c55e 0%,#f59e0b 60%,#ef4444 100%)" }}>
+              <div className="absolute top-0 bottom-0 bg-white/30 border border-white/60"
+                   style={{ left: `${leftPct}%`, width: `${widthPct}%` }} />
+            </div>
+
+            {/* Dual sliders */}
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
+                  <span>Min Difficulty</span><strong>{minDiff}</strong>
+                </div>
+                <input type="range" min={0} max={100} value={minDiff} onChange={onMin} className="w-full accent-emerald-600" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
+                  <span>Max Difficulty</span><strong>{maxDiff}</strong>
+                </div>
+                <input type="range" min={0} max={100} value={maxDiff} onChange={onMax} className="w-full accent-rose-600" />
+              </div>
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-500">KSI, charts, and AI Top-3 respond to this range.</div>
+          </div>
+
           <div className="mt-4">
             <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm">
               <span>🟢 Est. Monthly Clicks</span>
@@ -416,7 +479,7 @@ export default function KeywordResearch() {
 
         {/* Charts */}
         <div data-export="section">
-          <MetricsCharts metrics={dataset.metrics} blocks={sortedBlocks} />
+          <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
         </div>
 
         {/* AI Insight panel */}
@@ -461,7 +524,7 @@ export default function KeywordResearch() {
                 </div>
               </li>
             ))}
-            {!insights.length && <li className="text-sm text-neutral-600 dark:text-neutral-300">Click “AI Insight” to score and see Top-3 easiest keywords.</li>}
+            {!insights.length && <li className="text-sm text-neutral-600 dark:text-neutral-300">No keywords in this difficulty range.</li>}
           </ul>
         </aside>
 
