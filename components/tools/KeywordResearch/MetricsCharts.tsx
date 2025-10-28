@@ -17,7 +17,7 @@ import {
 
 type IntentStr = "Navigational" | "Transactional" | "Informational" | "Commercial";
 
-export default  function MetricsCharts({
+export default function MetricsCharts({
   metrics,
   blocks,
 }: {
