@@ -11,8 +11,8 @@ import {
   generateMockData, toCSV, shareURLFromSeed, downloadBlob,
   recomputeAll, explainPick, runAIInsight, computeMetricsAdvanced
 } from "./utils";
-import { exportDashboardToPDF } from "./PdfReport";
-import { exportDashboardToPNG } from "./PngReport"; // ⬅️ NEW
+import { exportDashboardToPDF } from "./PdfReport";      // ⬅️ brandable PDF (with cover + auto-landscape)
+import { exportDashboardToPNG } from "./PngReport";
 
 type SessionSnapshot = {
   id: string;
@@ -89,6 +89,7 @@ export default function KeywordResearch() {
   const historyBtnRef = useRef<HTMLButtonElement | null>(null);
   const compareRef = useRef<HTMLDivElement | null>(null);
 
+  // Init
   useEffect(() => {
     setHistory(loadSessions());
     const sp = new URLSearchParams(window.location.search);
@@ -108,13 +109,12 @@ export default function KeywordResearch() {
     if (q) { setQuery(q); handleGenerate(q, { initial: true }); }
   }, []);
 
-  useEffect(() => {
-    const stored = localStorage.getItem("sortByAI");
-    if (stored === "true") setSortByAI(true);
-  }, []);
+  // Persist sortByAI + diff band
+  useEffect(() => { const s = localStorage.getItem("sortByAI"); if (s === "true") setSortByAI(true); }, []);
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
   useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
 
+  // Mood color
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -123,6 +123,7 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
+  // Snapshot
   function snapshotCurrent(seedForSave?: string): SessionSnapshot | null {
     if (!baseBlocks.length) return null;
     return {
@@ -133,13 +134,14 @@ export default function KeywordResearch() {
     };
   }
 
+  // Pipeline
   function applyPipeline(v: number, c: number, d0: number, d1: number, tf: string, ch: string[]) {
     if (!baseBlocks.length) return;
     const next = recomputeAll(baseBlocks, v, c, d0, d1, tf, ch);
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks); // ensure no stale EMC
+    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
     setTotalBefore(next.totalBefore);
     setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
@@ -152,6 +154,7 @@ export default function KeywordResearch() {
     }, 120);
   }
 
+  // Generate
   function handleGenerate(q?: string, opts?: { initial?: boolean }) {
     const seed = (q ?? query).trim() || "keyword";
     const result = generateMockData(seed);
@@ -162,7 +165,7 @@ export default function KeywordResearch() {
     setDataset({ data: next.blocks, metrics: next.metrics });
     setInsights(next.top3.map(t => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(next.top3[0]?.id ?? null);
-    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks); // ensure no stale EMC
+    setEstClicks(next.totalAfter === 0 ? 0 : next.estClicks);
     setTotalBefore(next.totalBefore);
     setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
@@ -177,6 +180,7 @@ export default function KeywordResearch() {
     }
   }
 
+  // Restore/Compare
   function restoreSession(s: SessionSnapshot) {
     setQuery(s.seed);
     setVolSim(s.volSim);
@@ -188,49 +192,35 @@ export default function KeywordResearch() {
     setBaseBlocks(s.base);
     applyPipeline(s.volSim, s.cpcSim, s.minDiff, s.maxDiff, s.textFilter, s.chips);
   }
+  function startCompare(s: SessionSnapshot) {
+    setCompareWith(s);
+    setHistoryOpen(false);
+    setTimeout(() => { compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0);
+  }
 
-  const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value; setVolSim(v);
-    schedule(v, cpcSim, minDiff, maxDiff, textFilter, chips);
-  };
-  const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value; setCpcSim(v);
-    schedule(volSim, v, minDiff, maxDiff, textFilter, chips);
-  };
-  const onMin = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value; const nv = Math.min(v, maxDiff);
-    setMinDiff(nv); schedule(volSim, cpcSim, nv, maxDiff, textFilter, chips);
-  };
-  const onMax = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value; const nv = Math.max(v, minDiff);
-    setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv, textFilter, chips);
-  };
-
+  // Inputs
+  const onVol = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; setVolSim(v); schedule(v, cpcSim, minDiff, maxDiff, textFilter, chips); };
+  const onCpc = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; setCpcSim(v); schedule(volSim, v, minDiff, maxDiff, textFilter, chips); };
+  const onMin = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; const nv = Math.min(v, maxDiff); setMinDiff(nv); schedule(volSim, cpcSim, nv, maxDiff, textFilter, chips); };
+  const onMax = (e: React.ChangeEvent<HTMLInputElement>) => { const v = +e.target.value; const nv = Math.max(v, minDiff); setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv, textFilter, chips); };
   const onText = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value;
-    setTextFilter(v);
+    const v = e.target.value; setTextFilter(v);
     if (debounceTextRef.current) clearTimeout(debounceTextRef.current);
-    debounceTextRef.current = window.setTimeout(() => {
-      applyPipeline(volSim, cpcSim, minDiff, maxDiff, v, chips);
-    }, 150);
+    debounceTextRef.current = window.setTimeout(() => { applyPipeline(volSim, cpcSim, minDiff, maxDiff, v, chips); }, 150);
   };
-
   function toggleChip(tag: string) {
     const exists = chips.includes(tag);
     const next = exists ? chips.filter(c => c !== tag) : [...chips, tag];
     setChips(next);
     schedule(volSim, cpcSim, minDiff, maxDiff, textFilter, next);
   }
-
   function clearAllFilters() {
     const v = volSim, c = cpcSim;
-    setTextFilter("");
-    setChips([]);
-    setMinDiff(0);
-    setMaxDiff(100);
+    setTextFilter(""); setChips([]); setMinDiff(0); setMaxDiff(100);
     applyPipeline(v, c, 0, 100, "", []);
   }
 
+  // Actions
   function handleCopyAll() {
     const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
     navigator.clipboard.writeText(flat);
@@ -256,11 +246,39 @@ export default function KeywordResearch() {
       window.prompt("Copy this link:", url);
     }
   }
+  // ⬇️ Brandable PDF with Cover + Auto-landscape
   async function handleExportPDF() {
     if (!rootRef.current) return;
-    await exportDashboardToPDF(rootRef.current, "keyword-dashboard.pdf");
+    const seed = (query.trim() || "keyword");
+    const bullets: string[] = [
+      `KSI: ${dataset.metrics.health}`,
+      `Avg Difficulty: ${dataset.metrics.avgDifficulty}`,
+      `Total Keywords: ${dataset.metrics.total}`,
+      `Est. Monthly Clicks: ${estClicks.toLocaleString()}`,
+      `Band: ${minDiff}–${maxDiff}${chips.length ? ` • Chips: ${chips.join(", ")}` : ""}`,
+    ];
+    await exportDashboardToPDF(
+      rootRef.current,
+      "keyword-dashboard.pdf",
+      {
+        title: "ToolCite – Keyword Research (AI Dashboard)",
+        subtitle: `Seed: ${seed} • ${new Date().toLocaleString()}`,
+        footerLeft: "© ToolCite Hub • Smart • Fast • Reliable",
+        footerRight: "Internal",
+        watermark: "TOOLCITE • INTERNAL",
+      },
+      {
+        cover: {
+          title: "Keyword Research — AI Dashboard",
+          subtitle: `Seed: ${seed} • Exported ${new Date().toLocaleString()}`,
+          bullets,
+          watermark: "CONFIDENTIAL • SEO REPORT",
+        },
+        autoLandscape: true,
+        landscapeThreshold: 900,
+      }
+    );
   }
-  // ⬇️ NEW
   async function handleExportPNG() {
     if (!rootRef.current) return;
     const seed = (query.trim() || "keyword").replace(/\s+/g, "-");
@@ -270,20 +288,10 @@ export default function KeywordResearch() {
       watermark: "© ToolCite Hub • Smart • Fast • Reliable",
     });
   }
-
   function handleSaveSession() {
-    const snap = snapshotCurrent();
-    if (!snap) return;
-    upsertSession(snap);
-    setHistory(loadSessions());
+    const snap = snapshotCurrent(); if (!snap) return;
+    upsertSession(snap); setHistory(loadSessions());
   }
-
-  function startCompare(s: SessionSnapshot) {
-    setCompareWith(s);
-    setHistoryOpen(false);
-    setTimeout(() => { compareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0);
-  }
-
   function handleAIInsight() {
     if (!dataset.data.length || totalAfter === 0) return;
     const { top3, scores } = runAIInsight(dataset.data);
@@ -297,6 +305,7 @@ export default function KeywordResearch() {
     setLastUpdated(Date.now());
   }
 
+  // Sorted
   const sortedBlocks = sortByAI
     ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
     : dataset.data;
@@ -308,10 +317,18 @@ export default function KeywordResearch() {
 
   return (
     <div className="relative min-h-[100vh] overflow-visible">
+      {/* subtle wash + global print guards */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
       <style jsx global>{`
+        /* Prevent sticky from creating huge white gaps during export */
         [data-export-paused="1"] .sticky { position: static !important; top: auto !important; }
+        /* Make sure nested wrappers don't clip portaled tooltips */
         #__next, body, html { overflow: visible !important; }
+
+        /* --- Print/PDF page-break guards --- */
+        [data-export="section"] { break-inside: avoid; page-break-inside: avoid; }
+        .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+        .page-break-before { break-before: page; page-break-before: always; }
       `}</style>
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
@@ -331,7 +348,7 @@ export default function KeywordResearch() {
             </button>
             <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
 
-            {/* History dropdown (unchanged aside from surrounding code) */}
+            {/* History */}
             <div className="relative">
               <button
                 ref={historyBtnRef}
@@ -380,10 +397,10 @@ export default function KeywordResearch() {
               )}
             </div>
 
+            {/* Copy / Export */}
             <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>Copy All</button>
             <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
             <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
-            {/* NEW: Export PNG */}
             <button className="h-10 px-3 rounded-xl bg-orange-500 text-white" onClick={handleExportPNG}>Export PNG</button>
 
             <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
@@ -400,10 +417,12 @@ export default function KeywordResearch() {
           </div>
         </div>
 
+        {/* Summary */}
         <div data-export="section">
           <SummaryBar metrics={dataset.metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
         </div>
 
+        {/* Compare panel */}
         {compareWith && (
           <div ref={compareRef} className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10 p-4">
             <div className="flex items-center justify-between">
@@ -436,6 +455,7 @@ export default function KeywordResearch() {
           </div>
         )}
 
+        {/* Toggles */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
             <input type="checkbox" className="accent-blue-600" checked={showTrend} onChange={(e) => setShowTrend(e.target.checked)} />
@@ -447,6 +467,7 @@ export default function KeywordResearch() {
           </label>
         </div>
 
+        {/* Simulator + Filters */}
         <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
@@ -467,6 +488,7 @@ export default function KeywordResearch() {
             </div>
           </div>
 
+          {/* Difficulty Filter */}
           <div className="mt-6">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">
@@ -493,7 +515,7 @@ export default function KeywordResearch() {
             </div>
           </div>
 
-          {/* Search + Chips */}
+          {/* Search in results + Chips + Clear */}
           <div className="mt-6">
             <div className="text-sm font-semibold">Search in results</div>
 
@@ -544,10 +566,12 @@ export default function KeywordResearch() {
           </div>
         </div>
 
+        {/* Charts */}
         <div data-export="section">
           <MetricsCharts metrics={dataset.metrics} blocks={sortedBlocks} />
         </div>
 
+        {/* AI Insight */}
         <aside data-export="section" id="insights-panel" className="rounded-2xl border p-4 overflow-visible"
           style={{
             borderColor: trendColor + "66",
@@ -597,6 +621,7 @@ export default function KeywordResearch() {
           </ul>
         </aside>
 
+        {/* Keyword Lists */}
         <div data-export="section" id="kw-lists" className="pt-2 overflow-visible">
           {totalAfter === 0 ? (
             <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-6 text-sm text-neutral-600 dark:text-neutral-300">
