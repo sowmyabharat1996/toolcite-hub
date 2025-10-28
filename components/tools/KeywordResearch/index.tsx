@@ -6,9 +6,18 @@ import SummaryBar from "./SummaryBar";
 import MetricsCharts from "./MetricsCharts";
 import KeywordList from "./KeywordList";
 import {
-  Dataset, KeywordSourceBlock, Metrics, KeywordItem,
-  generateMockData, computeMetrics, toCSV, shareURLFromSeed,
-  runAIInsight, applyVolumeCPCSimulation, downloadBlob, explainPick
+  Dataset,
+  KeywordItem,
+  KeywordSourceBlock,
+  Metrics,
+  computeMetrics,
+  explainPick,
+  generateMockData,
+  runAIInsight,
+  toCSV,
+  shareURLFromSeed,
+  applyVolumeCPCSimulation,
+  downloadBlob,
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
@@ -17,55 +26,48 @@ export default function KeywordResearch() {
   const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
   const [previousMetrics, setPreviousMetrics] = useState<Metrics | null>(null);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
+  const [showTrend, setShowTrend] = useState(true);
 
   const [insights, setInsights] = useState<Array<KeywordItem & { reasons?: string[] }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [sortByAI, setSortByAI] = useState(false);
 
-  // Simulator
   const [volSim, setVolSim] = useState(50);
   const [cpcSim, setCpcSim] = useState(50);
   const [estClicks, setEstClicks] = useState(0);
 
-  // Difficulty band
+  const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
+  const [trendColor, setTrendColor] = useState<string>("#3b82f6");
+
+  // difficulty band (used by SummaryBar extraNote and ToC bullets via PdfReport)
   const [minDiff, setMinDiff] = useState(0);
   const [maxDiff, setMaxDiff] = useState(100);
 
-  // UI
-  const [showTrend, setShowTrend] = useState(true);
-  const [trendColor, setTrendColor] = useState<string>("#3b82f6");
-
-  // PDF toggles
-  const [coverEnabled, setCoverEnabled] = useState(true);
-  const [autoLandscape, setAutoLandscape] = useState(true);
+  // optional PDF toggles you already wired in PdfReport
+  const [coverPDF, setCoverPDF] = useState(true);
+  const [autoLandscape, setAutoLandscape] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
 
   // seed from URL
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const q = p.get("q") || "";
-    const ai = p.get("ai");
-    const df = p.get("df");
-    if (q) setQuery(q);
-    if (ai === "1") setSortByAI(true);
-    if (df) {
-      const [a, b] = df.split("-").map((n) => Number(n));
-      if (!Number.isNaN(a)) setMinDiff(a);
-      if (!Number.isNaN(b)) setMaxDiff(b);
+    const q = new URLSearchParams(window.location.search).get("q") || "";
+    if (q) {
+      setQuery(q);
+      handleGenerate(q);
     }
-    const seed = q || "keyword";
-    handleGenerate(seed);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // persist sort toggle
+  // sort toggle persistence
+  useEffect(() => {
+    const stored = localStorage.getItem("sortByAI");
+    if (stored === "true") setSortByAI(true);
+  }, []);
   useEffect(() => {
     localStorage.setItem("sortByAI", sortByAI ? "true" : "false");
   }, [sortByAI]);
 
-  // trend color by KSI delta
+  // mood color
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -83,7 +85,6 @@ export default function KeywordResearch() {
     const sim = applyVolumeCPCSimulation(result.data, volSim, cpcSim);
     const metrics = computeMetrics(sim.blocks);
     const { top3, scores } = runAIInsight(sim.blocks);
-
     const scoredBlocks = sim.blocks.map((b) => ({
       ...b,
       items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
@@ -96,6 +97,68 @@ export default function KeywordResearch() {
     setLastUpdated(Date.now());
   }
 
+  function handleCopyAll() {
+    const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
+    navigator.clipboard.writeText(flat);
+  }
+
+  function handleExportCSV() {
+    const csv = toCSV(dataset.data);
+    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
+  }
+
+  function handleShare() {
+    const url = shareURLFromSeed(query || "keyword");
+    navigator.clipboard.writeText(url);
+    // simple visual confirmation
+    const btn = document.getElementById("share-link-btn");
+    if (btn) {
+      const old = btn.textContent;
+      btn.textContent = "Copied!";
+      setTimeout(() => (btn.textContent = old || "Share Link"), 900);
+    }
+  }
+
+  async function handleExportPDF() {
+    if (!rootRef.current) return;
+
+    const seed = query || "keyword";
+    await exportDashboardToPDF(rootRef.current, {
+      filename: "keyword-dashboard.pdf",
+      brand: "ToolCite Hub",
+      cover: coverPDF
+        ? {
+            title: "ToolCite – Keyword Research (AI Dashboard)",
+            subtitle: `Seed: ${seed} • ${new Date().toLocaleString()}`,
+            bullets: [
+              `KSI: ${dataset.metrics.health}`,
+              `Avg Difficulty: ${dataset.metrics.avgDifficulty}`,
+              `Total Keywords: ${dataset.metrics.total}`,
+              `Est. Monthly Clicks: ${estClicks}`,
+              `Band: ${minDiff}–${maxDiff}`,
+            ],
+            watermark: "CONFIDENTIAL • INTERNAL",
+          }
+        : false,
+      autoLandscape,
+      margin: 36,
+    });
+  }
+
+  function handleAIInsight() {
+    const filtered = filterByDifficulty(dataset.data, minDiff, maxDiff);
+    const { top3, scores } = runAIInsight(filtered);
+    const scoredBlocks = filtered.map((b) => ({
+      ...b,
+      items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+    }));
+    setDataset({ data: scoredBlocks, metrics: computeMetrics(scoredBlocks) });
+    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
+    setHighlightId(top3[0]?.id ?? null);
+    document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
+    setLastUpdated(Date.now());
+  }
+
   function applySim(vol: number, cpc: number) {
     if (!baseBlocks.length) return;
     const sim = applyVolumeCPCSimulation(baseBlocks, vol, cpc);
@@ -103,17 +166,14 @@ export default function KeywordResearch() {
     const { top3, scores } = runAIInsight(sim.blocks);
     const scoredBlocks = sim.blocks.map((b) => ({
       ...b,
-      items: b.items
-        .filter((k) => k.difficulty >= minDiff && k.difficulty <= maxDiff)
-        .map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+      items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
     }));
-    setDataset({ data: scoredBlocks, metrics: computeMetrics(scoredBlocks) });
+    setDataset({ data: scoredBlocks, metrics });
     setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
     setHighlightId(top3[0]?.id ?? null);
     setEstClicks(sim.estClicks);
     setLastUpdated(Date.now());
   }
-
   const onVol = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value;
     setVolSim(v);
@@ -125,83 +185,15 @@ export default function KeywordResearch() {
     applySim(volSim, v);
   };
 
-  // Difficulty band handlers
-  const onMinDiff = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value;
-    const nv = Math.min(v, maxDiff);
-    setMinDiff(nv);
-    applySim(volSim, cpcSim);
-  };
-  const onMaxDiff = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = +e.target.value;
-    const nv = Math.max(v, minDiff);
-    setMaxDiff(nv);
-    applySim(volSim, cpcSim);
-  };
-
-  // Sort view
-  const filteredBlocks =
-    minDiff === 0 && maxDiff === 100
-      ? dataset.data
-      : dataset.data.map((b) => ({ ...b, items: b.items.filter((k) => k.difficulty >= minDiff && k.difficulty <= maxDiff) }));
-
   const sortedBlocks = sortByAI
-    ? filteredBlocks.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
-    : filteredBlocks;
+    ? dataset.data.map((b) => ({
+        ...b,
+        items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)),
+      }))
+    : dataset.data;
 
-  function handleCopyAll() {
-    const flat = sortedBlocks.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
-    navigator.clipboard.writeText(flat);
-  }
-  function handleExportCSV() {
-    const csv = toCSV(sortedBlocks);
-    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
-  }
-  function handleShare() {
-    const url = new URL(shareURLFromSeed(query || "keyword"));
-    url.searchParams.set("ai", sortByAI ? "1" : "0");
-    url.searchParams.set("df", `${minDiff}-${maxDiff}`);
-    navigator.clipboard.writeText(url.toString()).then(() => {
-      toastCopy("Share link copied!");
-    });
-  }
-  function toastCopy(msg: string) {
-    const el = document.createElement("div");
-    el.textContent = msg;
-    el.style.cssText =
-      "position:fixed;left:50%;top:12px;transform:translateX(-50%);background:#111;color:#fff;padding:8px 12px;border-radius:10px;font-size:12px;z-index:99999;opacity:0.95";
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 1200);
-  }
-
- 
-async function handleExportPDF() {
-  if (!rootRef.current) return;
-  const seed = query || "keyword";
-
-  await exportDashboardToPDF(rootRef.current, {
-    filename: "keyword-dashboard.pdf",
-    brand: "ToolCite Hub",
-    autoLandscape,                // uses your toggle state
-    margin: 36,
-    cover: coverEnabled
-      ? {
-          title: "Keyword Research — AI Dashboard",
-          subtitle: `Seed: ${seed} • ${new Date().toLocaleString()}`,
-          bullets: [
-            `KSI: ${dataset.metrics.health}`,
-            `Avg Difficulty: ${dataset.metrics.avgDifficulty}`,
-            `Total Keywords: ${dataset.metrics.total}`,
-            `Est. Monthly Clicks: ${estClicks.toLocaleString()}`,
-            `Band: ${minDiff}–${maxDiff}`,
-          ],
-          watermark: "CONFIDENTIAL • INTERNAL",
-        }
-      : false,
-  });
-}
-
-
+  const viewBlocks = filterByDifficulty(sortedBlocks, minDiff, maxDiff);
+  const showingCount = viewBlocks.reduce((s, b) => s + b.items.length, 0);
 
   const moodBG: React.CSSProperties = {
     background: `
@@ -211,23 +203,33 @@ async function handleExportPDF() {
     transition: "background 700ms ease",
   };
 
-  const { metrics } = dataset;
-  const showingCount = sortedBlocks.reduce((s, b) => s + b.items.length, 0);
+  const metrics = computeMetrics(viewBlocks);
 
   return (
     <div className="relative min-h-[100vh] overflow-visible">
+      {/* Subtle page wash, plus export-mode CSS fixes */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
       <style jsx global>{`
-        [data-export-paused="1"] .sticky { position: static !important; top: auto !important; }
-        #__next, body, html { overflow: visible !important; }
-        [data-export="section"] { break-inside: avoid; page-break-inside: avoid; }
+        [data-export-paused="1"] .sticky {
+          position: static !important;
+          top: auto !important;
+        }
+        #__next,
+        body,
+        html {
+          overflow: visible !important;
+        }
+        /* page-break guard */
+        [data-export="section"] {
+          break-inside: avoid;
+        }
       `}</style>
 
       <div ref={rootRef} className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 overflow-visible">
         {/* Header & controls */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">🔎 Keyword Research (AI Dashboard)</h1>
-          <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex flex-wrap gap-2">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -238,39 +240,42 @@ async function handleExportPDF() {
             <button className="h-10 px-4 rounded-xl bg-blue-600 text-white font-medium" onClick={() => handleGenerate()}>
               Generate
             </button>
-            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={() => {
-              const { top3, scores } = runAIInsight(sortedBlocks);
-              const scored = sortedBlocks.map((b) => ({
-                ...b,
-                items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
-              }));
-              setDataset({ data: scored, metrics: computeMetrics(scored) });
-              setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
-              setHighlightId(top3[0]?.id ?? null);
-              setLastUpdated(Date.now());
-              document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
-            }}>
+
+            {/* PDF toggles (optional) */}
+            <label className="h-10 inline-flex items-center gap-2 px-3 rounded-xl bg-white/60 dark:bg-white/10 border border-neutral-200 dark:border-neutral-800 text-xs">
+              <input type="checkbox" checked={coverPDF} onChange={(e) => setCoverPDF(e.target.checked)} className="accent-emerald-600" />
+              Cover
+            </label>
+            <label className="h-10 inline-flex items-center gap-2 px-3 rounded-xl bg-white/60 dark:bg-white/10 border border-neutral-200 dark:border-neutral-800 text-xs">
+              <input
+                type="checkbox"
+                checked={autoLandscape}
+                onChange={(e) => setAutoLandscape(e.target.checked)}
+                className="accent-emerald-600"
+              />
+              Auto Landscape
+            </label>
+
+            <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleAIInsight}>
               🤖 AI Insight
             </button>
-            <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>Copy All</button>
-            <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
-            <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
-            <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>Share Link</button>
-
-            {/* PDF toggles */}
-            <label className="ml-2 text-xs flex items-center gap-2">
-              <input type="checkbox" className="accent-blue-600" checked={coverEnabled} onChange={(e) => setCoverEnabled(e.target.checked)} />
-              Cover page
-            </label>
-            <label className="text-xs flex items-center gap-2">
-              <input type="checkbox" className="accent-blue-600" checked={autoLandscape} onChange={(e) => setAutoLandscape(e.target.checked)} />
-              Auto-landscape
-            </label>
+            <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>
+              Copy All
+            </button>
+            <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>
+              Export CSV
+            </button>
+            <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>
+              Export PDF
+            </button>
+            <button id="share-link-btn" className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
+              Share Link
+            </button>
           </div>
         </div>
 
-        {/* Summary */}
-        <div data-export="section" data-export-title="Summary">
+        {/* SUMMARY — with ToC title */}
+        <div data-export="section" data-title="Summary KPIs">
           <SummaryBar
             metrics={metrics}
             previous={previousMetrics}
@@ -283,7 +288,12 @@ async function handleExportPDF() {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
-            <input type="checkbox" className="accent-blue-600" checked={showTrend} onChange={(e) => setShowTrend(e.target.checked)} />
+            <input
+              type="checkbox"
+              className="accent-blue-600"
+              checked={showTrend}
+              onChange={(e) => setShowTrend(e.target.checked)}
+            />
             Show trend deltas
           </label>
           <label className="text-sm text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
@@ -292,8 +302,12 @@ async function handleExportPDF() {
           </label>
         </div>
 
-        {/* Simulator & Filters */}
-        <div data-export="section" data-export-title="Simulator & Filters" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
+        {/* SIMULATOR + DIFFICULTY — with ToC title */}
+        <div
+          data-export="section"
+          data-title="Simulator & Filters"
+          className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible"
+        >
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
             <div className="text-xs text-neutral-500">Adjust sliders → AI Picks, Charts &amp; KSI update live</div>
@@ -301,36 +315,56 @@ async function handleExportPDF() {
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
-                <span>Assumed Avg Volume (scales all rows)</span><strong>{volSim}</strong>
+                <span>Assumed Avg Volume (scales all rows)</span>
+                <strong>{volSim}</strong>
               </div>
               <input type="range" min={0} max={100} value={volSim} onChange={onVol} className="w-full accent-sky-600" />
             </div>
             <div>
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
-                <span>Assumed Avg CPC (scales all rows)</span><strong>{cpcSim}</strong>
+                <span>Assumed Avg CPC (scales all rows)</span>
+                <strong>{cpcSim}</strong>
               </div>
               <input type="range" min={0} max={100} value={cpcSim} onChange={onCpc} className="w-full accent-amber-600" />
             </div>
           </div>
 
-          {/* Difficulty Filter */}
+          {/* Difficulty filter band */}
           <div className="mt-6">
-            <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
-              <div>Difficulty Filter</div>
-              <div>Band: <strong>{minDiff}–{maxDiff}</strong> <span className="ml-2 text-neutral-400">Showing {showingCount} of {dataset.metrics.total} keywords</span></div>
+            <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300 mb-2">
+              <span>
+                <strong>Difficulty Filter</strong> &nbsp; <span className="opacity-70">Band:</span> {minDiff}–{maxDiff}
+              </span>
+              <span className="opacity-60">Showing {showingCount} of {dataset.metrics.total} keywords</span>
             </div>
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
-                  <span>Min Difficulty</span><strong>{minDiff}</strong>
+                  <span>Min Difficulty</span>
+                  <strong>{minDiff}</strong>
                 </div>
-                <input type="range" min={0} max={100} value={minDiff} onChange={onMinDiff} className="w-full accent-green-600" />
+                <input
+                  type="range"
+                  min={0}
+                  max={maxDiff}
+                  value={minDiff}
+                  onChange={(e) => setMinDiff(+e.target.value)}
+                  className="w-full accent-emerald-600"
+                />
               </div>
               <div>
                 <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
-                  <span>Max Difficulty</span><strong>{maxDiff}</strong>
+                  <span>Max Difficulty</span>
+                  <strong>{maxDiff}</strong>
                 </div>
-                <input type="range" min={0} max={100} value={maxDiff} onChange={onMaxDiff} className="w-full accent-rose-600" />
+                <input
+                  type="range"
+                  min={minDiff}
+                  max={100}
+                  value={maxDiff}
+                  onChange={(e) => setMaxDiff(+e.target.value)}
+                  className="w-full accent-rose-600"
+                />
               </div>
             </div>
           </div>
@@ -339,20 +373,20 @@ async function handleExportPDF() {
             <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm">
               <span>🟢 Est. Monthly Clicks</span>
               <strong className="text-emerald-700 dark:text-emerald-300">{estClicks.toLocaleString()}</strong>
-              <span className="text-xs text-neutral-500">proxy: Σ(vol × CTR(difficulty))</span>
+              <span className="text-xs text-neutral-500">proxy: Σ(vol × (1–diff%))</span>
             </div>
           </div>
         </div>
 
-        {/* Charts */}
-        <div data-export="section" data-export-title="Charts & Distributions">
-          <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
+        {/* CHARTS — with ToC title */}
+        <div data-export="section" data-title="Charts">
+          <MetricsCharts metrics={metrics} blocks={viewBlocks} />
         </div>
 
-        {/* AI Insight panel */}
+        {/* AI INSIGHT — with ToC title */}
         <aside
           data-export="section"
-          data-export-title="AI Insight — Easiest Wins"
+          data-title="AI Insight — Easiest Wins"
           id="insights-panel"
           className="rounded-2xl border p-4 overflow-visible"
           style={{
@@ -367,15 +401,14 @@ async function handleExportPDF() {
           }}
         >
           <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-lg" style={{ color: trendColor }}>AI Insight — Easiest Wins</h3>
-            <span className="text-xs font-medium" style={{ color: trendColor }}>Click again after changing data/filters</span>
+            <h3 className="font-semibold text-lg" style={{ color: trendColor }}>
+              AI Insight — Easiest Wins
+            </h3>
+            <span className="text-xs font-medium" style={{ color: trendColor }}>
+              Click again after changing data/filters
+            </span>
           </div>
           <ul className="space-y-3">
-            {insights.length === 0 && (
-              <li className="text-sm text-neutral-600 dark:text-neutral-300">
-                No keywords match this filter/band. Clear filters or widen the difficulty range.
-              </li>
-            )}
             {insights.map((x, i) => (
               <li key={x.id} className="rounded-xl border bg-white/70 dark:bg-white/10 p-3" style={{ borderColor: trendColor + "4d" }}>
                 <div className="flex items-start justify-between gap-3">
@@ -396,27 +429,40 @@ async function handleExportPDF() {
                       <div className="mt-2">
                         <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Why this pick?</div>
                         <ul className="mt-1 ml-4 list-disc text-xs text-neutral-600 dark:text-neutral-300 space-y-0.5">
-                          {x.reasons.map((r, idx) => <li key={idx}>{r}</li>)}
+                          {x.reasons.map((r, idx) => (
+                            <li key={idx}>{r}</li>
+                          ))}
                         </ul>
                       </div>
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="text-sm font-semibold" style={{ color: trendColor }}>{x.ai}</div>
+                    <div className="text-sm font-semibold" style={{ color: trendColor }}>
+                      {x.ai}
+                    </div>
                   </div>
                 </div>
               </li>
             ))}
+            {!insights.length && (
+              <li className="text-sm text-neutral-600 dark:text-neutral-300">Click “AI Insight” to score and see Top-3 easiest keywords.</li>
+            )}
           </ul>
         </aside>
 
-        {/* Keyword Lists */}
-        <div data-export="section" data-export-title="Keyword Lists" id="kw-lists" className="pt-2 overflow-visible">
-          <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
+        {/* KEYWORD LISTS — with ToC title */}
+        <div data-export="section" id="kw-lists" data-title="Keyword Lists by Source" className="pt-2 overflow-visible">
+          <KeywordList blocks={viewBlocks} highlightId={highlightId} />
         </div>
       </div>
     </div>
   );
+}
+
+function filterByDifficulty(blocks: KeywordSourceBlock[], min: number, max: number): KeywordSourceBlock[] {
+  return blocks
+    .map((b) => ({ ...b, items: b.items.filter((k) => k.difficulty >= min && k.difficulty <= max) }))
+    .filter((b) => b.items.length > 0);
 }
 
 function emptyMetrics(): Metrics {

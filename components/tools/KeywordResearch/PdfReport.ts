@@ -1,12 +1,27 @@
 // components/tools/KeywordResearch/PdfReport.ts
 // ToolCite Hub — Branded PDF Export with Cover, ToC, QR Footer, Watermark
-// Fixes: per-page footer & precise pagination (no stray blank pages)
+// Fixes: reserved footer band (no overlap), robust ToC titles, precise pagination
 
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
 
-// ---------- tiny helpers ----------
+type CoverOpts = {
+  title?: string;
+  subtitle?: string;
+  bullets?: string[];
+  watermark?: string;
+};
+
+type ExportOpts = {
+  filename?: string;
+  brand?: string;
+  cover?: false | CoverOpts;
+  autoLandscape?: boolean;
+  margin?: number; // outer text margin + footer baseline padding
+};
+
+// ---------- helpers ----------
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 function pauseAnimations(el: HTMLElement) {
@@ -24,21 +39,6 @@ function resumeAnimations(el: HTMLElement) {
   });
 }
 
-// ---------- types ----------
-type CoverOpts = {
-  title?: string;
-  subtitle?: string;
-  bullets?: string[];
-  watermark?: string;
-};
-type ExportOpts = {
-  filename?: string;
-  brand?: string;
-  cover?: false | CoverOpts;
-  autoLandscape?: boolean;
-  margin?: number;
-};
-
 // ---------- drawing primitives ----------
 function drawWatermark(pdf: jsPDF, pageW: number, pageH: number, text?: string) {
   if (!text) return;
@@ -47,17 +47,16 @@ function drawWatermark(pdf: jsPDF, pageW: number, pageH: number, text?: string) 
     if ((pdf as any).GState && (pdf as any).setGState) {
       (pdf as any).setGState(new (pdf as any).GState({ opacity: 0.08 }));
     }
-  } catch { /* noop */ }
+  } catch {}
 
   try {
     pdf.setTextColor(185);
     pdf.setFontSize(48);
     const cx = pageW / 2;
     const cy = pageH / 2;
-    // rotate text via angle (works across jsPDF variants)
     (pdf as any).text(text, cx, cy, { angle: -30, align: "center" });
   } finally {
-    try { (pdf as any).restoreGraphicsState?.(); } catch { /* noop */ }
+    try { (pdf as any).restoreGraphicsState?.(); } catch {}
   }
 }
 
@@ -69,7 +68,6 @@ async function drawFooterWithQR(
   pageLabel?: string,
   margin = 36
 ) {
-  // Pre-generate small QR
   const qrText = "https://toolcitehub.com";
   const qrData = await QRCode.toDataURL(qrText, { margin: 0, width: 38 });
   const size = 38;
@@ -92,10 +90,9 @@ function drawCover(
   pageW: number,
   pageH: number,
   cover: CoverOpts,
-  tocTitles: string[] | null
+  tocTitles: string[] | null,
+  margin: number
 ) {
-  const margin = 48;
-
   drawWatermark(pdf, pageW, pageH, cover.watermark || "CONFIDENTIAL • INTERNAL");
 
   // Title + subtitle
@@ -108,25 +105,50 @@ function drawCover(
     cover.subtitle ||
       `Seed: ${(document.querySelector("input") as HTMLInputElement | null)?.value || "n/a"} • Exported ${new Date().toLocaleString()}`,
     margin,
-    margin + 30
+    margin + 32
   );
 
-  // Bullets (quick summary)
+  // Bullets (summary)
+  let atY = margin + 52;
   if (cover.bullets?.length) {
     pdf.setFontSize(10);
-    cover.bullets.forEach((line, i) => pdf.text(`• ${line}`, margin, margin + 50 + i * 14));
+    cover.bullets.forEach((line) => {
+      pdf.text(`• ${line}`, margin, atY);
+      atY += 14;
+    });
+    atY += 10; // spacing before Contents
   }
 
-  // Table of Contents (optional)
+  // Table of Contents
   if (tocTitles?.length) {
-    const startY = margin + 110;
     pdf.setFontSize(12);
-    pdf.text("Contents", margin, startY);
+    pdf.text("Contents", margin, atY);
+    atY += 16;
     pdf.setFontSize(10);
     tocTitles.forEach((t, i) => {
-      pdf.text(`${i + 1}. ${t}`, margin + 20, startY + 15 + i * 14);
+      pdf.text(`${i + 1}. ${t}`, margin + 18, atY);
+      atY += 14;
     });
   }
+}
+
+// Fetch section titles: prefer data-title, else first H1/H2/H3, else fallback
+function getSectionTitles(sections: HTMLElement[]): string[] {
+  const fallbacks = [
+    "Summary KPIs",
+    "Simulator & Filters",
+    "Charts",
+    "AI Insight — Easiest Wins",
+    "Keyword Lists by Source",
+  ];
+
+  return sections.map((s, i) => {
+    const attr = s.getAttribute("data-title")?.trim();
+    if (attr) return attr;
+    const h = s.querySelector("h1,h2,h3")?.textContent?.trim();
+    if (h && h.length > 0) return h;
+    return fallbacks[Math.min(i, fallbacks.length - 1)];
+  });
 }
 
 // ---------- core exporter ----------
@@ -139,11 +161,11 @@ export async function exportDashboardToPDF(root: HTMLElement, opts: ExportOpts =
     margin = 36,
   } = opts;
 
-  // Collect exportable sections (DOM order)
+  // Collect sections
   const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-export="section"]'));
   if (sections.length === 0) sections.push(root);
 
-  // If charts are wide, let user opt-in to landscape
+  // Init PDF
   const pdf = new jsPDF({
     orientation: autoLandscape ? "landscape" : "portrait",
     unit: "pt",
@@ -153,38 +175,35 @@ export async function exportDashboardToPDF(root: HTMLElement, opts: ExportOpts =
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
 
-  // Make captures smoother
+  // Reserve a footer band so content never overlaps QR/page number
+  const footerQRSize = 38;
+  const footerReserved = footerQRSize + margin; // ~74pt by default
+  const usableH = pageH - footerReserved;
+  const safetyTop = 2; // tiny visual buffer on tiles
+
   pauseAnimations(root);
   const scale = window.devicePixelRatio > 1 ? 1.5 : 1.25;
 
-  // For a ToC on cover we’ll gather the first h1/h2/h3 of each section
-  const tocTitles: string[] = sections.map(
-    (s) => s.querySelector("h1,h2,h3")?.textContent?.trim() || ""
-  );
-
-  // Page counter starts at 1 (the first physical page in jsPDF)
+  const tocTitles = getSectionTitles(sections);
   let pageIndex = 1;
 
   try {
-    // ---------- COVER (optional) ----------
+    // COVER
     if (cover) {
-      drawCover(pdf, pageW, pageH, cover as CoverOpts, tocTitles.length ? tocTitles : null);
+      drawCover(pdf, pageW, pageH, cover as CoverOpts, tocTitles.length ? tocTitles : null, margin);
       await drawFooterWithQR(pdf, pageW, pageH, brand, `Page ${pageIndex}`, margin);
-
-      // Only add a new page if there is content to follow
       if (sections.length > 0) {
         pdf.addPage();
         pageIndex++;
       }
     }
 
-    // ---------- CONTENT SECTIONS ----------
+    // CONTENT
     for (let sIdx = 0; sIdx < sections.length; sIdx++) {
       const section = sections[sIdx];
       section.scrollIntoView({ block: "center" });
-      await tick(50);
+      await tick(40);
 
-      // Render to canvas
       const canvas = await html2canvas(section, {
         scale,
         backgroundColor: "#ffffff",
@@ -199,29 +218,25 @@ export async function exportDashboardToPDF(root: HTMLElement, opts: ExportOpts =
       const ratio = pageW / imgW;
       const renderH = imgH * ratio;
 
-      // Utility to commit one PDF page (image already positioned)
       const commitPage = async (img: HTMLCanvasElement, drawHeight: number) => {
-        pdf.addImage(img, "PNG", 0, 0, pageW, drawHeight);
+        pdf.addImage(img, "PNG", 0, safetyTop, pageW, drawHeight - safetyTop);
         await drawFooterWithQR(pdf, pageW, pageH, brand, `Page ${pageIndex}`, margin);
       };
 
-      // Are there multiple tiles?
-      if (renderH <= pageH) {
-        // Single-page section: draw on current page
-        await commitPage(canvas, renderH);
-
-        // Add a new page if there is more content after this page
+      if (renderH <= usableH) {
+        // one page
+        await commitPage(canvas, Math.min(renderH, usableH));
         const isLastOverall = sIdx === sections.length - 1;
         if (!isLastOverall) {
           pdf.addPage();
           pageIndex++;
         }
       } else {
-        // Multi-page: tile vertically
-        const pageCount = Math.ceil(renderH / pageH);
+        // tiling
+        const pageCount = Math.ceil(renderH / usableH);
         for (let i = 0; i < pageCount; i++) {
-          const sY = (i * pageH) / ratio;
-          const sH = Math.min(imgH - sY, pageH / ratio);
+          const sY = (i * usableH) / ratio;
+          const sH = Math.min(imgH - sY, usableH / ratio);
 
           const slice = document.createElement("canvas");
           slice.width = imgW;
@@ -242,7 +257,7 @@ export async function exportDashboardToPDF(root: HTMLElement, opts: ExportOpts =
         }
       }
 
-      await tick(40);
+      await tick(30);
     }
 
     pdf.save(filename);
