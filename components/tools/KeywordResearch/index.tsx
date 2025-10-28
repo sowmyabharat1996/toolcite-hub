@@ -9,7 +9,7 @@ import KeywordList from "./KeywordList";
 import {
   Dataset, KeywordSourceBlock, Metrics, KeywordItem,
   generateMockData, toCSV, shareURLFromSeed, downloadBlob,
-  recomputeAll, explainPick
+  recomputeAll, explainPick, runAIInsight, computeMetricsAdvanced
 } from "./utils";
 import { exportDashboardToPDF } from "./PdfReport";
 
@@ -19,7 +19,7 @@ import { exportDashboardToPDF } from "./PdfReport";
 
 type SessionSnapshot = {
   id: string;
-  ts: number;                 // epoch ms
+  ts: number;
   seed: string;
   volSim: number;
   cpcSim: number;
@@ -28,7 +28,7 @@ type SessionSnapshot = {
   metrics: Metrics;
   estClicks: number;
   top3: Array<KeywordItem & { reasons?: string[] }>;
-  base: KeywordSourceBlock[]; // deterministic restore
+  base: KeywordSourceBlock[];
 };
 
 const SESS_KEY = "kr:sessions:v2";
@@ -56,7 +56,7 @@ function formatTime(ts: number) {
 /* -------------------------------------------------------------------------- */
 
 export default function KeywordResearch() {
-  /* ------------------------------- State ---------------------------------- */
+  // Core state
   const [query, setQuery] = useState("");
   const [dataset, setDataset] = useState<Dataset>({ data: [], metrics: emptyMetrics() });
   const [previousMetrics, setPreviousMetrics] = useState<Metrics | null>(null);
@@ -80,10 +80,13 @@ export default function KeywordResearch() {
   const [baseBlocks, setBaseBlocks] = useState<KeywordSourceBlock[]>([]);
   const [trendColor, setTrendColor] = useState<string>("#3b82f6");
 
-  // History UI state
+  // History / Compare
   const [history, setHistory] = useState<SessionSnapshot[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [compareWith, setCompareWith] = useState<SessionSnapshot | null>(null);
+
+  // Share feedback
+  const [copied, setCopied] = useState(false);
 
   // Refs
   const rootRef = useRef<HTMLDivElement>(null);
@@ -92,13 +95,13 @@ export default function KeywordResearch() {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const compareRef = useRef<HTMLDivElement | null>(null);
 
-  /* ------------------------------- Init ----------------------------------- */
+  // Init (URL params + first generate)
   useEffect(() => {
     setHistory(loadSessions());
 
     const sp = new URLSearchParams(window.location.search);
     const q = sp.get("q") || "";
-    const df = sp.get("df"); // "min-max"
+    const df = sp.get("df");
     if (df) {
       const [a, b] = df.split("-").map((n) => Math.max(0, Math.min(100, Number(n))));
       if (!Number.isNaN(a) && !Number.isNaN(b)) {
@@ -121,7 +124,7 @@ export default function KeywordResearch() {
   useEffect(() => { localStorage.setItem("sortByAI", sortByAI ? "true" : "false"); }, [sortByAI]);
   useEffect(() => { localStorage.setItem("dfMin", String(minDiff)); localStorage.setItem("dfMax", String(maxDiff)); }, [minDiff, maxDiff]);
 
-  /* ------------------------------ Dropdown pos ---------------------------- */
+  // History menu positioning
   useEffect(() => {
     function compute() {
       if (!historyOpen || !historyBtnRef.current) return;
@@ -138,7 +141,7 @@ export default function KeywordResearch() {
     };
   }, [historyOpen]);
 
-  /* -------------------------------- Mood ---------------------------------- */
+  // Mood color update
   useEffect(() => {
     if (!previousMetrics) return;
     const delta = dataset.metrics.health - previousMetrics.health;
@@ -147,7 +150,7 @@ export default function KeywordResearch() {
     else setTrendColor("#ef4444");
   }, [dataset.metrics.health, previousMetrics]);
 
-  /* --------------------------- Generate / Restore ------------------------- */
+  // Generate / Restore
   function snapshotCurrent(seedForSave?: string): SessionSnapshot | null {
     if (!baseBlocks.length) return null;
     return {
@@ -177,7 +180,6 @@ export default function KeywordResearch() {
     setTotalAfter(next.totalAfter);
     setLastUpdated(Date.now());
 
-    // auto-save only on manual generate
     if (!opts?.initial) {
       const snap: SessionSnapshot = {
         id: makeId(), ts: Date.now(), seed, volSim, cpcSim, minDiff, maxDiff,
@@ -206,7 +208,7 @@ export default function KeywordResearch() {
     setLastUpdated(Date.now());
   }
 
-  /* ------------------------- Live recompute (debounce) -------------------- */
+  // Live recompute (debounce)
   function applyNow(v: number, c: number, d0: number, d1: number) {
     if (!baseBlocks.length) return;
     const next = recomputeAll(baseBlocks, v, c, d0, d1);
@@ -240,7 +242,7 @@ export default function KeywordResearch() {
     setMaxDiff(nv); schedule(volSim, cpcSim, minDiff, nv);
   };
 
-  /* ------------------------------- Actions -------------------------------- */
+  // Actions
   function handleCopyAll() {
     const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
     navigator.clipboard.writeText(flat);
@@ -249,10 +251,20 @@ export default function KeywordResearch() {
     const csv = toCSV(dataset.data);
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
   }
-  function handleShare() {
-    navigator.clipboard.writeText(
-      shareURLFromSeed(query || "keyword", { df: [minDiff, maxDiff], vol: volSim, cpc: cpcSim, sortAI: sortByAI })
-    );
+  async function handleShare() {
+    const url = shareURLFromSeed(query || "keyword", {
+      df: [minDiff, maxDiff],
+      vol: volSim,
+      cpc: cpcSim,
+      sortAI: sortByAI,
+    });
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
   }
   async function handleExportPDF() {
     if (!rootRef.current) return;
@@ -273,7 +285,22 @@ export default function KeywordResearch() {
   }
   function clearCompare() { setCompareWith(null); }
 
-  /* ------------------------------ Derivations ----------------------------- */
+  // AI Insight (manual re-score + scroll)
+  function handleAIInsight() {
+    if (!dataset.data.length) return;
+    const { top3, scores } = runAIInsight(dataset.data);
+    const scoredBlocks = dataset.data.map((b) => ({
+      ...b,
+      items: b.items.map((k) => ({ ...k, ai: scores[k.id] ?? k.ai })),
+    }));
+    setDataset({ data: scoredBlocks, metrics: computeMetricsAdvanced(scoredBlocks) });
+    setInsights(top3.map((t) => ({ ...t, reasons: explainPick(t) })));
+    setHighlightId(top3[0]?.id ?? null);
+    document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth" });
+    setLastUpdated(Date.now());
+  }
+
+  // Derived
   const sortedBlocks = sortByAI
     ? dataset.data.map((b) => ({ ...b, items: [...b.items].sort((a, b) => (b.ai ?? 0) - (a.ai ?? 0)) }))
     : dataset.data;
@@ -284,11 +311,10 @@ export default function KeywordResearch() {
   };
   const { metrics } = dataset;
 
-  // gradient overlay positions for difficulty preview
   const leftPct = minDiff;
   const widthPct = Math.max(0, maxDiff - minDiff);
 
-  /* ------------------------------- UI ------------------------------------ */
+  // UI
   return (
     <div className="relative min-h-[100vh] overflow-visible">
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none" style={moodBG} />
@@ -314,7 +340,7 @@ export default function KeywordResearch() {
             </button>
             <button className="h-10 px-3 rounded-xl bg-emerald-600 text-white" onClick={handleSaveSession}>Save Session</button>
 
-            {/* History dropdown (portal) */}
+            {/* History dropdown */}
             <div className="relative">
               <button
                 ref={historyBtnRef}
@@ -361,13 +387,16 @@ export default function KeywordResearch() {
             <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>Copy All</button>
             <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
             <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
-            <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>Share Link</button>
+            <button className="h-10 px-3 rounded-xl bg-neutral-200 dark:bg-neutral-700" onClick={handleShare}>
+              {copied ? "✅ Copied" : "Share Link"}
+            </button>
+            <button className="h-10 px-3 rounded-xl bg-emerald-700 text-white" onClick={handleAIInsight}>🤖 AI Insight</button>
           </div>
         </div>
 
         {/* Summary */}
         <div data-export="section">
-          <SummaryBar metrics={metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
+          <SummaryBar metrics={dataset.metrics} previous={previousMetrics} lastUpdated={lastUpdated} showTrend={showTrend} estClicks={estClicks} />
         </div>
 
         {/* Compare panel */}
@@ -383,8 +412,8 @@ export default function KeywordResearch() {
             <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
               {[
                 { label: "EMC", cur: estClicks, old: compareWith.estClicks, fmt: (n:number)=>n.toLocaleString() },
-                { label: "KSI", cur: metrics.health, old: compareWith.metrics.health, fmt: (n:number)=>n },
-                { label: "Avg Difficulty", cur: metrics.avgDifficulty, old: compareWith.metrics.avgDifficulty, fmt: (n:number)=>n },
+                { label: "KSI", cur: dataset.metrics.health, old: compareWith.metrics.health, fmt: (n:number)=>n },
+                { label: "Avg Difficulty", cur: dataset.metrics.avgDifficulty, old: compareWith.metrics.avgDifficulty, fmt: (n:number)=>n },
                 { label: "Total Keywords", cur: totalAfter, old: compareWith.metrics.total, fmt: (n:number)=>n },
               ].map((k) => {
                 const delta = k.cur - (k.old as number);
@@ -419,8 +448,10 @@ export default function KeywordResearch() {
         <div data-export="section" className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-4 overflow-visible">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Volume + CPC Simulator</div>
-            <div className="text-xs text-neutral-500">Adjust sliders → AI Picks, Charts &amp; KSI update live</div>
+            {/* tiny on-screen KSI indicator */}
+            <div className="text-xs text-neutral-500">KSI now: <b>{dataset.metrics.health}</b></div>
           </div>
+
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
@@ -436,10 +467,12 @@ export default function KeywordResearch() {
             </div>
           </div>
 
-          {/* Difficulty range + gradient preview */}
+          {/* Difficulty Filter */}
           <div className="mt-6">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Difficulty Filter</div>
+              <div className="text-sm font-semibold">
+                Difficulty Filter <span className="ml-2 rounded-md px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-800">Band: {minDiff}–{maxDiff}</span>
+              </div>
               <div className="text-xs text-neutral-500">Showing {totalAfter} of {totalBefore} keywords</div>
             </div>
 
@@ -447,7 +480,7 @@ export default function KeywordResearch() {
             <div className="mt-2 relative h-3 rounded-full overflow-hidden"
                  style={{ background: "linear-gradient(90deg,#22c55e 0%,#f59e0b 60%,#ef4444 100%)" }}>
               <div className="absolute top-0 bottom-0 bg-white/30 border border-white/60"
-                   style={{ left: `${leftPct}%`, width: `${widthPct}%` }} />
+                   style={{ left: `${minDiff}%`, width: `${Math.max(0, maxDiff - minDiff)}%` }} />
             </div>
 
             {/* Dual sliders */}
@@ -479,10 +512,10 @@ export default function KeywordResearch() {
 
         {/* Charts */}
         <div data-export="section">
-          <MetricsCharts metrics={metrics} blocks={sortedBlocks} />
+          <MetricsCharts metrics={dataset.metrics} blocks={sortedBlocks} />
         </div>
 
-        {/* AI Insight panel */}
+        {/* AI Insight */}
         <aside data-export="section" id="insights-panel" className="rounded-2xl border p-4 overflow-visible"
           style={{
             borderColor: trendColor + "66",
@@ -508,7 +541,9 @@ export default function KeywordResearch() {
                       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold" style={{ backgroundColor: trendColor + "22", color: trendColor }}>{i + 1}</span>
                       <div className="truncate font-medium">{x.phrase}</div>
                     </div>
-                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}</div>
+                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+                      diff {x.difficulty} • {x.intent} • vol {x.volume ?? "—"} • cpc {x.cpc ?? "—"}
+                    </div>
                     {x.reasons && x.reasons.length > 0 && (
                       <div className="mt-2">
                         <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Why this pick?</div>
@@ -524,13 +559,23 @@ export default function KeywordResearch() {
                 </div>
               </li>
             ))}
-            {!insights.length && <li className="text-sm text-neutral-600 dark:text-neutral-300">No keywords in this difficulty range.</li>}
+            {!insights.length && (
+              <li className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/10 p-4 text-sm text-neutral-600 dark:text-neutral-300">
+                No keywords in this difficulty range. Widen the band or click Generate for a new seed.
+              </li>
+            )}
           </ul>
         </aside>
 
         {/* Keyword Lists */}
         <div data-export="section" id="kw-lists" className="pt-2 overflow-visible">
-          <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
+          {totalAfter === 0 ? (
+            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-white/5 p-6 text-sm text-neutral-600 dark:text-neutral-300">
+              No results to display for this band <b>{minDiff}–{maxDiff}</b>. Try widening the range.
+            </div>
+          ) : (
+            <KeywordList blocks={sortedBlocks} highlightId={highlightId} />
+          )}
         </div>
       </div>
     </div>
