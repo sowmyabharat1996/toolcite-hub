@@ -33,15 +33,7 @@ const nextConfig = {
 
   async redirects() {
     return [
-      // WWW → apex (host-based redirect)
-      {
-        source: '/:path*',
-        has: [{ type: 'host', value: 'www.toolcite.com' }],
-        destination: 'https://toolcite.com/:path*',
-        permanent: true, // 308
-      },
-
-      // your existing app redirect
+      // keep only app-path redirects here
       { source: '/weather', destination: '/tools/weather', permanent: true },
     ];
   },
