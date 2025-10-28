@@ -585,11 +585,16 @@ export default function KeywordResearch() {
 
             <div className="mt-2 flex items-center justify-between">
               <input
-                value={textFilter}
-                onChange={onText}
-                placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
-                className="h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
-              />
+  type="search"                   // better semantics + mobile keyboard
+  inputMode="search"              // hints keyboards on Android
+  autoComplete="off"
+  value={textFilter}
+  onChange={onText}
+  placeholder="Filter inside current results, e.g. 'best', '2025', 'review'"
+  className="h-10 w-full rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/70 dark:bg-white/5 px-3"
+  aria-label="Filter keywords text"
+  aria-describedby="filter-help"
+/>
               <button
                 onClick={clearAllFilters}
                 className="ml-2 shrink-0 h-10 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 text-sm"
@@ -598,6 +603,9 @@ export default function KeywordResearch() {
                 Clear
               </button>
             </div>
+<div id="filter-help" className="mt-1 text-[11px] text-neutral-500">
+  Filters affect AI Top-3, charts, and KSI.
+</div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               {CHIP_CATALOG.map((tag) => {
