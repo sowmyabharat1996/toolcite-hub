@@ -227,10 +227,6 @@ export default function KeywordResearch() {
   }
 
   // Actions
-  function handleCopyAll() {
-    const flat = dataset.data.flatMap((b) => b.items.map((k) => k.phrase)).join("\n");
-    navigator.clipboard.writeText(flat);
-  }
   function handleExportCSV() {
     const csv = toCSV(dataset.data);
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "keywords.csv");
@@ -407,7 +403,6 @@ export default function KeywordResearch() {
             </div>
 
             {/* Copy / Export */}
-            <button className="h-10 px-3 rounded-xl bg-neutral-800 text-white" onClick={handleCopyAll}>Copy All</button>
             <button className="h-10 px-3 rounded-xl bg-purple-600 text-white" onClick={handleExportCSV}>Export CSV</button>
             <button className="h-10 px-3 rounded-xl bg-amber-600 text-white" onClick={handleExportPDF}>Export PDF</button>
             <button className="h-10 px-3 rounded-xl bg-orange-500 text-white" onClick={handleExportPNG}>Export PNG</button>
