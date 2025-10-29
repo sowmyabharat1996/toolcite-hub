@@ -6,7 +6,19 @@ type Color = { hex: string; locked: boolean };
 type Algo = "analogous" | "complementary" | "triadic" | "tetradic" | "monochrome";
 
 /* =======================
-   NEW (Step 3): WCAG helpers
+   NEW (Step 4): Presets
+   ======================= */
+const PRESETS: Record<string, string[]> = {
+  Brand:  ["#0EA5E9", "#6366F1", "#22C55E", "#F59E0B", "#EF4444"],
+  Pastel: ["#AEC6CF", "#FFB3BA", "#B5EAD7", "#FFDFBA", "#C7CEEA"],
+  Neon:   ["#39FF14", "#00FFFF", "#FF6EC7", "#FFD300", "#FF073A"],
+  Earth:  ["#264653", "#2A9D8F", "#E9C46A", "#F4A261", "#E76F51"],
+  Ocean:  ["#003049", "#0077B6", "#00B4D8", "#90E0EF", "#CAF0F8"],
+  Sunset: ["#370617", "#6A040F", "#9D0208", "#DC2F02", "#F48C06"],
+};
+
+/* =======================
+   (From Step 3) WCAG helpers (kept)
    ======================= */
 function relativeLuminance(hex: string) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -180,6 +192,18 @@ export default function ColorPaletteGenerator() {
     );
   };
 
+  // NEW (Step 4): apply preset (keeps locks where index matches, updates base/count, unfreezes auto)
+  const applyPreset = (name: keyof typeof PRESETS) => {
+    const hexes = PRESETS[name];
+    if (!hexes?.length) return;
+    setBaseColor(hexes[0]);         // seed base to first color
+    setCount(hexes.length);         // reflect preset length
+    setFreezeAuto(false);           // resume auto recompute for further tweaks
+    setPalette((prev) =>
+      hexes.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false }))
+    );
+  };
+
   // toast copy (kept)
   const copyHex = async (hex: string) => {
     await navigator.clipboard.writeText(hex);
@@ -208,6 +232,23 @@ export default function ColorPaletteGenerator() {
       toast.style.opacity = "0";
       setTimeout(() => toast.remove(), 400);
     }, 1500);
+  };
+
+  // NEW (Step 4): Copy CSS Variables
+  const copyCssVariables = async () => {
+    const vars = palette.slice(0, count).map((c, i) => `  --tc-color-${i + 1}: ${c.hex};`).join("\n");
+    const css = `:root{\n${vars}\n}`;
+    await navigator.clipboard.writeText(css);
+    const toast = document.createElement("div");
+    toast.textContent = "CSS variables copied!";
+    Object.assign(toast.style, {
+      position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+      background: "#333", color: "#fff", padding: "8px 16px", borderRadius: "8px",
+      fontSize: "14px", zIndex: "9999", opacity: "0", transition: "opacity 0.3s ease",
+    } as CSSStyleDeclaration);
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => (toast.style.opacity = "1"));
+    setTimeout(() => { toast.style.opacity = "0"; setTimeout(() => toast.remove(), 400); }, 1500);
   };
 
   // export (kept)
@@ -323,7 +364,7 @@ export default function ColorPaletteGenerator() {
   /* ---------- UI ---------- */
   return (
     <div className="max-w-5xl mx-auto p-6">
-      {/* Optional SR live region (harmless) */}
+      {/* SR live region (kept) */}
       <div id="a11y-announcer" aria-live="polite" className="sr-only" />
 
       <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
@@ -333,7 +374,31 @@ export default function ColorPaletteGenerator() {
         Generate color palettes and shades from a seed color or random selection. Click a swatch to copy HEX. Lock colors to keep them during regeneration.
       </p>
 
-      {/* Controls (unchanged) */}
+      {/* NEW (Step 4): Presets row */}
+      <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+        <span className="text-sm text-gray-600">Presets:</span>
+        {Object.keys(PRESETS).map((name) => (
+          <button
+            key={name}
+            onClick={() => applyPreset(name as keyof typeof PRESETS)}
+            className="hit-44 rounded-full border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50"
+            aria-label={`Apply ${name} preset`}
+            title={`Apply ${name} preset`}
+          >
+            {name}
+          </button>
+        ))}
+        <button
+          onClick={copyCssVariables}
+          className="hit-44 ml-2 rounded-full border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50"
+          aria-label="Copy CSS variables"
+          title="Copy CSS variables"
+        >
+          Copy CSS Vars
+        </button>
+      </div>
+
+      {/* Controls (kept) */}
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <input
           id="base-color"
@@ -418,6 +483,7 @@ export default function ColorPaletteGenerator() {
           Randomize Palette
         </button>
 
+        {/* Export / Share (kept) */}
         <button
           onClick={() => exportPalette("json")}
           className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition"
@@ -439,7 +505,7 @@ export default function ColorPaletteGenerator() {
         </button>
       </div>
 
-      {/* Palette (only outer div changed to add badge) */}
+      {/* Palette (kept with Step-3 badge) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
         {palette.slice(0, count).map((c, i) => {
           const text = bestTextColor(c.hex);
@@ -454,7 +520,6 @@ export default function ColorPaletteGenerator() {
               onClick={() => copyHex(c.hex)}
               title={`Contrast ${ratio.toFixed(2)}:1 (${badge})`}
             >
-              {/* NEW: AA/AAA/AA Large/Low pill */}
               <span
                 className="absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium"
                 style={{
@@ -466,7 +531,6 @@ export default function ColorPaletteGenerator() {
                 {badge}
               </span>
 
-              {/* existing inner content (kept) */}
               <div className="p-2 bg-white/90 rounded-b-xl text-center text-sm">
                 <div className="font-mono">{c.hex.toUpperCase()}</div>
                 <button
