@@ -194,16 +194,17 @@ export default function ColorPaletteGenerator() {
 
   // NEW (Step 4): apply preset (keeps locks where index matches, updates base/count, unfreezes auto)
   const applyPreset = (name: keyof typeof PRESETS) => {
-    const hexes = PRESETS[name];
-    if (!hexes?.length) return;
-    setBaseColor(hexes[0]);         // seed base to first color
-    setCount(hexes.length);         // reflect preset length
-    setFreezeAuto(false);           // resume auto recompute for further tweaks
-    setPalette((prev) =>
-      hexes.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false }))
-    );
-  };
+  const hexes = PRESETS[name];
+  if (!hexes?.length) return;
 
+  setFreezeAuto(true);          // ← keep the preset exactly as authored
+  setBaseColor(hexes[0]);       // base = first swatch
+  setCount(hexes.length);       // count = preset length
+
+  setPalette((prev) =>
+    hexes.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false }))
+  );
+};
   // toast copy (kept)
   const copyHex = async (hex: string) => {
     await navigator.clipboard.writeText(hex);
