@@ -5,15 +5,43 @@ import React, { useState, useEffect } from "react";
 type Color = { hex: string; locked: boolean };
 type Algo = "analogous" | "complementary" | "triadic" | "tetradic" | "monochrome";
 
-/* ---------- small utils ---------- */
+/* =======================
+   NEW (Step 3): WCAG helpers
+   ======================= */
+function relativeLuminance(hex: string) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  const r = parseInt(m?.[1] ?? "00", 16) / 255;
+  const g = parseInt(m?.[2] ?? "00", 16) / 255;
+  const b = parseInt(m?.[3] ?? "00", 16) / 255;
+  const lin = (x: number) => (x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4));
+  const R = lin(r), G = lin(g), B = lin(b);
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+}
+function contrastRatio(fg: string, bg: string) {
+  const L1 = relativeLuminance(fg);
+  const L2 = relativeLuminance(bg);
+  return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+}
+function bestTextColor(bg: string) {
+  const cW = contrastRatio("#ffffff", bg);
+  const cB = contrastRatio("#000000", bg);
+  return cW >= cB ? "#ffffff" : "#000000";
+}
+function badgeForContrast(c: number) {
+  if (c >= 7) return "AAA";
+  if (c >= 4.5) return "AA";
+  if (c >= 3) return "AA Large";
+  return "Low";
+}
+
+/* =======================
+   Existing utils (kept)
+   ======================= */
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 const mod = (n: number, m: number) => ((n % m) + m) % m;
-
 function randomHex() {
   return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
 }
-
-/* HEX <-> HSL helpers (no deps) */
 function hexToRgb(hex: string) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!m) return { r: 0, g: 0, b: 0 };
@@ -55,7 +83,6 @@ function hslToHex(h: number, s: number, l: number) {
   return rgbToHex(r, g, b);
 }
 
-/* ---------- component ---------- */
 export default function ColorPaletteGenerator() {
   const [baseColor, setBaseColor] = useState("#06A92F");
   const [palette, setPalette] = useState<Color[]>([
@@ -66,16 +93,14 @@ export default function ColorPaletteGenerator() {
     { hex: "#67098F", locked: false },
   ]);
 
-  // NEW: Step-2 controls
+  // Step-2 controls (kept)
   const [algo, setAlgo] = useState<Algo>("analogous");
   const [count, setCount] = useState<number>(5);
   const [satShift, setSatShift] = useState<number>(0);
   const [lumShift, setLumShift] = useState<number>(0);
-
-  // Block auto recompute only when deep-linked with explicit colors
   const [freezeAuto, setFreezeAuto] = useState<boolean>(false);
 
-  // unchanged helper kept for older “shade” behavior (not used by generator any more)
+  // legacy shade helper (kept for compatibility)
   const shadeColor = (color: string, percent: number) => {
     const f = parseInt(color.slice(1), 16);
     const t = percent < 0 ? 0 : 255;
@@ -96,7 +121,7 @@ export default function ColorPaletteGenerator() {
     return newColor;
   };
 
-  // NEW: algorithmic generator in HSL (respects locks + count)
+  // generator (kept)
   const generateFromBase = () => {
     const base = baseColor;
     const { r, g, b } = hexToRgb(base);
@@ -106,7 +131,7 @@ export default function ColorPaletteGenerator() {
     const hueShifts: number[] = (() => {
       switch (algo) {
         case "analogous": {
-          const span = 30; // +/- 30°
+          const span = 30;
           return Array.from({ length: n }, (_, i) => -span + (2 * span * i) / (n - 1));
         }
         case "complementary":
@@ -132,12 +157,7 @@ export default function ColorPaletteGenerator() {
       return { hex: hslToHex(h, s, l), locked: false };
     });
 
-    // keep locks where possible (index-based)
-    setPalette((prev) => {
-      const out = next.map((c, i) => (prev[i]?.locked ? prev[i] : c));
-      // If there were extra locked colors beyond new count, ignore; if fewer, keep length n
-      return out;
-    });
+    setPalette((prev) => next.map((c, i) => (prev[i]?.locked ? prev[i] : c)));
   };
 
   const regenerate = () => {
@@ -146,7 +166,6 @@ export default function ColorPaletteGenerator() {
         .slice(0, count)
         .map((c) => (c.locked ? c : { ...c, hex: randomHex() }))
         .concat(
-          // if count increased, add new colors
           Array.from({ length: Math.max(0, count - prev.length) }, () => ({
             hex: randomHex(),
             locked: false,
@@ -161,7 +180,7 @@ export default function ColorPaletteGenerator() {
     );
   };
 
-  // Smooth toast (unchanged)
+  // toast copy (kept)
   const copyHex = async (hex: string) => {
     await navigator.clipboard.writeText(hex);
     const toast = document.createElement("div");
@@ -191,7 +210,7 @@ export default function ColorPaletteGenerator() {
     }, 1500);
   };
 
-  // Export / Download (unchanged)
+  // export (kept)
   const exportPalette = async (type: "json" | "png") => {
     if (type === "json") {
       const blob = new Blob([JSON.stringify(palette.slice(0, count), null, 2)], {
@@ -219,7 +238,7 @@ export default function ColorPaletteGenerator() {
     }
   };
 
-  // Share (now shares full state via current URL + colors/base backup)
+  // share (kept)
   const sharePalette = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("base", baseColor);
@@ -250,7 +269,7 @@ export default function ColorPaletteGenerator() {
     }
   };
 
-  /* ---------- URL decode once (adds a/n/s/l) ---------- */
+  /* ---------- URL decode (kept) ---------- */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const colorsParam = params.get("colors");
@@ -267,7 +286,6 @@ export default function ColorPaletteGenerator() {
     if (l) setLumShift(clamp(parseInt(l, 10), -40, 40));
 
     if (colorsParam) {
-      // If explicit colors provided, hydrate palette and pause auto recompute until user clicks Generate
       let raw = colorsParam;
       try { raw = decodeURIComponent(raw); } catch {}
       const colors = raw.split(",").map((hex) => {
@@ -279,7 +297,7 @@ export default function ColorPaletteGenerator() {
     }
   }, []);
 
-  /* ---------- URL encode (colors/base + a/n/s/l) ---------- */
+  /* ---------- URL encode (kept) ---------- */
   useEffect(() => {
     const t = setTimeout(() => {
       const sp = new URLSearchParams(window.location.search);
@@ -295,9 +313,9 @@ export default function ColorPaletteGenerator() {
     return () => clearTimeout(t);
   }, [palette, baseColor, algo, count, satShift, lumShift]);
 
-  /* ---------- Gentle auto recompute on control changes ---------- */
+  /* ---------- Auto recompute (kept) ---------- */
   useEffect(() => {
-    if (freezeAuto) return; // respect deep-link palette until user regenerates
+    if (freezeAuto) return;
     const t = setTimeout(() => generateFromBase(), 180);
     return () => clearTimeout(t);
   }, [baseColor, algo, count, satShift, lumShift, freezeAuto]);
@@ -305,6 +323,9 @@ export default function ColorPaletteGenerator() {
   /* ---------- UI ---------- */
   return (
     <div className="max-w-5xl mx-auto p-6">
+      {/* Optional SR live region (harmless) */}
+      <div id="a11y-announcer" aria-live="polite" className="sr-only" />
+
       <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
         🎨 Color Palette Generator – Free Online Tool
       </h1>
@@ -312,7 +333,7 @@ export default function ColorPaletteGenerator() {
         Generate color palettes and shades from a seed color or random selection. Click a swatch to copy HEX. Lock colors to keep them during regeneration.
       </p>
 
-      {/* Controls */}
+      {/* Controls (unchanged) */}
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <input
           id="base-color"
@@ -397,7 +418,6 @@ export default function ColorPaletteGenerator() {
           Randomize Palette
         </button>
 
-        {/* Export / Share */}
         <button
           onClick={() => exportPalette("json")}
           className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition"
@@ -419,27 +439,47 @@ export default function ColorPaletteGenerator() {
         </button>
       </div>
 
-      {/* Palette */}
+      {/* Palette (only outer div changed to add badge) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
-        {palette.slice(0, count).map((c, i) => (
-          <div
-            key={i}
-            className="rounded-xl shadow-sm cursor-pointer transition transform hover:scale-105"
-            style={{ backgroundColor: c.hex }}
-            onClick={() => copyHex(c.hex)}
-          >
-            <div className="p-2 bg-white/90 rounded-b-xl text-center text-sm">
-              <div className="font-mono">{c.hex.toUpperCase()}</div>
-              <button
-                onClick={(e) => { e.stopPropagation(); toggleLock(i); }}
-                className="mt-1 text-xs text-gray-500"
-                aria-label={c.locked ? "Unlock swatch" : "Lock swatch"}
+        {palette.slice(0, count).map((c, i) => {
+          const text = bestTextColor(c.hex);
+          const ratio = contrastRatio(text, c.hex);
+          const badge = badgeForContrast(ratio);
+
+          return (
+            <div
+              key={i}
+              className="relative rounded-xl shadow-sm cursor-pointer transition transform hover:scale-105"
+              style={{ backgroundColor: c.hex }}
+              onClick={() => copyHex(c.hex)}
+              title={`Contrast ${ratio.toFixed(2)}:1 (${badge})`}
+            >
+              {/* NEW: AA/AAA/AA Large/Low pill */}
+              <span
+                className="absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  color: text,
+                  background: text === "#000000" ? "rgba(255,255,255,.55)" : "rgba(0,0,0,.35)",
+                }}
+                aria-label={`Contrast ${badge}`}
               >
-                {c.locked ? "🔒" : "🔓"}
-              </button>
+                {badge}
+              </span>
+
+              {/* existing inner content (kept) */}
+              <div className="p-2 bg-white/90 rounded-b-xl text-center text-sm">
+                <div className="font-mono">{c.hex.toUpperCase()}</div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleLock(i); }}
+                  className="mt-1 text-xs text-gray-500"
+                  aria-label={c.locked ? "Unlock swatch" : "Lock swatch"}
+                >
+                  {c.locked ? "🔒" : "🔓"}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <p className="text-center text-gray-500 text-sm">
