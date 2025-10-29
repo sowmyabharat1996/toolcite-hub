@@ -97,29 +97,14 @@ function hslToHex(h: number, s: number, l: number) {
    Step 5: Session history
    ======================= */
 type SessionSnap = {
-  id: string;               // e.g., '2025-10-30T18:20:11.123Z'
-  name: string;             // human label (auto-generated)
-  base: string;
-  algo: Algo;
-  count: number;
-  sat: number;
-  lum: number;
-  colors: string[];
+  id: string; name: string;
+  base: string; algo: Algo; count: number; sat: number; lum: number; colors: string[];
 };
 const HISTORY_KEY = "tc_color_history_v1";
 const loadHistory = (): SessionSnap[] => {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as SessionSnap[]) : [];
-  } catch {
-    return [];
-  }
+  try { const raw = localStorage.getItem(HISTORY_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
 };
-const saveHistory = (items: SessionSnap[]) => {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 5)));
-  } catch {}
-};
+const saveHistory = (items: SessionSnap[]) => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 5))); } catch {} };
 
 export default function ColorPaletteGenerator() {
   const [baseColor, setBaseColor] = useState("#06A92F");
@@ -142,26 +127,8 @@ export default function ColorPaletteGenerator() {
   const [history, setHistory] = useState<SessionSnap[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string>("");
 
-  // legacy shade helper
-  const shadeColor = (color: string, percent: number) => {
-    const f = parseInt(color.slice(1), 16);
-    const t = percent < 0 ? 0 : 255;
-    const p = Math.abs(percent) / 100;
-    const R = f >> 16;
-    const G = (f >> 8) & 0x00ff;
-    const B = f & 0x0000ff;
-    const newColor =
-      "#" +
-      (
-        0x1000000 +
-        (Math.round((t - R) * p) + R) * 0x10000 +
-        (Math.round((t - G) * p) + G) * 0x100 +
-        (Math.round((t - B) * p) + B)
-      )
-        .toString(16)
-        .slice(1);
-    return newColor;
-  };
+  // Step 6: Reorder mode
+  const [reorderMode, setReorderMode] = useState<boolean>(false);
 
   // generator
   const generateFromBase = () => {
@@ -408,6 +375,21 @@ export default function ColorPaletteGenerator() {
     toast("History cleared");
   };
 
+  /* ---------- Step 6: Reorder helpers ---------- */
+  const moveSwatch = (index: number, delta: number) => {
+    setPalette((prev) => {
+      const arr = [...prev];
+      const limit = Math.min(count, arr.length);
+      const from = clamp(index, 0, limit - 1);
+      const to = clamp(index + delta, 0, limit - 1);
+      if (from === to) return prev;
+      const tmp = arr[from];
+      arr[from] = arr[to];
+      arr[to] = tmp;
+      return arr;
+    });
+  };
+
   /* ---------- UI ---------- */
   return (
     <div className="max-w-5xl mx-auto p-6">
@@ -549,6 +531,17 @@ export default function ColorPaletteGenerator() {
         >
           Share Link
         </button>
+
+        {/* Step 6: Reorder Mode toggle */}
+        <button
+          onClick={() => setReorderMode((v) => !v)}
+          className={`px-3 py-2 rounded-md border ${reorderMode ? "border-blue-600 text-blue-700 bg-blue-50" : "border-gray-300 hover:bg-gray-50"}`}
+          aria-pressed={reorderMode}
+          aria-label="Toggle reorder mode"
+          title="Reorder swatches with arrows"
+        >
+          {reorderMode ? "✅ Reorder: ON" : "↔ Reorder"}
+        </button>
       </div>
 
       {/* Step 5: Save + History */}
@@ -598,11 +591,19 @@ export default function ColorPaletteGenerator() {
           return (
             <div
               key={i}
-              className="relative rounded-xl shadow-sm cursor-pointer transition transform hover:scale-105"
+              className="relative rounded-xl shadow-sm cursor-pointer transition transform hover:scale-105 focus:outline-none"
               style={{ backgroundColor: c.hex }}
               onClick={() => copyHex(c.hex)}
+              onKeyDown={(e) => {
+                if (!reorderMode) return;
+                if (e.key === "ArrowLeft") { e.preventDefault(); moveSwatch(i, -1); }
+                if (e.key === "ArrowRight") { e.preventDefault(); moveSwatch(i, +1); }
+              }}
+              tabIndex={0}
               title={`Contrast ${ratio.toFixed(2)}:1 (${badge})`}
+              aria-label={`Swatch ${i + 1} ${c.hex}`}
             >
+              {/* Contrast badge */}
               <span
                 className="absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium"
                 style={{
@@ -613,6 +614,28 @@ export default function ColorPaletteGenerator() {
               >
                 {badge}
               </span>
+
+              {/* Step 6: Reorder controls (visible only in reorder mode) */}
+              {reorderMode && (
+                <div className="absolute right-2 top-2 flex gap-1">
+                  <button
+                    className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white"
+                    onClick={(e) => { e.stopPropagation(); moveSwatch(i, -1); }}
+                    aria-label="Move left"
+                    title="Move left"
+                  >
+                    ◀
+                  </button>
+                  <button
+                    className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white"
+                    onClick={(e) => { e.stopPropagation(); moveSwatch(i, +1); }}
+                    aria-label="Move right"
+                    title="Move right"
+                  >
+                    ▶
+                  </button>
+                </div>
+              )}
 
               <div className="p-2 bg-white/90 rounded-b-xl text-center text-sm">
                 <div className="font-mono">{c.hex.toUpperCase()}</div>
@@ -630,7 +653,7 @@ export default function ColorPaletteGenerator() {
       </div>
 
       <p className="text-center text-gray-500 text-sm">
-        Tip: You can mix locked and random colors for unique combinations.
+        Tip: Toggle <strong>↔ Reorder</strong>, then use ◀ / ▶ or keyboard arrows on a focused swatch.
       </p>
     </div>
   );
