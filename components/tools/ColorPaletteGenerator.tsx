@@ -240,7 +240,69 @@ export default function ColorPaletteGenerator() {
     toast("CSS variables copied!");
   };
 
-  // export
+  /* =======================
+     Step 8: Pro exports
+     ======================= */
+  const copyAllHex = async () => {
+    const list = palette.slice(0, count).map((c) => c.hex.toUpperCase()).join("\n");
+    await navigator.clipboard.writeText(list);
+    toast("HEX list copied!");
+  };
+
+  const copyCsv = async () => {
+    const rows = [
+      "index,hex,r,g,b",
+      ...palette.slice(0, count).map((c, i) => {
+        const { r, g, b } = hexToRgb(c.hex);
+        return `${i + 1},${c.hex.toUpperCase()},${r},${g},${b}`;
+      }),
+    ].join("\n");
+    await navigator.clipboard.writeText(rows);
+    toast("CSV copied!");
+  };
+
+  const copyTailwindSnippet = async () => {
+    const entries = palette.slice(0, count).map((c, i) => `        c${i + 1}: "${c.hex.toUpperCase()}"`).join(",\n");
+    const js = `// Tailwind config snippet
+// usage: class="text-tc-c1 bg-tc-c2"
+export default {
+  theme: {
+    extend: {
+      colors: {
+        tc: {
+${entries}
+        }
+      }
+    }
+  }
+}`;
+    await navigator.clipboard.writeText(js);
+    toast("Tailwind snippet copied!");
+  };
+
+  const exportGpl = () => {
+    const name = "ToolCite Palette";
+    const cols = Math.min(10, Math.max(3, count));
+    const lines = [
+      "GIMP Palette",
+      `Name: ${name}`,
+      `Columns: ${cols}`,
+      "#",
+      ...palette.slice(0, count).map((c, i) => {
+        const { r, g, b } = hexToRgb(c.hex);
+        const label = `Color ${i + 1}`;
+        return `${r} ${g} ${b} ${label}`;
+      }),
+    ].join("\n");
+
+    const blob = new Blob([lines], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "palette.gpl";
+    link.click();
+  };
+
+  // export (JSON/PNG legacy)
   const exportPalette = async (type: "json" | "png") => {
     if (type === "json") {
       const blob = new Blob([JSON.stringify(palette.slice(0, count), null, 2)], {
@@ -571,7 +633,7 @@ export default function ColorPaletteGenerator() {
       </div>
 
       {/* Step 5: Save + History */}
-      <div className="mb-5 flex flex-wrap items-center justify-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <button
           onClick={saveCurrentSession}
           className="px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
@@ -607,6 +669,42 @@ export default function ColorPaletteGenerator() {
         </div>
       </div>
 
+      {/* Step 8: Pro Exports */}
+      <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+        <button
+          onClick={copyAllHex}
+          className="hit-44 px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+          aria-label="Copy all HEX values"
+          title="Copy all HEX values"
+        >
+          Copy HEX
+        </button>
+        <button
+          onClick={copyCsv}
+          className="hit-44 px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+          aria-label="Copy CSV"
+          title="Copy CSV (index,hex,r,g,b)"
+        >
+          Copy CSV
+        </button>
+        <button
+          onClick={copyTailwindSnippet}
+          className="hit-44 px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+          aria-label="Copy Tailwind snippet"
+          title="Copy Tailwind snippet"
+        >
+          Copy Tailwind
+        </button>
+        <button
+          onClick={exportGpl}
+          className="hit-44 px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+          aria-label="Export GIMP palette"
+          title="Export .gpl (GIMP Palette)"
+        >
+          Export .gpl
+        </button>
+      </div>
+
       {/* Palette */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
         {palette.slice(0, count).map((c, i) => {
@@ -632,7 +730,6 @@ export default function ColorPaletteGenerator() {
               tabIndex={0}
               title={`Contrast ${ratio.toFixed(2)}:1 (${badge})`}
               aria-label={`Swatch ${i + 1} ${c.hex}`}
-              // Drag drop targets (Step 7) — only when reorder enabled
               onDragOver={reorderMode ? (e) => { e.preventDefault(); } : undefined}
               onDragEnter={reorderMode ? (e) => { e.preventDefault(); setOverIndex(i); } : undefined}
               onDragLeave={reorderMode ? () => setOverIndex((v) => (v === i ? null : v)) : undefined}
@@ -657,10 +754,9 @@ export default function ColorPaletteGenerator() {
                 {badge}
               </span>
 
-              {/* Step 6 + 7: Reorder controls */}
+              {/* Step 7: drag handle + Step 6 arrows (only in Reorder mode) */}
               {reorderMode && (
                 <div className="absolute right-2 top-2 flex gap-1">
-                  {/* Drag handle (Step 7) */}
                   <button
                     className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white cursor-grab active:cursor-grabbing"
                     draggable
@@ -681,8 +777,6 @@ export default function ColorPaletteGenerator() {
                   >
                     ⠿
                   </button>
-
-                  {/* Existing step-6 arrows */}
                   <button
                     className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white"
                     onClick={(e) => { e.stopPropagation(); moveSwatch(i, -1); }}
