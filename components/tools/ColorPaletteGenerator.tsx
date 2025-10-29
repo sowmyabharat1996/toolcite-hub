@@ -6,7 +6,7 @@ type Color = { hex: string; locked: boolean };
 type Algo = "analogous" | "complementary" | "triadic" | "tetradic" | "monochrome";
 
 /* =======================
-   NEW (Step 4): Presets
+   Step 4: Presets
    ======================= */
 const PRESETS: Record<string, string[]> = {
   Brand:  ["#0EA5E9", "#6366F1", "#22C55E", "#F59E0B", "#EF4444"],
@@ -18,7 +18,7 @@ const PRESETS: Record<string, string[]> = {
 };
 
 /* =======================
-   (From Step 3) WCAG helpers (kept)
+   Step 3: WCAG helpers
    ======================= */
 function relativeLuminance(hex: string) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -47,13 +47,11 @@ function badgeForContrast(c: number) {
 }
 
 /* =======================
-   Existing utils (kept)
+   Utils
    ======================= */
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 const mod = (n: number, m: number) => ((n % m) + m) % m;
-function randomHex() {
-  return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
-}
+const randomHex = () => "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
 function hexToRgb(hex: string) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!m) return { r: 0, g: 0, b: 0 };
@@ -95,6 +93,34 @@ function hslToHex(h: number, s: number, l: number) {
   return rgbToHex(r, g, b);
 }
 
+/* =======================
+   Step 5: Session history
+   ======================= */
+type SessionSnap = {
+  id: string;               // e.g., '2025-10-30T18:20:11.123Z'
+  name: string;             // human label (auto-generated)
+  base: string;
+  algo: Algo;
+  count: number;
+  sat: number;
+  lum: number;
+  colors: string[];
+};
+const HISTORY_KEY = "tc_color_history_v1";
+const loadHistory = (): SessionSnap[] => {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? (JSON.parse(raw) as SessionSnap[]) : [];
+  } catch {
+    return [];
+  }
+};
+const saveHistory = (items: SessionSnap[]) => {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 5)));
+  } catch {}
+};
+
 export default function ColorPaletteGenerator() {
   const [baseColor, setBaseColor] = useState("#06A92F");
   const [palette, setPalette] = useState<Color[]>([
@@ -105,14 +131,18 @@ export default function ColorPaletteGenerator() {
     { hex: "#67098F", locked: false },
   ]);
 
-  // Step-2 controls (kept)
+  // Step-2 controls
   const [algo, setAlgo] = useState<Algo>("analogous");
   const [count, setCount] = useState<number>(5);
   const [satShift, setSatShift] = useState<number>(0);
   const [lumShift, setLumShift] = useState<number>(0);
   const [freezeAuto, setFreezeAuto] = useState<boolean>(false);
 
-  // legacy shade helper (kept for compatibility)
+  // Step 5 state
+  const [history, setHistory] = useState<SessionSnap[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string>("");
+
+  // legacy shade helper
   const shadeColor = (color: string, percent: number) => {
     const f = parseInt(color.slice(1), 16);
     const t = percent < 0 ? 0 : 255;
@@ -133,7 +163,7 @@ export default function ColorPaletteGenerator() {
     return newColor;
   };
 
-  // generator (kept)
+  // generator
   const generateFromBase = () => {
     const base = baseColor;
     const { r, g, b } = hexToRgb(base);
@@ -192,67 +222,47 @@ export default function ColorPaletteGenerator() {
     );
   };
 
-  // NEW (Step 4): apply preset (keeps locks where index matches, updates base/count, unfreezes auto)
+  // Step 4: apply preset (freeze to show exactly, then let user unfreeze)
   const applyPreset = (name: keyof typeof PRESETS) => {
-  const hexes = PRESETS[name];
-  if (!hexes?.length) return;
+    const hexes = PRESETS[name];
+    if (!hexes?.length) return;
 
-  setFreezeAuto(true);          // ← keep the preset exactly as authored
-  setBaseColor(hexes[0]);       // base = first swatch
-  setCount(hexes.length);       // count = preset length
-
-  setPalette((prev) =>
-    hexes.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false }))
-  );
-};
-  // toast copy (kept)
-  const copyHex = async (hex: string) => {
-    await navigator.clipboard.writeText(hex);
-    const toast = document.createElement("div");
-    toast.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
-        <span style="width:16px;height:16px;border-radius:4px;background:${hex};display:inline-block"></span>
-        <span>Copied ${hex.toUpperCase()}!</span>
-      </div>`;
-    Object.assign(toast.style, {
-      position: "fixed",
-      bottom: "24px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      background: "#333",
-      color: "#fff",
-      padding: "8px 16px",
-      borderRadius: "8px",
-      fontSize: "14px",
-      zIndex: "9999",
-      opacity: "0",
-      transition: "opacity 0.3s ease",
-    } as CSSStyleDeclaration);
-    document.body.appendChild(toast);
-    requestAnimationFrame(() => (toast.style.opacity = "1"));
-    setTimeout(() => {
-      toast.style.opacity = "0";
-      setTimeout(() => toast.remove(), 400);
-    }, 1500);
+    setFreezeAuto(true);
+    setBaseColor(hexes[0]);
+    setCount(hexes.length);
+    setPalette((prev) => hexes.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false })));
   };
 
-  // NEW (Step 4): Copy CSS Variables
+  // toast helper
+  const toast = (msg: string) => {
+    try {
+      const t = document.createElement("div");
+      t.textContent = msg;
+      Object.assign(t.style, {
+        position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+        background: "#333", color: "#fff", padding: "8px 16px", borderRadius: "8px",
+        fontSize: "14px", zIndex: "9999", opacity: "0", transition: "opacity .3s ease",
+      } as CSSStyleDeclaration);
+      document.body.appendChild(t);
+      requestAnimationFrame(() => (t.style.opacity = "1"));
+      setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 400); }, 1400);
+    } catch {}
+  };
+
+  const copyHex = async (hex: string) => {
+    await navigator.clipboard.writeText(hex);
+    toast(`Copied ${hex.toUpperCase()}!`);
+  };
+
+  // Step 4: Copy CSS Variables
   const copyCssVariables = async () => {
     const vars = palette.slice(0, count).map((c, i) => `  --tc-color-${i + 1}: ${c.hex};`).join("\n");
     const css = `:root{\n${vars}\n}`;
     await navigator.clipboard.writeText(css);
-    const toast = document.createElement("div");
-    toast.textContent = "CSS variables copied!";
-    Object.assign(toast.style, {
-      position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
-      background: "#333", color: "#fff", padding: "8px 16px", borderRadius: "8px",
-      fontSize: "14px", zIndex: "9999", opacity: "0", transition: "opacity 0.3s ease",
-    } as CSSStyleDeclaration);
-    document.body.appendChild(toast);
-    requestAnimationFrame(() => (toast.style.opacity = "1"));
-    setTimeout(() => { toast.style.opacity = "0"; setTimeout(() => toast.remove(), 400); }, 1500);
+    toast("CSS variables copied!");
   };
 
-  // export (kept)
+  // export
   const exportPalette = async (type: "json" | "png") => {
     if (type === "json") {
       const blob = new Blob([JSON.stringify(palette.slice(0, count), null, 2)], {
@@ -280,7 +290,7 @@ export default function ColorPaletteGenerator() {
     }
   };
 
-  // share (kept)
+  // share
   const sharePalette = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("base", baseColor);
@@ -295,23 +305,11 @@ export default function ColorPaletteGenerator() {
       await navigator.share({ title: "My Color Palette", text: "Check out my color palette!", url: href });
     } else {
       await navigator.clipboard.writeText(href);
-      const toast = document.createElement("div");
-      toast.textContent = "Link copied to clipboard!";
-      Object.assign(toast.style, {
-        position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
-        background: "#333", color: "#fff", padding: "8px 16px", borderRadius: "8px",
-        fontSize: "14px", zIndex: "9999", opacity: "0", transition: "opacity 0.3s ease",
-      } as CSSStyleDeclaration);
-      document.body.appendChild(toast);
-      requestAnimationFrame(() => (toast.style.opacity = "1"));
-      setTimeout(() => {
-        toast.style.opacity = "0";
-        setTimeout(() => toast.remove(), 400);
-      }, 1500);
+      toast("Link copied to clipboard!");
     }
   };
 
-  /* ---------- URL decode (kept) ---------- */
+  /* ---------- URL decode ---------- */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const colorsParam = params.get("colors");
@@ -337,9 +335,12 @@ export default function ColorPaletteGenerator() {
       setPalette(colors.slice(0, 10).map((hex) => ({ hex, locked: false })));
       setFreezeAuto(true);
     }
+
+    // Step 5: load saved history on first mount
+    setHistory(loadHistory());
   }, []);
 
-  /* ---------- URL encode (kept) ---------- */
+  /* ---------- URL encode ---------- */
   useEffect(() => {
     const t = setTimeout(() => {
       const sp = new URLSearchParams(window.location.search);
@@ -355,27 +356,72 @@ export default function ColorPaletteGenerator() {
     return () => clearTimeout(t);
   }, [palette, baseColor, algo, count, satShift, lumShift]);
 
-  /* ---------- Auto recompute (kept) ---------- */
+  /* ---------- Auto recompute ---------- */
   useEffect(() => {
     if (freezeAuto) return;
     const t = setTimeout(() => generateFromBase(), 180);
     return () => clearTimeout(t);
   }, [baseColor, algo, count, satShift, lumShift, freezeAuto]);
 
+  /* ---------- Step 5: Save/Load sessions ---------- */
+  const saveCurrentSession = () => {
+    const snap: SessionSnap = {
+      id: new Date().toISOString(),
+      name: `Run ${new Date().toLocaleString()}`,
+      base: baseColor,
+      algo,
+      count,
+      sat: satShift,
+      lum: lumShift,
+      colors: palette.slice(0, count).map((c) => c.hex),
+    };
+
+    const key = snap.colors.join(",");
+    const deduped = loadHistory().filter((s) => s.colors.join(",") !== key);
+    const next = [snap, ...deduped].slice(0, 5);
+    setHistory(next);
+    saveHistory(next);
+    setSelectedHistoryId(snap.id);
+    toast("Session saved!");
+  };
+
+  const loadSession = (id: string) => {
+    const snap = history.find((h) => h.id === id);
+    if (!snap) return;
+    setFreezeAuto(true);
+    setSelectedHistoryId(id);
+    setBaseColor(snap.base);
+    setAlgo(snap.algo);
+    setCount(snap.count);
+    setSatShift(snap.sat);
+    setLumShift(snap.lum);
+    setPalette((prev) =>
+      snap.colors.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false }))
+    );
+    toast("Session loaded — click Generate from Base to edit");
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    saveHistory([]);
+    setSelectedHistoryId("");
+    toast("History cleared");
+  };
+
   /* ---------- UI ---------- */
   return (
     <div className="max-w-5xl mx-auto p-6">
-      {/* SR live region (kept) */}
+      {/* SR live region */}
       <div id="a11y-announcer" aria-live="polite" className="sr-only" />
 
       <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
         🎨 Color Palette Generator – Free Online Tool
       </h1>
-      <p className="text-center text-gray-600 mb-6">
+      <p className="text-center text-gray-600 mb-4">
         Generate color palettes and shades from a seed color or random selection. Click a swatch to copy HEX. Lock colors to keep them during regeneration.
       </p>
 
-      {/* NEW (Step 4): Presets row */}
+      {/* Presets + CSS Vars */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
         <span className="text-sm text-gray-600">Presets:</span>
         {Object.keys(PRESETS).map((name) => (
@@ -399,8 +445,8 @@ export default function ColorPaletteGenerator() {
         </button>
       </div>
 
-      {/* Controls (kept) */}
-      <div className="flex flex-wrap justify-center gap-3 mb-6">
+      {/* Controls row */}
+      <div className="flex flex-wrap justify-center gap-3 mb-3">
         <input
           id="base-color"
           aria-label="Base color"
@@ -484,7 +530,6 @@ export default function ColorPaletteGenerator() {
           Randomize Palette
         </button>
 
-        {/* Export / Share (kept) */}
         <button
           onClick={() => exportPalette("json")}
           className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition"
@@ -506,7 +551,44 @@ export default function ColorPaletteGenerator() {
         </button>
       </div>
 
-      {/* Palette (kept with Step-3 badge) */}
+      {/* Step 5: Save + History */}
+      <div className="mb-5 flex flex-wrap items-center justify-center gap-3">
+        <button
+          onClick={saveCurrentSession}
+          className="px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+          aria-label="Save current session"
+        >
+          💾 Save Session
+        </button>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="hist" className="text-sm text-gray-600">History:</label>
+          <select
+            id="hist"
+            value={selectedHistoryId}
+            onChange={(e) => loadSession(e.target.value)}
+            className="px-3 py-2 rounded-md border border-gray-300 min-w-[240px]"
+            aria-label="Restore a previous session"
+          >
+            <option value="" disabled>Choose a saved run…</option>
+            {history.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name} — {h.colors[0]} … ({h.colors.length})
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={clearHistory}
+            className="px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+            aria-label="Clear history"
+            title="Clear all saved sessions"
+          >
+            🧹 Clear
+          </button>
+        </div>
+      </div>
+
+      {/* Palette */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
         {palette.slice(0, count).map((c, i) => {
           const text = bestTextColor(c.hex);
