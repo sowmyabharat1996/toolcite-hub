@@ -1,3 +1,4 @@
+// components/tools/ColorPaletteGenerator.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -129,6 +130,16 @@ export default function ColorPaletteGenerator() {
 
   // Step 6: Reorder mode
   const [reorderMode, setReorderMode] = useState<boolean>(false);
+
+  // Step 7: Drag state
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  // SR announcer
+  const announce = (msg: string) => {
+    const el = document.getElementById("a11y-announcer");
+    if (el) el.textContent = msg;
+  };
 
   // generator
   const generateFromBase = () => {
@@ -375,7 +386,7 @@ export default function ColorPaletteGenerator() {
     toast("History cleared");
   };
 
-  /* ---------- Step 6: Reorder helpers ---------- */
+  /* ---------- Step 6: Reorder helpers (keyboard/buttons) ---------- */
   const moveSwatch = (index: number, delta: number) => {
     setPalette((prev) => {
       const arr = [...prev];
@@ -388,6 +399,21 @@ export default function ColorPaletteGenerator() {
       arr[to] = tmp;
       return arr;
     });
+  };
+
+  /* ---------- Step 7: Drag reorder (insert style) ---------- */
+  const reorderSwatch = (from: number, to: number) => {
+    setPalette((prev) => {
+      const arr = [...prev];
+      const limit = Math.min(count, arr.length);
+      const f = Math.max(0, Math.min(from, limit - 1));
+      const t = Math.max(0, Math.min(to, limit - 1));
+      if (f === t) return prev;
+      const [item] = arr.splice(f, 1);
+      arr.splice(t, 0, item);
+      return arr;
+    });
+    announce(`Moved swatch ${from + 1} to position ${to + 1}`);
   };
 
   /* ---------- UI ---------- */
@@ -538,7 +564,7 @@ export default function ColorPaletteGenerator() {
           className={`px-3 py-2 rounded-md border ${reorderMode ? "border-blue-600 text-blue-700 bg-blue-50" : "border-gray-300 hover:bg-gray-50"}`}
           aria-pressed={reorderMode}
           aria-label="Toggle reorder mode"
-          title="Reorder swatches with arrows"
+          title="Reorder swatches with arrows or drag handle"
         >
           {reorderMode ? "✅ Reorder: ON" : "↔ Reorder"}
         </button>
@@ -592,7 +618,11 @@ export default function ColorPaletteGenerator() {
             <div
               key={i}
               className="relative rounded-xl shadow-sm cursor-pointer transition transform hover:scale-105 focus:outline-none"
-              style={{ backgroundColor: c.hex }}
+              style={{
+                backgroundColor: c.hex,
+                outline: reorderMode && overIndex === i ? "2px solid rgba(59,130,246,.9)" : undefined,
+                outlineOffset: reorderMode && overIndex === i ? "2px" : undefined,
+              }}
               onClick={() => copyHex(c.hex)}
               onKeyDown={(e) => {
                 if (!reorderMode) return;
@@ -602,6 +632,18 @@ export default function ColorPaletteGenerator() {
               tabIndex={0}
               title={`Contrast ${ratio.toFixed(2)}:1 (${badge})`}
               aria-label={`Swatch ${i + 1} ${c.hex}`}
+              // Drag drop targets (Step 7) — only when reorder enabled
+              onDragOver={reorderMode ? (e) => { e.preventDefault(); } : undefined}
+              onDragEnter={reorderMode ? (e) => { e.preventDefault(); setOverIndex(i); } : undefined}
+              onDragLeave={reorderMode ? () => setOverIndex((v) => (v === i ? null : v)) : undefined}
+              onDrop={reorderMode ? (e) => {
+                e.preventDefault();
+                const fromAttr = e.dataTransfer?.getData("text/plain");
+                const from = dragIndex ?? (fromAttr ? parseInt(fromAttr, 10) : NaN);
+                if (!Number.isNaN(from)) reorderSwatch(from, i);
+                setDragIndex(null);
+                setOverIndex(null);
+              } : undefined}
             >
               {/* Contrast badge */}
               <span
@@ -615,9 +657,32 @@ export default function ColorPaletteGenerator() {
                 {badge}
               </span>
 
-              {/* Step 6: Reorder controls (visible only in reorder mode) */}
+              {/* Step 6 + 7: Reorder controls */}
               {reorderMode && (
                 <div className="absolute right-2 top-2 flex gap-1">
+                  {/* Drag handle (Step 7) */}
+                  <button
+                    className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white cursor-grab active:cursor-grabbing"
+                    draggable
+                    onClick={(e) => e.stopPropagation()}
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      setDragIndex(i);
+                      e.dataTransfer.effectAllowed = "move";
+                      try { e.dataTransfer.setData("text/plain", String(i)); } catch {}
+                    }}
+                    onDragEnd={(e) => {
+                      e.stopPropagation();
+                      setDragIndex(null);
+                      setOverIndex(null);
+                    }}
+                    aria-label="Drag to reorder"
+                    title="Drag to reorder"
+                  >
+                    ⠿
+                  </button>
+
+                  {/* Existing step-6 arrows */}
                   <button
                     className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white"
                     onClick={(e) => { e.stopPropagation(); moveSwatch(i, -1); }}
@@ -653,7 +718,7 @@ export default function ColorPaletteGenerator() {
       </div>
 
       <p className="text-center text-gray-500 text-sm">
-        Tip: Toggle <strong>↔ Reorder</strong>, then use ◀ / ▶ or keyboard arrows on a focused swatch.
+        Tip: Toggle <strong>↔ Reorder</strong>, then drag with ⠿ or use ◀ / ▶ (or keyboard ← / → on a focused swatch).
       </p>
     </div>
   );
