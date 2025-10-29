@@ -33,8 +33,7 @@ export default function ColorPaletteGenerator() {
 
   const regenerate = () => {
     setPalette((prev) =>
-      prev.map((c) => (c.locked ? c : { ...c, hex: randomHex() }))
-    );
+      prev.map((c) => (c.locked ? c : { ...c, hex: randomHex() })))
   };
 
   const shadeColor = (color: string, percent: number) => {
@@ -129,7 +128,7 @@ export default function ColorPaletteGenerator() {
     const hexes = palette.map((p) => p.hex).join(",");
     const url = `${window.location.origin}/tools/color-palette-generator?colors=${encodeURIComponent(
       hexes
-    )}`;
+    )}&base=${encodeURIComponent(baseColor)}`; // include base for completeness
 
     if (navigator.share) {
       await navigator.share({
@@ -162,18 +161,35 @@ export default function ColorPaletteGenerator() {
     }
   };
 
-  // --- Auto-load shared palettes via ?colors= ---
+  // --- Auto-load shared palettes via ?colors= and ?base= (decode once) ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const colorsParam = params.get("colors");
+    const baseParam = params.get("base");
+    if (baseParam) {
+      setBaseColor(baseParam);
+    }
     if (colorsParam) {
       const colors = colorsParam.split(",").map((hex) => ({
         hex,
         locked: false,
       }));
-      setPalette(colors);
+      if (colors.length > 0) setPalette(colors);
     }
   }, []);
+
+  // --- URL sync (encode) — keep current state in the address bar (debounced) ---
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const sp = new URLSearchParams(window.location.search);
+      const hexes = palette.map((p) => p.hex).join(",");
+      sp.set("colors", hexes);
+      sp.set("base", baseColor);
+      const url = window.location.pathname + "?" + sp.toString();
+      window.history.replaceState(null, "", url);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [palette, baseColor]);
 
   return (
     <div className="max-w-5xl mx-auto p-6">
@@ -189,12 +205,15 @@ export default function ColorPaletteGenerator() {
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <input
+          id="base-color"               // a11y-friendly id
+          aria-label="Base color"       // a11y label (harmless addition)
           type="color"
           value={baseColor}
           onChange={(e) => setBaseColor(e.target.value)}
           className="w-24 h-10 rounded-md cursor-pointer border border-gray-300"
         />
         <button
+          id="generate-btn"
           onClick={generateFromBase}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
         >
@@ -215,6 +234,7 @@ export default function ColorPaletteGenerator() {
           Export JSON
         </button>
         <button
+          id="export-png-btn"
           onClick={() => exportPalette("png")}
           className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition"
         >
@@ -245,6 +265,7 @@ export default function ColorPaletteGenerator() {
                   toggleLock(i);
                 }}
                 className="mt-1 text-xs text-gray-500"
+                aria-label={c.locked ? "Unlock swatch" : "Lock swatch"}
               >
                 {c.locked ? "🔒" : "🔓"}
               </button>
