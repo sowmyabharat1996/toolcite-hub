@@ -2,11 +2,60 @@
 
 import React, { useState, useEffect } from "react";
 
-type Color = {
-  hex: string;
-  locked: boolean;
-};
+type Color = { hex: string; locked: boolean };
+type Algo = "analogous" | "complementary" | "triadic" | "tetradic" | "monochrome";
 
+/* ---------- small utils ---------- */
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+
+function randomHex() {
+  return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+}
+
+/* HEX <-> HSL helpers (no deps) */
+function hexToRgb(hex: string) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!m) return { r: 0, g: 0, b: 0 };
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+function rgbToHex(r: number, g: number, b: number) {
+  return (
+    "#" +
+    [r, g, b]
+      .map((v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+function rgbToHsl(r: number, g: number, b: number) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  const d = max - min;
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h, s: s * 100, l: l * 100 };
+}
+function hslToRgb(h: number, s: number, l: number) {
+  s /= 100; l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return { r: 255 * f(0), g: 255 * f(8), b: 255 * f(4) };
+}
+function hslToHex(h: number, s: number, l: number) {
+  const { r, g, b } = hslToRgb(h, s, l);
+  return rgbToHex(r, g, b);
+}
+
+/* ---------- component ---------- */
 export default function ColorPaletteGenerator() {
   const [baseColor, setBaseColor] = useState("#06A92F");
   const [palette, setPalette] = useState<Color[]>([
@@ -17,25 +66,16 @@ export default function ColorPaletteGenerator() {
     { hex: "#67098F", locked: false },
   ]);
 
-  // --- Utilities ---
-  const randomHex = () =>
-    "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+  // NEW: Step-2 controls
+  const [algo, setAlgo] = useState<Algo>("analogous");
+  const [count, setCount] = useState<number>(5);
+  const [satShift, setSatShift] = useState<number>(0);
+  const [lumShift, setLumShift] = useState<number>(0);
 
-  const generateFromBase = () => {
-    const shades = Array.from({ length: 5 }, (_, i) => ({
-      hex: shadeColor(baseColor, i * 20 - 40),
-      locked: palette[i]?.locked || false,
-    }));
-    setPalette((prev) =>
-      shades.map((c, i) => (prev[i]?.locked ? prev[i] : c))
-    );
-  };
+  // Block auto recompute only when deep-linked with explicit colors
+  const [freezeAuto, setFreezeAuto] = useState<boolean>(false);
 
-  const regenerate = () => {
-    setPalette((prev) =>
-      prev.map((c) => (c.locked ? c : { ...c, hex: randomHex() })))
-  };
-
+  // unchanged helper kept for older “shade” behavior (not used by generator any more)
   const shadeColor = (color: string, percent: number) => {
     const f = parseInt(color.slice(1), 16);
     const t = percent < 0 ? 0 : 255;
@@ -56,50 +96,105 @@ export default function ColorPaletteGenerator() {
     return newColor;
   };
 
+  // NEW: algorithmic generator in HSL (respects locks + count)
+  const generateFromBase = () => {
+    const base = baseColor;
+    const { r, g, b } = hexToRgb(base);
+    const baseH = rgbToHsl(r, g, b);
+
+    const n = clamp(count, 3, 10);
+    const hueShifts: number[] = (() => {
+      switch (algo) {
+        case "analogous": {
+          const span = 30; // +/- 30°
+          return Array.from({ length: n }, (_, i) => -span + (2 * span * i) / (n - 1));
+        }
+        case "complementary":
+          return n === 3 ? [-20, 0, 180] : [-30, 0, 30, 180, 210].slice(0, n);
+        case "triadic":
+          return [0, 120, 240].slice(0, n);
+        case "tetradic":
+          return [0, 90, 180, 270].slice(0, n);
+        case "monochrome":
+          return Array.from({ length: n }, () => 0);
+        default:
+          return Array(n).fill(0);
+      }
+    })();
+
+    const next: Color[] = hueShifts.map((deg, i) => {
+      const h = mod(baseH.h + deg, 360);
+      const s = clamp(baseH.s + satShift, 0, 100);
+      const l =
+        algo === "monochrome"
+          ? clamp(baseH.l + lumShift + (i - (n - 1) / 2) * (20 / n), 0, 100)
+          : clamp(baseH.l + lumShift, 0, 100);
+      return { hex: hslToHex(h, s, l), locked: false };
+    });
+
+    // keep locks where possible (index-based)
+    setPalette((prev) => {
+      const out = next.map((c, i) => (prev[i]?.locked ? prev[i] : c));
+      // If there were extra locked colors beyond new count, ignore; if fewer, keep length n
+      return out;
+    });
+  };
+
+  const regenerate = () => {
+    setPalette((prev) =>
+      prev
+        .slice(0, count)
+        .map((c) => (c.locked ? c : { ...c, hex: randomHex() }))
+        .concat(
+          // if count increased, add new colors
+          Array.from({ length: Math.max(0, count - prev.length) }, () => ({
+            hex: randomHex(),
+            locked: false,
+          }))
+        )
+    );
+  };
+
   const toggleLock = (index: number) => {
     setPalette((prev) =>
       prev.map((c, i) => (i === index ? { ...c, locked: !c.locked } : c))
     );
   };
 
-  // --- Smooth Toast-based Copy (no browser alert) ---
+  // Smooth toast (unchanged)
   const copyHex = async (hex: string) => {
     await navigator.clipboard.writeText(hex);
-
-    // Create toast
     const toast = document.createElement("div");
     toast.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
         <span style="width:16px;height:16px;border-radius:4px;background:${hex};display:inline-block"></span>
         <span>Copied ${hex.toUpperCase()}!</span>
       </div>`;
-    toast.style.position = "fixed";
-    toast.style.bottom = "24px";
-    toast.style.left = "50%";
-    toast.style.transform = "translateX(-50%)";
-    toast.style.background = "#333";
-    toast.style.color = "#fff";
-    toast.style.padding = "8px 16px";
-    toast.style.borderRadius = "8px";
-    toast.style.fontSize = "14px";
-    toast.style.zIndex = "9999";
-    toast.style.opacity = "0";
-    toast.style.transition = "opacity 0.3s ease";
+    Object.assign(toast.style, {
+      position: "fixed",
+      bottom: "24px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      background: "#333",
+      color: "#fff",
+      padding: "8px 16px",
+      borderRadius: "8px",
+      fontSize: "14px",
+      zIndex: "9999",
+      opacity: "0",
+      transition: "opacity 0.3s ease",
+    } as CSSStyleDeclaration);
     document.body.appendChild(toast);
-
-    // Fade in
     requestAnimationFrame(() => (toast.style.opacity = "1"));
-
-    // Fade out
     setTimeout(() => {
       toast.style.opacity = "0";
       setTimeout(() => toast.remove(), 400);
     }, 1500);
   };
 
-  // --- Export / Download / Share ---
+  // Export / Download (unchanged)
   const exportPalette = async (type: "json" | "png") => {
     if (type === "json") {
-      const blob = new Blob([JSON.stringify(palette, null, 2)], {
+      const blob = new Blob([JSON.stringify(palette.slice(0, count), null, 2)], {
         type: "application/json",
       });
       const link = document.createElement("a");
@@ -109,11 +204,11 @@ export default function ColorPaletteGenerator() {
     } else if (type === "png") {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d")!;
-      const sw = 120,
-        sh = 120;
-      canvas.width = palette.length * sw;
+      const sw = 120, sh = 120;
+      const arr = palette.slice(0, count);
+      canvas.width = arr.length * sw;
       canvas.height = sh;
-      palette.forEach((c, i) => {
+      arr.forEach((c, i) => {
         ctx.fillStyle = c.hex;
         ctx.fillRect(i * sw, 0, sw, sh);
       });
@@ -124,34 +219,28 @@ export default function ColorPaletteGenerator() {
     }
   };
 
+  // Share (now shares full state via current URL + colors/base backup)
   const sharePalette = async () => {
-    const hexes = palette.map((p) => p.hex).join(",");
-    const url = `${window.location.origin}/tools/color-palette-generator?colors=${encodeURIComponent(
-      hexes
-    )}&base=${encodeURIComponent(baseColor)}`; // include base for completeness
+    const url = new URL(window.location.href);
+    url.searchParams.set("base", baseColor);
+    url.searchParams.set("a", algo);
+    url.searchParams.set("n", String(count));
+    url.searchParams.set("s", String(satShift));
+    url.searchParams.set("l", String(lumShift));
+    url.searchParams.set("colors", palette.slice(0, count).map((p) => p.hex).join(","));
+    const href = url.toString();
 
     if (navigator.share) {
-      await navigator.share({
-        title: "My Color Palette",
-        text: "Check out my color palette!",
-        url,
-      });
+      await navigator.share({ title: "My Color Palette", text: "Check out my color palette!", url: href });
     } else {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(href);
       const toast = document.createElement("div");
       toast.textContent = "Link copied to clipboard!";
-      toast.style.position = "fixed";
-      toast.style.bottom = "24px";
-      toast.style.left = "50%";
-      toast.style.transform = "translateX(-50%)";
-      toast.style.background = "#333";
-      toast.style.color = "#fff";
-      toast.style.padding = "8px 16px";
-      toast.style.borderRadius = "8px";
-      toast.style.fontSize = "14px";
-      toast.style.zIndex = "9999";
-      toast.style.opacity = "0";
-      toast.style.transition = "opacity 0.3s ease";
+      Object.assign(toast.style, {
+        position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+        background: "#333", color: "#fff", padding: "8px 16px", borderRadius: "8px",
+        fontSize: "14px", zIndex: "9999", opacity: "0", transition: "opacity 0.3s ease",
+      } as CSSStyleDeclaration);
       document.body.appendChild(toast);
       requestAnimationFrame(() => (toast.style.opacity = "1"));
       setTimeout(() => {
@@ -161,64 +250,146 @@ export default function ColorPaletteGenerator() {
     }
   };
 
-  // --- Auto-load shared palettes via ?colors= and ?base= (decode once) ---
+  /* ---------- URL decode once (adds a/n/s/l) ---------- */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const colorsParam = params.get("colors");
     const baseParam = params.get("base");
-    if (baseParam) {
-      setBaseColor(baseParam);
-    }
+    const a = (params.get("a") as Algo) || undefined;
+    const n = params.get("n");
+    const s = params.get("s");
+    const l = params.get("l");
+
+    if (baseParam) setBaseColor(baseParam);
+    if (a) setAlgo(a);
+    if (n) setCount(clamp(parseInt(n, 10), 3, 10));
+    if (s) setSatShift(clamp(parseInt(s, 10), -40, 40));
+    if (l) setLumShift(clamp(parseInt(l, 10), -40, 40));
+
     if (colorsParam) {
-      const colors = colorsParam.split(",").map((hex) => ({
-        hex,
-        locked: false,
-      }));
-      if (colors.length > 0) setPalette(colors);
+      // If explicit colors provided, hydrate palette and pause auto recompute until user clicks Generate
+      let raw = colorsParam;
+      try { raw = decodeURIComponent(raw); } catch {}
+      const colors = raw.split(",").map((hex) => {
+        if (hex.startsWith("%23")) hex = "#" + hex.slice(3);
+        return /^#([0-9a-f]{6})$/i.test(hex) ? hex : "#000000";
+      });
+      setPalette(colors.slice(0, 10).map((hex) => ({ hex, locked: false })));
+      setFreezeAuto(true);
     }
   }, []);
 
-  // --- URL sync (encode) — keep current state in the address bar (debounced) ---
+  /* ---------- URL encode (colors/base + a/n/s/l) ---------- */
   useEffect(() => {
     const t = setTimeout(() => {
       const sp = new URLSearchParams(window.location.search);
-      const hexes = palette.map((p) => p.hex).join(",");
-      sp.set("colors", hexes);
+      sp.set("colors", palette.slice(0, count).map((p) => p.hex).join(","));
       sp.set("base", baseColor);
+      sp.set("a", algo);
+      sp.set("n", String(count));
+      sp.set("s", String(satShift));
+      sp.set("l", String(lumShift));
       const url = window.location.pathname + "?" + sp.toString();
       window.history.replaceState(null, "", url);
     }, 200);
     return () => clearTimeout(t);
-  }, [palette, baseColor]);
+  }, [palette, baseColor, algo, count, satShift, lumShift]);
 
+  /* ---------- Gentle auto recompute on control changes ---------- */
+  useEffect(() => {
+    if (freezeAuto) return; // respect deep-link palette until user regenerates
+    const t = setTimeout(() => generateFromBase(), 180);
+    return () => clearTimeout(t);
+  }, [baseColor, algo, count, satShift, lumShift, freezeAuto]);
+
+  /* ---------- UI ---------- */
   return (
     <div className="max-w-5xl mx-auto p-6">
       <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
-        🎨 Color Palette Generator
+        🎨 Color Palette Generator – Free Online Tool
       </h1>
       <p className="text-center text-gray-600 mb-6">
-        Generate palettes and shades from a base color or random selection.
-        Click any swatch to copy the hex code. Lock colors to keep them during
-        regeneration.
+        Generate color palettes and shades from a seed color or random selection. Click a swatch to copy HEX. Lock colors to keep them during regeneration.
       </p>
 
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-3 mb-6">
         <input
-          id="base-color"               // a11y-friendly id
-          aria-label="Base color"       // a11y label (harmless addition)
+          id="base-color"
+          aria-label="Base color"
           type="color"
           value={baseColor}
           onChange={(e) => setBaseColor(e.target.value)}
           className="w-24 h-10 rounded-md cursor-pointer border border-gray-300"
         />
+
+        <select
+          id="algo"
+          aria-label="Palette algorithm"
+          value={algo}
+          onChange={(e) => setAlgo(e.target.value as Algo)}
+          className="px-3 py-2 rounded-md border border-gray-300"
+        >
+          <option value="analogous">Analogous</option>
+          <option value="complementary">Complementary</option>
+          <option value="triadic">Triadic</option>
+          <option value="tetradic">Tetradic</option>
+          <option value="monochrome">Monochrome</option>
+        </select>
+
+        <label className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Count</span>
+          <input
+            id="count"
+            aria-label="Number of swatches"
+            type="range"
+            min={3}
+            max={10}
+            step={1}
+            value={count}
+            onChange={(e) => setCount(parseInt(e.target.value, 10))}
+          />
+          <span className="w-6 text-sm text-center">{count}</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Saturation</span>
+          <input
+            id="saturation"
+            aria-label="Saturation shift"
+            type="range"
+            min={-40}
+            max={40}
+            step={1}
+            value={satShift}
+            onChange={(e) => setSatShift(parseInt(e.target.value, 10))}
+          />
+          <span className="w-10 text-sm text-center">{satShift > 0 ? `+${satShift}` : satShift}</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Luminosity</span>
+          <input
+            id="lightness"
+            aria-label="Luminosity shift"
+            type="range"
+            min={-40}
+            max={40}
+            step={1}
+            value={lumShift}
+            onChange={(e) => setLumShift(parseInt(e.target.value, 10))}
+          />
+          <span className="w-10 text-sm text-center">{lumShift > 0 ? `+${lumShift}` : lumShift}</span>
+        </label>
+
         <button
           id="generate-btn"
-          onClick={generateFromBase}
+          onClick={() => { generateFromBase(); setFreezeAuto(false); }}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
         >
           Generate from Base
         </button>
+
         <button
           onClick={regenerate}
           className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
@@ -250,7 +421,7 @@ export default function ColorPaletteGenerator() {
 
       {/* Palette */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
-        {palette.map((c, i) => (
+        {palette.slice(0, count).map((c, i) => (
           <div
             key={i}
             className="rounded-xl shadow-sm cursor-pointer transition transform hover:scale-105"
@@ -260,10 +431,7 @@ export default function ColorPaletteGenerator() {
             <div className="p-2 bg-white/90 rounded-b-xl text-center text-sm">
               <div className="font-mono">{c.hex.toUpperCase()}</div>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleLock(i);
-                }}
+                onClick={(e) => { e.stopPropagation(); toggleLock(i); }}
                 className="mt-1 text-xs text-gray-500"
                 aria-label={c.locked ? "Unlock swatch" : "Lock swatch"}
               >
