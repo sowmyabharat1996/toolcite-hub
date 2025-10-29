@@ -6,6 +6,7 @@ import ToolRenderer from "@/components/ToolRenderer";
 import { TOOLS } from "@/lib/tools";
 import { softwareAppSchema, faqSchema, breadcrumbSchema } from "@/lib/schema";
 import { TOOL_FAQS } from "@/lib/tool-faqs";
+import UrlDecodeOnce from "@/components/tools/UrlDecodeOnce"; // <-- Step 17: add
 
 // Keep in sync with components/ToolRenderer.tsx REGISTRY
 const AVAILABLE_COMPONENTS = [
@@ -92,7 +93,7 @@ async function ResolvedToolPage({
   searchParams: SearchParamsPromise;
 }) {
   const { slug } = await params;
-  await searchParams;
+  const sp = await searchParams; // <-- Step 17: capture search params
 
   const tool = TOOLS.find((t) => t.slug === slug);
   if (!tool) notFound();
@@ -136,6 +137,9 @@ async function ResolvedToolPage({
 
       {/* Main tool panel */}
       <section className="mt-6 rounded-2xl border p-6 bg-white/70 dark:bg-neutral-900">
+        {/* Step 17: one-shot decode from URL into UI/store */}
+        <UrlDecodeOnce initial={sp} />
+
         {renderActualTool ? (
           <ToolRenderer slug={slug} />
         ) : (
