@@ -2,7 +2,7 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v2 (a11y + mobile)
+ * META-OG-GENERATOR v2 (Lighthouse-safe)
  */
 
 import React, { useMemo, useState } from "react";
@@ -84,7 +84,6 @@ function sanitizeText(raw: string, max: number) {
   s = stripCodeyStuff(s);
   s = s.replace(/\s+/g, " ").trim();
   if (looksLikeCode(raw)) {
-    // hide code-looking stuff from previews/snippets
     return "";
   }
   if (s.length > max) s = s.slice(0, max);
@@ -141,7 +140,7 @@ export default function Page() {
   const [url, setUrl] = useState(p.url);
   const [siteName, setSiteName] = useState(p.siteName);
   const [author, setAuthor] = useState(p.author);
-  const [image, setImage] = useState(""); // keep empty, we show fallback only in preview/snippet
+  const [image, setImage] = useState("");
 
   const [themeColor, setThemeColor] = useState("#0ea5e9");
   const [twitterCard, setTwitterCard] =
@@ -149,15 +148,11 @@ export default function Page() {
   const [twitterSite, setTwitterSite] = useState("@toolcite");
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
   const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
-
-  // for a11y copy feedback
   const [copied, setCopied] = useState(false);
 
-  // sanitized for actual meta tags / previews
   const safeTitle = sanitizeText(titleInput, TITLE_MAX);
   const safeDesc = sanitizeText(descInput, DESC_MAX);
 
-  // raw presence (for checks)
   const hasDescRaw = descInput.trim().length > 0;
   const descFilteredOut = hasDescRaw && !safeDesc;
 
@@ -171,7 +166,6 @@ export default function Page() {
     setUrl(pp.url);
     setSiteName(pp.siteName);
     setAuthor(pp.author);
-    // don’t touch user's custom image
   }
 
   const htmlHead = useMemo(() => {
@@ -187,8 +181,7 @@ export default function Page() {
     if (url) lines.push(meta("property", "og:url", url));
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
     lines.push(meta("property", "og:type", "website"));
-
-    // image (we keep Option A)
+    // image (Option A → always emit)
     lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("property", "og:image:width", "1200"));
     lines.push(meta("property", "og:image:height", "630"));
@@ -225,20 +218,17 @@ export default function Page() {
     safeTitle
       ? { ok: true, text: "Title OK (≤ 60)." }
       : { ok: false, text: "Title empty." },
-
     !hasDescRaw
       ? { ok: false, text: "Description empty." }
       : descFilteredOut
       ? {
           ok: false,
-          text: "Description present but filtered (looked like code / JSX) — tweak wording.",
+          text: "Description present but filtered (looked like code / JSX).",
         }
       : { ok: true, text: "Description OK (≤ 160)." },
-
     url.startsWith("http")
       ? { ok: true, text: "Canonical URL absolute." }
       : { ok: false, text: "Canonical URL missing/relative." },
-
     { ok: true, text: "OG image present (custom or fallback)." },
     { ok: true, text: `Twitter card: ${twitterCard}.` },
     { ok: !!twitterSite, text: `@site: ${twitterSite || "—"}` },
@@ -248,12 +238,11 @@ export default function Page() {
   const handleCopy = () => {
     navigator.clipboard.writeText(htmlHead);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2400);
+    setTimeout(() => setCopied(false), 1800);
   };
 
   return (
     <>
-      {/* skip link */}
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-white"
@@ -261,44 +250,34 @@ export default function Page() {
         Skip to main content
       </a>
 
-      {/* screenreader announce */}
       <div aria-live="polite" className="sr-only" role="status">
         {copied ? "Meta snippet copied to clipboard." : ""}
       </div>
 
-      <main
-        id="main"
-        className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 md:py-10"
-      >
+      <main id="main" className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 md:py-10">
         <div className="grid gap-5 md:grid-cols-2 items-start">
-          {/* LEFT PANEL */}
+          {/* LEFT */}
           <div className="rounded-2xl border bg-white/80 dark:bg-neutral-900/90 p-4 sm:p-5 space-y-5">
             <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
-            {/* presets */}
-            <div
-              className="flex flex-wrap gap-2"
-              role="group"
-              aria-label="Meta tag presets"
-            >
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Meta tag presets">
               {(Object.keys(PRESETS) as PresetId[]).map((id) => (
                 <button
                   key={id}
                   onClick={() => applyPreset(id)}
+                  type="button"
                   className={`rounded-lg border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                     preset === id
                       ? "bg-blue-600 text-white border-blue-600"
                       : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
                   }`}
                   aria-pressed={preset === id}
-                  type="button"
                 >
                   {PRESETS[id].label}
                 </button>
               ))}
             </div>
 
-            {/* title */}
             <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
               <input
                 value={titleInput}
@@ -310,7 +289,6 @@ export default function Page() {
               <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
             </Field>
 
-            {/* description */}
             <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
               <textarea
                 rows={3}
@@ -323,7 +301,6 @@ export default function Page() {
               <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
             </Field>
 
-            {/* canonical */}
             <Field label="Canonical URL">
               <input
                 value={url}
@@ -334,7 +311,6 @@ export default function Page() {
               />
             </Field>
 
-            {/* site + author */}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Site Name">
                 <input
@@ -352,21 +328,18 @@ export default function Page() {
               </Field>
             </div>
 
-            {/* image */}
             <Field label="Preview Image (OG/Twitter)">
               <input
                 value={image}
                 onChange={(e) => setImage(e.target.value)}
                 className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 placeholder="/og-default.png"
-                aria-label="Open Graph / Twitter image URL"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-300 mt-1">
                 Leave this empty → preview/snippet will use <code>/og-default.png</code>.
               </p>
             </Field>
 
-            {/* theme + twitter type */}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Theme Color">
                 <input
@@ -388,7 +361,6 @@ export default function Page() {
               </Field>
             </div>
 
-            {/* twitter handles */}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Twitter @site">
                 <input
@@ -408,32 +380,27 @@ export default function Page() {
               </Field>
             </div>
 
-            {/* actions */}
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={handleCopy}
-                className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 type="button"
+                className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {copied ? "Copied!" : "Copy snippet"}
               </button>
               <button
                 onClick={() => download("meta-tags.html", htmlHead)}
-                className="rounded border px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 type="button"
+                className="rounded border px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 Download HTML
               </button>
             </div>
           </div>
 
-          {/* RIGHT PANEL */}
+          {/* RIGHT */}
           <div className="rounded-2xl border bg-white/80 dark:bg-neutral-900/90 p-4 sm:p-5 space-y-6 order-first md:order-none">
-            <h3 className="text-lg font-semibold flex items-center justify-between gap-2">
-              <span>Live Previews</span>
-              {/* small scroll hint only on mobile */}
-              <span className="md:hidden text-[11px] text-gray-400">scroll ↓ for code</span>
-            </h3>
+            <h3 className="text-lg font-semibold">Live Previews</h3>
 
             {/* OG card */}
             <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
@@ -441,17 +408,24 @@ export default function Page() {
               <img
                 src={resolvedImage}
                 alt="Open Graph preview image"
+                width={1200}
+                height={630}
+                decoding="async"
                 className="w-full h-40 object-cover"
               />
               <div className="p-4">
-                <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-300">
+                  {url || "https://example.com"}
+                </div>
                 <div className="text-base font-semibold mt-1">
                   {safeTitle || "Your Open Graph Title"}
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                <div className="text-sm text-gray-600 dark:text-gray-200 mt-1">
                   {safeDesc || "Your Open Graph description shows here."}
                 </div>
-                <div className="text-xs text-gray-500 mt-2">{siteName || "ToolCite"}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-300 mt-2">
+                  {siteName || "ToolCite"}
+                </div>
               </div>
             </div>
 
@@ -462,25 +436,34 @@ export default function Page() {
                 <img
                   src={resolvedImage}
                   alt="Twitter card preview image"
+                  width={1200}
+                  height={630}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-40 object-cover"
                 />
               )}
               <div className="p-4">
-                <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
-                <div className="text-base font-semibold mt-1">{safeTitle || "Twitter Card Title"}</div>
-                <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                <div className="text-xs text-gray-500 dark:text-gray-300">
+                  {url || "https://example.com"}
+                </div>
+                <div className="text-base font-semibold mt-1">
+                  {safeTitle || "Twitter Card Title"}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-200 mt-1">
                   {safeDesc || "Twitter Card description preview."}
                 </div>
-                <div className="text-xs text-gray-500 mt-2">
-                  {(ensureAt(twitterSite) || "@site")} • {(ensureAt(twitterCreator) || "@creator")}
+                <div className="text-xs text-gray-500 dark:text-gray-300 mt-2">
+                  {(ensureAt(twitterSite) || "@site")} •{" "}
+                  {(ensureAt(twitterCreator) || "@creator")}
                 </div>
               </div>
             </div>
 
-            {/* snippet tabs + code */}
+            {/* snippet tabs */}
             <div>
               <div
-                className="flex gap-2 mb-2 overflow-x-auto no-scrollbar"
+                className="flex gap-2 mb-2 overflow-x-auto"
                 role="tablist"
                 aria-label="Meta snippet variants"
               >
@@ -488,10 +471,10 @@ export default function Page() {
                   <button
                     key={t}
                     onClick={() => setTab(t)}
+                    type="button"
                     className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       tab === t ? "bg-blue-600 text-white" : "bg-white/30 dark:bg-neutral-800"
                     }`}
-                    type="button"
                     role="tab"
                     aria-selected={tab === t}
                   >
@@ -506,19 +489,14 @@ export default function Page() {
                 ))}
               </div>
 
-              <div className="relative">
-                {/* scroll hint for mobile */}
-                <span className="pointer-events-none absolute right-3 top-3 text-[10px] text-gray-400 md:hidden">
-                  ← scroll →
-                </span>
-                <pre
-                  className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto min-h-[180px] max-h-72"
-                  aria-label="Generated meta tag snippet"
-                >
-                  {tab === "html" && htmlHead}
+              <pre
+                className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto min-h-[180px] max-h-72"
+                aria-label="Generated meta tag snippet"
+              >
+                {tab === "html" && htmlHead}
 
-                  {tab === "next" &&
-                    `export const metadata = {
+                {tab === "next" &&
+                  `export const metadata = {
   title: "${safeTitle || "ToolCite page"}",
   description: "${safeDesc}",
   alternates: { canonical: "${url}" },
@@ -539,8 +517,8 @@ export default function Page() {
   },
 };`}
 
-                  {tab === "react" &&
-                    `<Head>
+                {tab === "react" &&
+                  `<Head>
   <title>${escapeHtml(safeTitle || "ToolCite page")}</title>
   <meta name="description" content="${escapeAttr(safeDesc)}" />
   <link rel="canonical" href="${escapeAttr(url)}" />
@@ -555,20 +533,19 @@ export default function Page() {
   <meta name="twitter:creator" content="${ensureAt(twitterCreator)}" />
 </Head>`}
 
-                  {tab === "social" &&
-                    [
-                      meta("property", "og:title", safeTitle || "ToolCite page"),
-                      meta("property", "og:description", safeDesc),
-                      meta("property", "og:image", resolvedImage),
-                      meta("name", "twitter:card", twitterCard),
-                      meta("name", "twitter:title", safeTitle || "ToolCite page"),
-                      meta("name", "twitter:description", safeDesc),
-                      meta("name", "twitter:image", resolvedImage),
-                      meta("name", "twitter:site", ensureAt(twitterSite)),
-                      meta("name", "twitter:creator", ensureAt(twitterCreator)),
-                    ].join("\n")}
-                </pre>
-              </div>
+                {tab === "social" &&
+                  [
+                    meta("property", "og:title", safeTitle || "ToolCite page"),
+                    meta("property", "og:description", safeDesc),
+                    meta("property", "og:image", resolvedImage),
+                    meta("name", "twitter:card", twitterCard),
+                    meta("name", "twitter:title", safeTitle || "ToolCite page"),
+                    meta("name", "twitter:description", safeDesc),
+                    meta("name", "twitter:image", resolvedImage),
+                    meta("name", "twitter:site", ensureAt(twitterSite)),
+                    meta("name", "twitter:creator", ensureAt(twitterCreator)),
+                  ].join("\n")}
+              </pre>
             </div>
 
             {/* checks */}
@@ -587,7 +564,7 @@ export default function Page() {
   );
 }
 
-/* ------- small UI helpers ------- */
+/* ------- helpers ------- */
 
 function Field({
   label,
@@ -602,7 +579,7 @@ function Field({
     <div>
       <div className="flex items-center justify-between mb-1">
         <label className="block text-sm font-medium">{label}</label>
-        {hint && <span className="text-xs text-gray-500">{hint}</span>}
+        {hint && <span className="text-xs text-gray-500 dark:text-gray-300">{hint}</span>}
       </div>
       {children}
     </div>
@@ -613,7 +590,7 @@ function Counter({ id, raw, safe, max }: { id: string; raw: string; safe: string
   const over = raw.length > max;
   return (
     <div id={id} className="mt-1 text-xs">
-      <span className={over ? "text-red-500" : "text-gray-500"}>
+      <span className={over ? "text-red-500" : "text-gray-500 dark:text-gray-300"}>
         {raw.length} / {max}
       </span>
       {over && <span className="ml-2 text-red-500">Trimmed to {safe.length} in previews</span>}
