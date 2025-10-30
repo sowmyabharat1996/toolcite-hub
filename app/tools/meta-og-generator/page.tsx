@@ -2,7 +2,7 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v2 (sentinel OK, mobile-safe)
+ * META-OG-GENERATOR v2 (a11y fixed)
  */
 
 import React, { useMemo, useState } from "react";
@@ -180,7 +180,7 @@ export default function Page() {
     if (url) lines.push(meta("property", "og:url", url));
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
     lines.push(meta("property", "og:type", "website"));
-    // Option A → always emit image (keeps preview unbroken)
+    // always emit image (Option A)
     lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("property", "og:image:width", "1200"));
     lines.push(meta("property", "og:image:height", "630"));
@@ -237,10 +237,7 @@ export default function Page() {
       <div className="grid gap-6 lg:grid-cols-2 items-start">
         {/* LEFT */}
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5 min-w-0">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            Meta &amp; Social Fields
-            {/* your existing SHARE in header/layout can stay */}
-          </h3>
+          <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
           {/* presets */}
           <div className="flex flex-wrap gap-2">
@@ -254,14 +251,16 @@ export default function Page() {
                     : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
                 }`}
                 aria-pressed={preset === id}
+                type="button"
               >
                 {PRESETS[id].label}
               </button>
             ))}
           </div>
 
-          <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
+          <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`} id="title">
             <input
+              id="title"
               value={titleInput}
               onChange={(e) => setTitleInput(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -271,8 +270,9 @@ export default function Page() {
             <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
           </Field>
 
-          <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
+          <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`} id="description">
             <textarea
+              id="description"
               rows={3}
               value={descInput}
               onChange={(e) => setDescInput(e.target.value)}
@@ -283,8 +283,9 @@ export default function Page() {
             <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
           </Field>
 
-          <Field label="Canonical URL">
+          <Field label="Canonical URL" id="canonical-url">
             <input
+              id="canonical-url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -294,15 +295,17 @@ export default function Page() {
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Site Name">
+            <Field label="Site Name" id="site-name">
               <input
+                id="site-name"
                 value={siteName}
                 onChange={(e) => setSiteName(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               />
             </Field>
-            <Field label="Author">
+            <Field label="Author" id="author">
               <input
+                id="author"
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -310,30 +313,33 @@ export default function Page() {
             </Field>
           </div>
 
-          <Field label="Preview Image (OG/Twitter)">
+          <Field label="Preview Image (OG/Twitter)" id="preview-image">
             <input
+              id="preview-image"
               value={image}
               onChange={(e) => setImage(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               placeholder="/og-default.png"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Leave this empty → preview & snippet will use <code>/og-default.png</code>.
+            <p className="text-xs text-gray-500 dark:text-gray-200/70 mt-1">
+              Leave this empty → preview &amp; snippet will use{" "}
+              <code className="dark:text-gray-100">/og-default.png</code>.
             </p>
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Theme Color">
+            <Field label="Theme Color" id="theme-color">
               <input
+                id="theme-color"
                 type="color"
                 value={themeColor}
                 onChange={(e) => setThemeColor(e.target.value)}
                 className="h-10 w-16 rounded border bg-white/60 dark:bg-neutral-800 p-1"
-                aria-label="Pick theme color"
               />
             </Field>
-            <Field label="Twitter Card Type">
+            <Field label="Twitter Card Type" id="twitter-card">
               <select
+                id="twitter-card"
                 value={twitterCard}
                 onChange={(e) => setTwitterCard(e.target.value as any)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -345,16 +351,18 @@ export default function Page() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Twitter @site">
+            <Field label="Twitter @site" id="twitter-site">
               <input
+                id="twitter-site"
                 value={twitterSite}
                 onChange={(e) => setTwitterSite(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
                 placeholder="@toolcite"
               />
             </Field>
-            <Field label="Twitter @creator">
+            <Field label="Twitter @creator" id="twitter-creator">
               <input
+                id="twitter-creator"
                 value={twitterCreator}
                 onChange={(e) => setTwitterCreator(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -365,12 +373,14 @@ export default function Page() {
 
           <div className="flex flex-wrap gap-3">
             <button
+              type="button"
               onClick={() => navigator.clipboard.writeText(htmlHead)}
               className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700"
             >
-              Copy snippet
+                Copy snippet
             </button>
             <button
+              type="button"
               onClick={() => download("meta-tags.html", htmlHead)}
               className="rounded border px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800"
             >
@@ -394,16 +404,16 @@ export default function Page() {
               decoding="async"
             />
             <div className="p-4">
-              <div className="text-xs text-gray-500 break-all">
+              <div className="text-xs text-gray-500 dark:text-gray-200/80 break-all">
                 {url || "https://example.com"}
               </div>
               <div className="text-base font-semibold mt-1">
                 {safeTitle || "Your Open Graph Title"}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+              <div className="text-sm text-gray-600 dark:text-gray-100 mt-1">
                 {safeDesc || "Your Open Graph description shows here."}
               </div>
-              <div className="text-xs text-gray-500 mt-2">
+              <div className="text-xs text-gray-500 dark:text-gray-200/80 mt-2">
                 {siteName || "ToolCite"}
               </div>
             </div>
@@ -422,29 +432,31 @@ export default function Page() {
               />
             )}
             <div className="p-4">
-              <div className="text-xs text-gray-500 break-all">
+              <div className="text-xs text-gray-500 dark:text-gray-200/80 break-all">
                 {url || "https://example.com"}
               </div>
               <div className="text-base font-semibold mt-1">
                 {safeTitle || "Twitter Card Title"}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+              <div className="text-sm text-gray-600 dark:text-gray-100 mt-1">
                 {safeDesc || "Twitter Card description preview."}
               </div>
-              <div className="text-xs text-gray-500 mt-2">
-                {(ensureAt(twitterSite) || "@site")} •{" "}
-                {(ensureAt(twitterCreator) || "@creator")}
+              <div className="text-xs text-gray-500 dark:text-gray-200/80 mt-2">
+                {(ensureAt(twitterSite) || "@site")} • {(ensureAt(twitterCreator) || "@creator")}
               </div>
             </div>
           </div>
 
           {/* snippet tabs */}
           <div className="min-w-0">
-            <div className="flex gap-2 mb-2 overflow-x-auto md:overflow-visible">
+            <div className="flex gap-2 mb-2 overflow-x-auto md:overflow-visible" role="tablist">
               {(["html", "next", "react", "social"] as const).map((t) => (
                 <button
                   key={t}
+                  type="button"
                   onClick={() => setTab(t)}
+                  role="tab"
+                  aria-selected={tab === t}
                   className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap ${
                     tab === t ? "bg-blue-600 text-white" : "bg-white/30 dark:bg-neutral-800"
                   }`}
@@ -462,7 +474,7 @@ export default function Page() {
 
             <pre
               className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-x-auto max-w-full sm:max-w-none whitespace-pre-wrap sm:whitespace-pre"
-              data-scrollable
+              aria-label="Generated meta tags snippet"
             >
               {tab === "html" && htmlHead}
 
@@ -536,12 +548,24 @@ export default function Page() {
 
 /* ------- small UI helpers ------- */
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+  id,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+  id: string;
+}) {
   return (
     <div className="min-w-0">
       <div className="flex items-center justify-between mb-1 gap-3">
-        <label className="block text-sm font-medium">{label}</label>
-        {hint && <span className="text-xs text-gray-500">{hint}</span>}
+        <label className="block text-sm font-medium" htmlFor={id}>
+          {label}
+        </label>
+        {hint && <span className="text-xs text-gray-500 dark:text-gray-200/70">{hint}</span>}
       </div>
       {children}
     </div>
@@ -552,10 +576,12 @@ function Counter({ id, raw, safe, max }: { id: string; raw: string; safe: string
   const over = raw.length > max;
   return (
     <div id={id} className="mt-1 text-xs">
-      <span className={over ? "text-red-500" : "text-gray-500"}>
+      <span className={over ? "text-red-500" : "text-gray-500 dark:text-gray-200/70"}>
         {raw.length} / {max}
       </span>
-      {over && <span className="ml-2 text-red-500">Trimmed to {safe.length} in previews</span>}
+      {over && (
+        <span className="ml-2 text-red-500">Trimmed to {safe.length} in previews</span>
+      )}
     </div>
   );
 }
