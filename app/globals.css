@@ -4,13 +4,19 @@
 @tailwind utilities;
 
 /* ---------- Base / reset ---------- */
-:root { --ring: 0 0 0; } /* legacy var used in some cards */
+:root {
+  --ring: 0 0 0;            /* legacy var used in some cards */
+  scrollbar-gutter: stable both-edges;  /* Reserve scrollbar space → prevents CLS */
+}
 
 *, *::before, *::after { @apply box-border; }
 
 html, body {
   @apply bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
 }
+
+/* Always reserve vertical scrollbar to avoid width jumps on Windows */
+html { overflow-y: scroll; }
 
 a, button { -webkit-tap-highlight-color: transparent; }
 
@@ -26,14 +32,6 @@ input[type="range"]:focus-visible {
 }
 
 /* ---------- Utilities ---------- */
-/* Comfortable tap targets for tool buttons */
-.hit-44{
-  min-width:44px;
-  min-height:44px;
-  @apply inline-flex items-center justify-center;
-}
-
-/* If the Tailwind line-clamp plugin isn’t enabled, keep this helper */
 .line-clamp-2{
   display:-webkit-box;
   -webkit-line-clamp:2;
@@ -47,13 +45,12 @@ input[type="range"]:focus-visible {
   .hover\:shadow-md:hover { box-shadow: 0 4px 12px rgb(0 0 0 / 0.35); }
 }
 
-/* ---------- Export / print helpers (moved from styled-jsx) ---------- */
+/* ---------- Export / print helpers (scoped; no more global overflow tweak) ---------- */
 [data-export-paused="1"] .sticky { position: static !important; top: auto !important; }
-#__next, body, html { overflow: visible !important; }
-
-[data-export="section"] { break-inside: avoid; page-break-inside: avoid; }
-.avoid-break { break-inside: avoid; page-break-inside: avoid; }
-.page-break-before { break-before: page; page-break-before: always; }
+/* only during export do we relax overflow — NOT globally (prevents CLS) */
+[data-export-paused="1"] #__next,
+[data-export-paused="1"] body,
+[data-export-paused="1"] html { overflow: visible !important; }
 
 /* ---------- Charts: visible focus without layout shift ---------- */
 figure:focus-visible {
@@ -62,8 +59,11 @@ figure:focus-visible {
   border-radius: 12px;
 }
 
-/* Small CLS guard for tool pages that inject banners (like offline),
-   so Lighthouse doesn’t penalize late layout shifts too much */
-.tool-inline-banner-slot {
-  min-height: 32px;
+/* Comfortable touch targets */
+.hit-44{
+  min-width:44px;
+  min-height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
 }
