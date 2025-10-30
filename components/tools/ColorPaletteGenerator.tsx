@@ -144,7 +144,7 @@ export default function ColorPaletteGenerator() {
 
   // Step 10: Offline banner
   const [online, setOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
-
+  const BANNER_HEIGHT = 44;
   // Step 12: Contrast matrix
   const [showMatrix, setShowMatrix] = useState(false);
   const [matrixFilter, setMatrixFilter] = useState<"all" | "AA" | "AAA">("all");
@@ -662,16 +662,23 @@ ${entries}
   };
 
   /* ---------- UI ---------- */
-  return (
-    <div className="max-w-5xl mx-auto p-6">
-      {/* SR live region */}
-      <div id="a11y-announcer" aria-live="polite" className="sr-only" />
+  
+return (
+  <div className="max-w-5xl mx-auto p-6">
+    {/* SR live region */}
+    <div id="a11y-announcer" aria-live="polite" className="sr-only" />
 
-      {!online && (
-        <div className="mb-2 text-center text-xs bg-yellow-100 text-yellow-900 rounded px-2 py-1">
+    {/* reserved banner slot → no CLS */}
+    <div style={{ minHeight: BANNER_HEIGHT, marginBottom: "0.5rem" }}>
+      {!online ? (
+        <div
+          style={{ height: BANNER_HEIGHT }}
+          className="flex items-center justify-center bg-yellow-100 text-yellow-900 text-xs rounded px-2"
+        >
           Offline: actions will queue locally; sharing uses clipboard.
         </div>
-      )}
+      ) : null}
+    </div>
 
       <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
         🎨 Color Palette Generator – Free Online Tool
