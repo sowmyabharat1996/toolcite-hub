@@ -2,7 +2,7 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v2 (sentinel OK)
+ * META-OG-GENERATOR v2 + STEP 9 (reset + import-from-head)
  */
 
 import React, { useMemo, useState } from "react";
@@ -130,6 +130,27 @@ function download(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
+/* Step 9 helper: very small parser */
+function parseHeadSnippet(snippet: string) {
+  const get = (regex: RegExp) => {
+    const m = snippet.match(regex);
+    return m ? m[1].trim() : "";
+  };
+
+  return {
+    title: get(/<title>([^<]+)<\/title>/i),
+    desc:
+      get(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i) ||
+      get(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+    url: get(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["'][^>]*>/i) ||
+      get(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+    site: get(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+    img: get(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+    twSite: get(/<meta[^>]+name=["']twitter:site["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+    twCreator: get(/<meta[^>]+name=["']twitter:creator["'][^>]+content=["']([^"']+)["'][^>]*>/i),
+  };
+}
+
 /* ---------------- main ---------------- */
 
 export default function Page() {
@@ -150,11 +171,15 @@ export default function Page() {
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
   const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
 
+  // step 9: import textarea
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+
   // sanitized for actual meta tags / previews
   const safeTitle = sanitizeText(titleInput, TITLE_MAX);
   const safeDesc = sanitizeText(descInput, DESC_MAX);
 
-  // raw presence (for checks) 👇
+  // raw presence (for checks)
   const hasDescRaw = descInput.trim().length > 0;
   const descFilteredOut = hasDescRaw && !safeDesc;
 
@@ -169,6 +194,38 @@ export default function Page() {
     setSiteName(pp.siteName);
     setAuthor(pp.author);
     // keep image field as user typed
+  }
+
+  // step 9: reset to current preset
+  function handleResetToPreset() {
+    applyPreset(preset);
+  }
+
+  // step 9: clear all
+  function handleClearAll() {
+    setTitleInput("");
+    setDescInput("");
+    setUrl("");
+    setSiteName("");
+    setAuthor("");
+    setImage("");
+    // keep theme + twitter
+  }
+
+  // step 9: parse HTML/meta
+  function handleImportHead() {
+    if (!importText.trim()) return;
+    const parsed = parseHeadSnippet(importText);
+
+    if (parsed.title) setTitleInput(parsed.title);
+    if (parsed.desc) setDescInput(parsed.desc);
+    if (parsed.url) setUrl(parsed.url);
+    if (parsed.site) setSiteName(parsed.site);
+    if (parsed.img) setImage(parsed.img);
+    if (parsed.twSite) setTwitterSite(parsed.twSite);
+    if (parsed.twCreator) setTwitterCreator(parsed.twCreator);
+
+    // keep author as-is; you can change here if you want
   }
 
   const htmlHead = useMemo(() => {
@@ -218,13 +275,9 @@ export default function Page() {
     author,
   ]);
 
-  // ✅ checks now use raw + sanitized
+  // checks
   const checks = [
-    safeTitle
-      ? { ok: true, text: "Title OK (≤ 60)." }
-      : { ok: false, text: "Title empty." },
-
-    // description logic:
+    safeTitle ? { ok: true, text: "Title OK (≤ 60)." } : { ok: false, text: "Title empty." },
     !hasDescRaw
       ? { ok: false, text: "Description empty." }
       : descFilteredOut
@@ -233,11 +286,9 @@ export default function Page() {
           text: "Description present but filtered (looked like code / JSX) — tweak wording.",
         }
       : { ok: true, text: "Description OK (≤ 160)." },
-
     url.startsWith("http")
       ? { ok: true, text: "Canonical URL absolute." }
       : { ok: false, text: "Canonical URL missing/relative." },
-
     { ok: true, text: "OG image present (custom or fallback)." },
     { ok: true, text: `Twitter card: ${twitterCard}.` },
     { ok: !!twitterSite, text: `@site: ${twitterSite || "—"}` },
@@ -249,7 +300,24 @@ export default function Page() {
       <div className="grid gap-6 md:grid-cols-2">
         {/* LEFT */}
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
-          <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
+          <h3 className="text-lg font-semibold flex items-center justify-between gap-4">
+            <span>Meta &amp; Social Fields</span>
+            {/* step 9 small actions */}
+            <span className="flex gap-2">
+              <button
+                onClick={handleResetToPreset}
+                className="text-xs px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleClearAll}
+                className="text-xs px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                Clear
+              </button>
+            </span>
+          </h3>
 
           {/* presets */}
           <div className="flex flex-wrap gap-2">
@@ -391,6 +459,39 @@ export default function Page() {
             >
               Download HTML
             </button>
+          </div>
+
+          {/* STEP 9: import block */}
+          <div className="border-t pt-4 space-y-3">
+            <button
+              onClick={() => setImportOpen((v) => !v)}
+              className="text-xs rounded border px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800"
+              aria-expanded={importOpen}
+            >
+              {importOpen ? "Hide" : "Paste & import <head> / meta from page"}
+            </button>
+
+            {importOpen && (
+              <div className="space-y-2">
+                <textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  rows={4}
+                  className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 text-xs"
+                  placeholder="Paste HTML <head> here..."
+                />
+                <button
+                  onClick={handleImportHead}
+                  className="text-xs rounded bg-blue-600 text-white px-3 py-2 hover:bg-blue-700"
+                >
+                  Import fields
+                </button>
+                <p className="text-[10px] text-gray-400">
+                  We try to read: &lt;title&gt;, meta description, canonical, og:title, og:description,
+                  og:image, twitter:site, twitter:creator.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
