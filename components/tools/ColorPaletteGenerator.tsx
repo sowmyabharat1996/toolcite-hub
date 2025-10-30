@@ -9,11 +9,11 @@ type Algo = "analogous" | "complementary" | "triadic" | "tetradic" | "monochrome
    Step 4: Presets
    ======================= */
 const PRESETS: Record<string, string[]> = {
-  Brand:  ["#0EA5E9", "#6366F1", "#22C55E", "#F59E0B", "#EF4444"],
+  Brand: ["#0EA5E9", "#6366F1", "#22C55E", "#F59E0B", "#EF4444"],
   Pastel: ["#AEC6CF", "#FFB3BA", "#B5EAD7", "#FFDFBA", "#C7CEEA"],
-  Neon:   ["#39FF14", "#00FFFF", "#FF6EC7", "#FFD300", "#FF073A"],
-  Earth:  ["#264653", "#2A9D8F", "#E9C46A", "#F4A261", "#E76F51"],
-  Ocean:  ["#003049", "#0077B6", "#00B4D8", "#90E0EF", "#CAF0F8"],
+  Neon: ["#39FF14", "#00FFFF", "#FF6EC7", "#FFD300", "#FF073A"],
+  Earth: ["#264653", "#2A9D8F", "#E9C46A", "#F4A261", "#E76F51"],
+  Ocean: ["#003049", "#0077B6", "#00B4D8", "#90E0EF", "#CAF0F8"],
   Sunset: ["#370617", "#6A040F", "#9D0208", "#DC2F02", "#F48C06"],
 };
 
@@ -26,7 +26,9 @@ function relativeLuminance(hex: string) {
   const g = parseInt(m?.[2] ?? "00", 16) / 255;
   const b = parseInt(m?.[3] ?? "00", 16) / 255;
   const lin = (x: number) => (x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4));
-  const R = lin(r), G = lin(g), B = lin(b);
+  const R = lin(r),
+    G = lin(g),
+    B = lin(b);
   return 0.2126 * R + 0.7152 * G + 0.0722 * B;
 }
 function contrastRatio(fg: string, bg: string) {
@@ -66,23 +68,35 @@ function rgbToHex(r: number, g: number, b: number) {
   );
 }
 function rgbToHsl(r: number, g: number, b: number) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b);
+  let h = 0,
+    s = 0,
+    l = (max + min) / 2;
   const d = max - min;
   if (d !== 0) {
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
     switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      case b:
+        h = (r - g) / d + 4;
+        break;
     }
     h *= 60;
   }
   return { h, s: s * 100, l: l * 100 };
 }
 function hslToRgb(h: number, s: number, l: number) {
-  s /= 100; l /= 100;
+  s /= 100;
+  l /= 100;
   const k = (n: number) => (n + h / 30) % 12;
   const a = s * Math.min(l, 1 - l);
   const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
@@ -97,22 +111,47 @@ function hslToHex(h: number, s: number, l: number) {
    Step 5: Session history
    ======================= */
 type SessionSnap = {
-  id: string; name: string;
-  base: string; algo: Algo; count: number; sat: number; lum: number; colors: string[];
+  id: string;
+  name: string;
+  base: string;
+  algo: Algo;
+  count: number;
+  sat: number;
+  lum: number;
+  colors: string[];
 };
 const HISTORY_KEY = "tc_color_history_v1";
 const loadHistory = (): SessionSnap[] => {
-  try { const raw = localStorage.getItem(HISTORY_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 };
-const saveHistory = (items: SessionSnap[]) => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 5))); } catch {} };
+const saveHistory = (items: SessionSnap[]) => {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 5)));
+  } catch {}
+};
 
 /* =======================
    Step 16: Favorites
    ======================= */
 type Favorite = { id: string; name: string; colors: string[] };
 const FAV_KEY = "tc_color_faves_v1";
-const loadFavs = (): Favorite[] => { try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch { return []; } };
-const saveFavs = (x: Favorite[]) => { try { localStorage.setItem(FAV_KEY, JSON.stringify(x)); } catch {} };
+const loadFavs = (): Favorite[] => {
+  try {
+    return JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
+  } catch {
+    return [];
+  }
+};
+const saveFavs = (x: Favorite[]) => {
+  try {
+    localStorage.setItem(FAV_KEY, JSON.stringify(x));
+  } catch {}
+};
 
 export default function ColorPaletteGenerator() {
   const [baseColor, setBaseColor] = useState("#06A92F");
@@ -144,7 +183,8 @@ export default function ColorPaletteGenerator() {
 
   // Step 10: Offline banner
   const [online, setOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
-  const BANNER_HEIGHT = 44;
+  const BANNER_HEIGHT = 44; // reserve 44px always → no CLS
+
   // Step 12: Contrast matrix
   const [showMatrix, setShowMatrix] = useState(false);
   const [matrixFilter, setMatrixFilter] = useState<"all" | "AA" | "AAA">("all");
@@ -163,10 +203,14 @@ export default function ColorPaletteGenerator() {
     if (el) el.textContent = msg;
   };
 
-  // Step 17: analytics shim (supports GA gtag() or Plausible)
+  // Step 17: analytics shim
   const track = (event: string, params: Record<string, any> = {}) => {
-    try { (window as any).gtag?.("event", event, params); } catch {}
-    try { (window as any).plausible?.(event, { props: params }); } catch {}
+    try {
+      (window as any).gtag?.("event", event, params);
+    } catch {}
+    try {
+      (window as any).plausible?.(event, { props: params });
+    } catch {}
   };
 
   // generator
@@ -227,7 +271,7 @@ export default function ColorPaletteGenerator() {
     setPalette((prev) => prev.map((c, i) => (i === index ? { ...c, locked: !c.locked } : c)));
   };
 
-  // Step 4: apply preset (freeze to show exactly, then let user unfreeze)
+  // Step 4: apply preset
   const applyPreset = (name: keyof typeof PRESETS) => {
     const hexes = PRESETS[name];
     if (!hexes?.length) return;
@@ -245,13 +289,25 @@ export default function ColorPaletteGenerator() {
       const t = document.createElement("div");
       t.textContent = msg;
       Object.assign(t.style as any, {
-        position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
-        background: "#333", color: "#fff", padding: "8px 16px", borderRadius: "8px",
-        fontSize: "14px", zIndex: "9999", opacity: "0", transition: "opacity .3s ease",
+        position: "fixed",
+        bottom: "24px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: "#333",
+        color: "#fff",
+        padding: "8px 16px",
+        borderRadius: "8px",
+        fontSize: "14px",
+        zIndex: "9999",
+        opacity: "0",
+        transition: "opacity .3s ease",
       });
       document.body.appendChild(t);
       requestAnimationFrame(() => (t.style.opacity = "1"));
-      setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 400); }, 1400);
+      setTimeout(() => {
+        t.style.opacity = "0";
+        setTimeout(() => t.remove(), 400);
+      }, 1400);
     } catch {}
   };
 
@@ -264,7 +320,10 @@ export default function ColorPaletteGenerator() {
 
   // Step 4: Copy CSS Variables
   const copyCssVariables = async () => {
-    const vars = palette.slice(0, count).map((c, i) => `  --tc-color-${i + 1}: ${c.hex};`).join("\n");
+    const vars = palette
+      .slice(0, count)
+      .map((c, i) => `  --tc-color-${i + 1}: ${c.hex};`)
+      .join("\n");
     const css = `:root{\n${vars}\n}`;
     await navigator.clipboard.writeText(css);
     toast("CSS variables copied!");
@@ -276,7 +335,10 @@ export default function ColorPaletteGenerator() {
      Step 8: Pro exports
      ======================= */
   const copyAllHex = async () => {
-    const list = palette.slice(0, count).map((c) => c.hex.toUpperCase()).join("\n");
+    const list = palette
+      .slice(0, count)
+      .map((c) => c.hex.toUpperCase())
+      .join("\n");
     await navigator.clipboard.writeText(list);
     toast("HEX list copied!");
     announce("All HEX copied");
@@ -298,7 +360,10 @@ export default function ColorPaletteGenerator() {
   };
 
   const copyTailwindSnippet = async () => {
-    const entries = palette.slice(0, count).map((c, i) => `        c${i + 1}: "${c.hex.toUpperCase()}"`).join(",\n");
+    const entries = palette
+      .slice(0, count)
+      .map((c, i) => `        c${i + 1}: "${c.hex.toUpperCase()}"`)
+      .join(",\n");
     const js = `// Tailwind config snippet
 // usage: class="text-tc-c1 bg-tc-c2"
 export default {
@@ -357,28 +422,34 @@ ${entries}
     }
 
     // PNG with swatches + tiny preview
-    const sw = 120, sh = 120;
+    const sw = 120,
+      sh = 120;
     const arr = palette.slice(0, count);
     const w = Math.max(600, arr.length * sw);
     const h = sh + 160; // extra space for previews
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
-    canvas.width = w; canvas.height = h;
+    canvas.width = w;
+    canvas.height = h;
 
     // swatches row
     arr.forEach((c, i) => {
-      ctx.fillStyle = c.hex; ctx.fillRect(i * sw, 0, sw, sh);
+      ctx.fillStyle = c.hex;
+      ctx.fillRect(i * sw, 0, sw, sh);
     });
 
     // preview area (simple hero + button)
-    const c0 = arr[0]?.hex || "#333", c2 = arr[2]?.hex || "#666";
-    ctx.fillStyle = c0; ctx.fillRect(0, sh + 10, w, 140);
+    const c0 = arr[0]?.hex || "#333",
+      c2 = arr[2]?.hex || "#666";
+    ctx.fillStyle = c0;
+    ctx.fillRect(0, sh + 10, w, 140);
     ctx.fillStyle = bestTextColor(c0);
     ctx.font = "bold 20px system-ui, sans-serif";
     ctx.fillText("Preview", 16, sh + 40);
     // button
-    ctx.fillStyle = c2; ctx.fillRect(16, sh + 60, 120, 40);
+    ctx.fillStyle = c2;
+    ctx.fillRect(16, sh + 60, 120, 40);
     ctx.fillStyle = bestTextColor(c2);
     ctx.font = "bold 14px system-ui, sans-serif";
     ctx.fillText("Action", 50, sh + 85);
@@ -399,7 +470,13 @@ ${entries}
     url.searchParams.set("n", String(count));
     url.searchParams.set("s", String(satShift));
     url.searchParams.set("l", String(lumShift));
-    url.searchParams.set("colors", palette.slice(0, count).map((p) => p.hex).join(","));
+    url.searchParams.set(
+      "colors",
+      palette
+        .slice(0, count)
+        .map((p) => p.hex)
+        .join(",")
+    );
     const href = url.toString();
 
     try {
@@ -453,18 +530,24 @@ ${entries}
     const size = 64;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
-    canvas.width = size; canvas.height = size;
+    canvas.width = size;
+    canvas.height = size;
     ctx.drawImage(img, 0, 0, size, size);
     const data = ctx.getImageData(0, 0, size, size).data;
 
     const bins = new Map<string, number>();
     for (let i = 0; i < data.length; i += 4) {
-      const a = data[i + 3]; if (a < 200) continue;
-      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const a = data[i + 3];
+      if (a < 200) continue;
+      const r = data[i],
+        g = data[i + 1],
+        b = data[i + 2];
       const hex = rgbToHex(r, g, b).toUpperCase();
       bins.set(hex, (bins.get(hex) || 0) + 1);
     }
-    const sorted = Array.from(bins.entries()).sort((a, b) => b[1] - a[1]).map(([hex]) => hex);
+    const sorted = Array.from(bins.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([hex]) => hex);
 
     // pick distinct colors
     const picked: string[] = [];
@@ -511,7 +594,9 @@ ${entries}
 
     if (colorsParam) {
       let raw = colorsParam;
-      try { raw = decodeURIComponent(raw); } catch {}
+      try {
+        raw = decodeURIComponent(raw);
+      } catch {}
       const colors = raw.split(",").map((hex) => {
         if (hex.startsWith("%23")) hex = "#" + hex.slice(3);
         return /^#([0-9a-f]{6})$/i.test(hex) ? hex : "#000000";
@@ -520,7 +605,7 @@ ${entries}
       setFreezeAuto(true);
     }
 
-    // Step 5: load saved history & Step 16: favorites on first mount
+    // Step 5: load saved history & Step 16: favorites
     setHistory(loadHistory());
     setFavs(loadFavs());
 
@@ -539,7 +624,13 @@ ${entries}
   useEffect(() => {
     const t = setTimeout(() => {
       const sp = new URLSearchParams(window.location.search);
-      sp.set("colors", palette.slice(0, count).map((p) => p.hex).join(","));
+      sp.set(
+        "colors",
+        palette
+          .slice(0, count)
+          .map((p) => p.hex)
+          .join(",")
+      );
       sp.set("base", baseColor);
       sp.set("a", algo);
       sp.set("n", String(count));
@@ -643,42 +734,48 @@ ${entries}
     const colors = palette.slice(0, count).map((c) => c.hex);
     const fav = { id: Date.now().toString(), name, colors };
     const next = [fav, ...favs].slice(0, 50);
-    setFavs(next); saveFavs(next);
-    toast("Saved to Favorites"); announce("Saved to favorites");
+    setFavs(next);
+    saveFavs(next);
+    toast("Saved to Favorites");
+    announce("Saved to favorites");
     track("favorite_add", { count });
   };
   const applyFavorite = (id: string) => {
-    const f = favs.find((x) => x.id === id); if (!f) return;
+    const f = favs.find((x) => x.id === id);
+    if (!f) return;
     setFreezeAuto(true);
-    setBaseColor(f.colors[0]); setCount(Math.min(10, f.colors.length));
+    setBaseColor(f.colors[0]);
+    setCount(Math.min(10, f.colors.length));
     setPalette(f.colors.map((hex) => ({ hex, locked: false })));
-    announce("Favorite applied"); track("favorite_apply", { count: f.colors.length });
+    announce("Favorite applied");
+    track("favorite_apply", { count: f.colors.length });
   };
   const deleteFavorite = (id: string) => {
     if (!id) return;
-    const next = favs.filter((x) => x.id !== id); setFavs(next); saveFavs(next);
-    toast("Favorite deleted"); track("favorite_delete");
+    const next = favs.filter((x) => x.id !== id);
+    setFavs(next);
+    saveFavs(next);
+    toast("Favorite deleted");
+    track("favorite_delete");
     if (favSelectedId === id) setFavSelectedId("");
   };
 
-  /* ---------- UI ---------- */
-  
-return (
-  <div className="max-w-5xl mx-auto p-6">
-    {/* SR live region */}
-    <div id="a11y-announcer" aria-live="polite" className="sr-only" />
+  return (
+    <div className="max-w-5xl mx-auto p-6">
+      {/* SR live region */}
+      <div id="a11y-announcer" aria-live="polite" className="sr-only" />
 
-    {/* reserved banner slot → no CLS */}
-    <div style={{ minHeight: BANNER_HEIGHT, marginBottom: "0.5rem" }}>
-      {!online ? (
-        <div
-          style={{ height: BANNER_HEIGHT }}
-          className="flex items-center justify-center bg-yellow-100 text-yellow-900 text-xs rounded px-2"
-        >
-          Offline: actions will queue locally; sharing uses clipboard.
-        </div>
-      ) : null}
-    </div>
+      {/* CLS-safe banner slot */}
+      <div style={{ minHeight: BANNER_HEIGHT, marginBottom: "0.5rem" }}>
+        {!online ? (
+          <div
+            style={{ height: BANNER_HEIGHT }}
+            className="flex items-center justify-center bg-yellow-100 text-yellow-900 text-xs rounded px-2"
+          >
+            Offline: actions will queue locally; sharing uses clipboard.
+          </div>
+        ) : null}
+      </div>
 
       <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
         🎨 Color Palette Generator – Free Online Tool
@@ -784,7 +881,10 @@ return (
 
         <button
           id="generate-btn"
-          onClick={() => { generateFromBase(); setFreezeAuto(false); }}
+          onClick={() => {
+            generateFromBase();
+            setFreezeAuto(false);
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
         >
           Generate from Base
@@ -830,7 +930,10 @@ return (
         <input
           type="file"
           accept="image/*"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) extractFromImageFile(f); }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) extractFromImageFile(f);
+          }}
           aria-label="Upload image to extract palette"
           className="hidden"
           id="img-extract"
@@ -845,7 +948,9 @@ return (
         {/* Step 6: Reorder Mode toggle */}
         <button
           onClick={() => setReorderMode((v) => !v)}
-          className={`px-3 py-2 rounded-md border ${reorderMode ? "border-blue-600 text-blue-700 bg-blue-50" : "border-gray-300 hover:bg-gray-50"}`}
+          className={`px-3 py-2 rounded-md border ${
+            reorderMode ? "border-blue-600 text-blue-700 bg-blue-50" : "border-gray-300 hover:bg-gray-50"
+          }`}
           aria-pressed={reorderMode}
           aria-label="Toggle reorder mode"
           title="Reorder swatches with arrows or drag handle"
@@ -865,8 +970,12 @@ return (
             aria-label="Paste HEX list or CSS with colors"
           />
           <div className="mt-2 flex gap-2">
-            <button onClick={applyImport} className="px-3 py-2 rounded-md bg-blue-600 text-white">Apply Import</button>
-            <button onClick={() => setImportOpen(false)} className="px-3 py-2 rounded-md border">Close</button>
+            <button onClick={applyImport} className="px-3 py-2 rounded-md bg-blue-600 text-white">
+              Apply Import
+            </button>
+            <button onClick={() => setImportOpen(false)} className="px-3 py-2 rounded-md border">
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -882,7 +991,9 @@ return (
         </button>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="hist" className="text-sm text-gray-600">History:</label>
+          <label htmlFor="hist" className="text-sm text-gray-600">
+            History:
+          </label>
           <select
             id="hist"
             value={selectedHistoryId}
@@ -890,7 +1001,9 @@ return (
             className="px-3 py-2 rounded-md border border-gray-300 min-w-[240px]"
             aria-label="Restore a previous session"
           >
-            <option value="" disabled>Choose a saved run…</option>
+            <option value="" disabled>
+              Choose a saved run…
+            </option>
             {history.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.name} — {h.colors[0]} … ({h.colors.length})
@@ -920,11 +1033,19 @@ return (
             <label className="text-sm text-gray-600">Favorites:</label>
             <select
               value={favSelectedId}
-              onChange={(e) => { const id = e.target.value; setFavSelectedId(id); applyFavorite(id); }}
+              onChange={(e) => {
+                const id = e.target.value;
+                setFavSelectedId(id);
+                applyFavorite(id);
+              }}
               className="px-3 py-2 rounded-md border min-w-[220px]"
             >
               <option value="">Choose…</option>
-              {favs.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.colors.length})</option>)}
+              {favs.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name} ({f.colors.length})
+                </option>
+              ))}
             </select>
             <button
               onClick={() => deleteFavorite(favSelectedId)}
@@ -990,29 +1111,51 @@ return (
               }}
               onClick={() => !reorderMode && copyHex(c.hex)}
               onKeyDown={(e) => {
-                // Step 6: keyboard reorder
                 if (reorderMode) {
-                  if (e.key === "ArrowLeft") { e.preventDefault(); moveSwatch(i, -1); }
-                  if (e.key === "ArrowRight") { e.preventDefault(); moveSwatch(i, +1); }
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    moveSwatch(i, -1);
+                  }
+                  if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    moveSwatch(i, +1);
+                  }
                 } else if (e.key === "Enter" || e.key === " ") {
-                  // Step 9: Enter/Space copies
-                  e.preventDefault(); copyHex(c.hex);
+                  e.preventDefault();
+                  copyHex(c.hex);
                 }
               }}
               tabIndex={0}
               title={`Contrast ${ratio.toFixed(2)}:1 (${badge})`}
               aria-label={`Swatch ${i + 1} ${c.hex}`}
-              onDragOver={reorderMode ? (e) => { e.preventDefault(); } : undefined}
-              onDragEnter={reorderMode ? (e) => { e.preventDefault(); setOverIndex(i); } : undefined}
+              onDragOver={
+                reorderMode
+                  ? (e) => {
+                      e.preventDefault();
+                    }
+                  : undefined
+              }
+              onDragEnter={
+                reorderMode
+                  ? (e) => {
+                      e.preventDefault();
+                      setOverIndex(i);
+                    }
+                  : undefined
+              }
               onDragLeave={reorderMode ? () => setOverIndex((v) => (v === i ? null : v)) : undefined}
-              onDrop={reorderMode ? (e) => {
-                e.preventDefault();
-                const fromAttr = e.dataTransfer?.getData("text/plain");
-                const from = dragIndex ?? (fromAttr ? parseInt(fromAttr, 10) : NaN);
-                if (!Number.isNaN(from)) reorderSwatch(from, i);
-                setDragIndex(null);
-                setOverIndex(null);
-              } : undefined}
+              onDrop={
+                reorderMode
+                  ? (e) => {
+                      e.preventDefault();
+                      const fromAttr = e.dataTransfer?.getData("text/plain");
+                      const from = dragIndex ?? (fromAttr ? parseInt(fromAttr, 10) : NaN);
+                      if (!Number.isNaN(from)) reorderSwatch(from, i);
+                      setDragIndex(null);
+                      setOverIndex(null);
+                    }
+                  : undefined
+              }
             >
               {/* Contrast badge */}
               <span
@@ -1037,7 +1180,9 @@ return (
                       e.stopPropagation();
                       setDragIndex(i);
                       e.dataTransfer.effectAllowed = "move";
-                      try { e.dataTransfer.setData("text/plain", String(i)); } catch {}
+                      try {
+                        e.dataTransfer.setData("text/plain", String(i));
+                      } catch {}
                     }}
                     onDragEnd={(e) => {
                       e.stopPropagation();
@@ -1051,7 +1196,10 @@ return (
                   </button>
                   <button
                     className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white"
-                    onClick={(e) => { e.stopPropagation(); moveSwatch(i, -1); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveSwatch(i, -1);
+                    }}
                     aria-label="Move left"
                     title="Move left"
                   >
@@ -1059,7 +1207,10 @@ return (
                   </button>
                   <button
                     className="rounded-full bg-white/90 px-2 py-1 text-xs shadow hover:bg-white"
-                    onClick={(e) => { e.stopPropagation(); moveSwatch(i, +1); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveSwatch(i, +1);
+                    }}
                     aria-label="Move right"
                     title="Move right"
                   >
@@ -1071,7 +1222,10 @@ return (
               <div className="p-2 bg-white/90 rounded-b-xl text-center text-sm">
                 <div className="font-mono">{c.hex.toUpperCase()}</div>
                 <button
-                  onClick={(e) => { e.stopPropagation(); toggleLock(i); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleLock(i);
+                  }}
                   className="mt-1 text-xs text-gray-500"
                   aria-label={c.locked ? "Unlock swatch" : "Lock swatch"}
                 >
@@ -1109,7 +1263,9 @@ return (
               <tr>
                 <th className="p-1"></th>
                 {palette.slice(0, count).map((c, i) => (
-                  <th key={"h" + i} className="p-1 font-mono">{c.hex.toUpperCase()}</th>
+                  <th key={"h" + i} className="p-1 font-mono">
+                    {c.hex.toUpperCase()}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1119,15 +1275,29 @@ return (
                   <th className="p-1 font-mono">{row.hex.toUpperCase()}</th>
                   {palette.slice(0, count).map((col, j) => {
                     const ratio = contrastRatio(row.hex, col.hex);
-                    const passAA = ratio >= 4.5, passAAA = ratio >= 7;
+                    const passAA = ratio >= 4.5,
+                      passAAA = ratio >= 7;
                     if (matrixFilter === "AA" && !passAA)
-                      return <td key={`${i}-${j}`} className="p-1 text-center text-gray-400">–</td>;
+                      return (
+                        <td key={`${i}-${j}`} className="p-1 text-center text-gray-400">
+                          –
+                        </td>
+                      );
                     if (matrixFilter === "AAA" && !passAAA)
-                      return <td key={`${i}-${j}`} className="p-1 text-center text-gray-400">–</td>;
+                      return (
+                        <td key={`${i}-${j}`} className="p-1 text-center text-gray-400">
+                          –
+                        </td>
+                      );
                     const t = bestTextColor(col.hex);
                     return (
-                      <td key={`${i}-${j}`} className="p-1 text-center rounded" style={{ background: col.hex, color: t }}>
-                        {ratio.toFixed(1)}{passAAA ? " ★" : " "}
+                      <td
+                        key={`${i}-${j}`}
+                        className="p-1 text-center rounded"
+                        style={{ background: col.hex, color: t }}
+                      >
+                        {ratio.toFixed(1)}
+                        {passAAA ? " ★" : " "}
                       </td>
                     );
                   })}
@@ -1168,7 +1338,8 @@ return (
       </div>
 
       <p className="text-center text-gray-500 text-sm mt-6">
-        Tip: Toggle <strong>↔ Reorder</strong>, then drag with ⠿ or use ◀ / ▶ (or keyboard ← / → on a focused swatch).
+        Tip: Toggle <strong>↔ Reorder</strong>, then drag with ⠿ or use ◀ / ▶ (or keyboard ← / → on a focused
+        swatch).
       </p>
     </div>
   );
