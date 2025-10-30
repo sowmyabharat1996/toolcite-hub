@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 
 const TITLE_MAX = 60;
 const DESC_MAX = 160;
-const PREVIEW_FALLBACK_IMAGE = "/og-default.png"; // UI-only fallback
+const FALLBACK_IMAGE = "/og-default.png"; // 👈 UI + generated code both use this if empty
 
 type PresetKey = "tool" | "blog" | "home" | "product";
 type SnippetTab = "html" | "next" | "basic" | "social";
@@ -49,10 +49,10 @@ const PRESETS: Record<
   },
 };
 
+// ---------- small helpers ----------
 function clamp(str: string, max: number) {
   return str.length > max ? str.slice(0, max) : str;
 }
-
 function escapeAttr(s: string) {
   return String(s).replace(/"/g, "&quot;");
 }
@@ -82,6 +82,7 @@ function download(filename: string, text: string) {
 }
 
 export default function MetaOgGenerator() {
+  // ---------- state ----------
   const [preset, setPreset] = useState<PresetKey>("tool");
 
   const [title, setTitle] = useState(PRESETS.tool.title);
@@ -89,22 +90,26 @@ export default function MetaOgGenerator() {
   const [url, setUrl] = useState(PRESETS.tool.url);
   const [siteName, setSiteName] = useState(PRESETS.tool.siteName);
   const [author, setAuthor] = useState(PRESETS.tool.author);
-  const [image, setImage] = useState(""); // NOTE: stays empty by default — Option B
+
+  // 👇 user-editable image, but we will *resolve* it to a fallback for preview AND snippet
+  const [image, setImage] = useState("");
+
   const [themeColor, setThemeColor] = useState("#0ea5e9");
   const [twitterCard, setTwitterCard] = useState<"summary" | "summary_large_image">("summary_large_image");
   const [twitterSite, setTwitterSite] = useState("@toolcite");
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
+
   const [activeTab, setActiveTab] = useState<SnippetTab>("html");
 
-  // clamp for previews
+  // ---------- derived ----------
   const safeTitle = clamp(title, TITLE_MAX);
   const safeDesc = clamp(desc, DESC_MAX);
 
-  // UI-only preview image
-  const previewImage = image.trim() || PREVIEW_FALLBACK_IMAGE;
-  // but HTML should only include image when user really entered one
-  const shouldEmitImage = image.trim().length > 0;
+  // 👇 THIS is the key difference (Option A):
+  // if user didn't type image → we *still* use /og-default.png everywhere
+  const resolvedImage = (image || "").trim() || FALLBACK_IMAGE;
 
+  // ---------- actions ----------
   function applyPreset(kind: PresetKey) {
     const p = PRESETS[kind];
     setPreset(kind);
@@ -113,45 +118,43 @@ export default function MetaOgGenerator() {
     setUrl(p.url);
     setSiteName(p.siteName);
     setAuthor(p.author);
-    // image stays as user typed — don't overwrite
+    // NOTE: we do NOT overwrite image – user can keep their own
   }
 
+  // ---------- snippets ----------
   const htmlHeadSnippet = useMemo(() => {
     const lines: string[] = [];
 
-    // title + description
+    // base
     if (safeTitle) lines.push(`<title>${escapeHtml(safeTitle)}</title>`);
     if (safeDesc) lines.push(meta("name", "description", safeDesc));
-
-    // theme color
     if (themeColor) lines.push(meta("name", "theme-color", themeColor));
 
-    // canonical
+    // canonical (optional)
     if (url.trim()) {
       lines.push(`<link rel="canonical" href="${escapeAttr(url.trim())}" />`);
     }
 
-    // Open Graph
+    // OG
     if (safeTitle) lines.push(meta("property", "og:title", safeTitle));
     if (safeDesc) lines.push(meta("property", "og:description", safeDesc));
     if (url.trim()) lines.push(meta("property", "og:url", url.trim()));
     if (siteName.trim()) lines.push(meta("property", "og:site_name", siteName.trim()));
     lines.push(meta("property", "og:type", "website"));
 
-    // Option B: emit og:image only if user typed one
-    if (shouldEmitImage) {
-      lines.push(meta("property", "og:image", image.trim()));
-      lines.push(meta("property", "og:image:width", "1200"));
-      lines.push(meta("property", "og:image:height", "630"));
-      lines.push(meta("property", "og:image:alt", safeTitle || "Open Graph image"));
-    }
+    // 👇 always emit image (Option A)
+    lines.push(meta("property", "og:image", resolvedImage));
+    lines.push(meta("property", "og:image:width", "1200"));
+    lines.push(meta("property", "og:image:height", "630"));
+    lines.push(meta("property", "og:image:alt", safeTitle || "Open Graph image"));
 
     // Twitter
     lines.push(meta("name", "twitter:card", twitterCard));
     if (safeTitle) lines.push(meta("name", "twitter:title", safeTitle));
     if (safeDesc) lines.push(meta("name", "twitter:description", safeDesc));
-    if (shouldEmitImage && twitterCard === "summary_large_image") {
-      lines.push(meta("name", "twitter:image", image.trim()));
+    // also always emit twitter image so pasted links look good
+    if (twitterCard === "summary_large_image") {
+      lines.push(meta("name", "twitter:image", resolvedImage));
     }
     if (twitterSite.trim()) {
       lines.push(meta("name", "twitter:site", ensureAt(twitterSite)));
@@ -160,7 +163,7 @@ export default function MetaOgGenerator() {
       lines.push(meta("name", "twitter:creator", ensureAt(twitterCreator)));
     }
 
-    // author (generic)
+    // generic author
     if (author.trim()) {
       lines.push(meta("name", "author", author.trim()));
     }
@@ -171,42 +174,41 @@ export default function MetaOgGenerator() {
     safeDesc,
     url,
     siteName,
-    image,
+    resolvedImage,
     themeColor,
     twitterCard,
     twitterSite,
     twitterCreator,
     author,
-    shouldEmitImage,
   ]);
 
   const nextJsMetadataSnippet = useMemo(() => {
-    // this is informational for users; still honour option B
-    const imgPart = shouldEmitImage
-      ? `images: [{
-      url: "${escapeAttr(image.trim())}",
-      width: 1200,
-      height: 630,
-      alt: "${escapeAttr(safeTitle || "Open Graph image")}",
-    }]`
-      : "";
     return `export const metadata = {
   title: "${escapeAttr(safeTitle || "Meta Tag & Open Graph Generator")}",
-  description: "${escapeAttr(safeDesc || "Generate SEO meta tags, Open Graph, Twitter cards, and canonical URLs.")}",
-  alternates: { canonical: "${escapeAttr(url.trim() || "https://toolcite.com")}" },
+  description: "${escapeAttr(
+    safeDesc || "Generate SEO meta tags, Open Graph, Twitter cards, and canonical URLs."
+  )}",
+  alternates: { canonical: "${escapeAttr(url.trim() || "https://toolcite.com/tools/meta-og-generator")}" },
   openGraph: {
     type: "website",
     title: "${escapeAttr(safeTitle || "Meta Tag & Open Graph Generator")}",
     description: "${escapeAttr(safeDesc || "Create social previews and meta tags for your pages quickly.")}",
-    url: "${escapeAttr(url.trim() || "https://toolcite.com")}",
+    url: "${escapeAttr(url.trim() || "https://toolcite.com/tools/meta-og-generator")}",
     siteName: "${escapeAttr(siteName || "ToolCite")}",
-    ${imgPart}
+    images: [
+      {
+        url: "${escapeAttr(resolvedImage)}",
+        width: 1200,
+        height: 630,
+        alt: "${escapeAttr(safeTitle || "Open Graph image")}",
+      },
+    ],
   },
   twitter: {
     card: "${twitterCard}",
     title: "${escapeAttr(safeTitle || "Meta Tag & Open Graph Generator")}",
     description: "${escapeAttr(safeDesc || "Build meta tags for SEO, Facebook, and Twitter. Copy in 1 click.")}",
-    ${shouldEmitImage ? `images: ["${escapeAttr(image.trim())}"],` : ""}
+    images: ["${escapeAttr(resolvedImage)}"],
     site: "${escapeAttr(ensureAt(twitterSite) || "@site")}",
     creator: "${escapeAttr(ensureAt(twitterCreator) || "@creator")}",
   },
@@ -216,11 +218,10 @@ export default function MetaOgGenerator() {
     safeDesc,
     url,
     siteName,
-    image,
+    resolvedImage,
     twitterCard,
     twitterSite,
     twitterCreator,
-    shouldEmitImage,
   ]);
 
   const basicHeadSnippet = useMemo(() => {
@@ -238,17 +239,17 @@ export default function MetaOgGenerator() {
     if (url.trim()) lines.push(meta("property", "og:url", url.trim()));
     lines.push(meta("property", "og:type", "website"));
     if (siteName.trim()) lines.push(meta("property", "og:site_name", siteName.trim()));
-    if (shouldEmitImage) lines.push(meta("property", "og:image", image.trim()));
-
+    lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("name", "twitter:card", twitterCard));
     if (safeTitle) lines.push(meta("name", "twitter:title", safeTitle));
     if (safeDesc) lines.push(meta("name", "twitter:description", safeDesc));
-    if (shouldEmitImage && twitterCard === "summary_large_image") {
-      lines.push(meta("name", "twitter:image", image.trim()));
+    if (twitterCard === "summary_large_image") {
+      lines.push(meta("name", "twitter:image", resolvedImage));
     }
     return lines.join("\n");
-  }, [safeTitle, safeDesc, url, siteName, twitterCard, image, shouldEmitImage]);
+  }, [safeTitle, safeDesc, url, siteName, resolvedImage, twitterCard]);
 
+  // which one to show
   let snippetToShow = htmlHeadSnippet;
   if (activeTab === "next") snippetToShow = nextJsMetadataSnippet;
   else if (activeTab === "basic") snippetToShow = basicHeadSnippet;
@@ -263,137 +264,93 @@ export default function MetaOgGenerator() {
       <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
         <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
-        {/* Presets */}
+        {/* presets */}
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => applyPreset("tool")}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-              preset === "tool"
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-            }`}
-            aria-pressed={preset === "tool"}
-          >
+          <PresetButton active={preset === "tool"} onClick={() => applyPreset("tool")}>
             🛠️ Tool / Feature page
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset("blog")}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-              preset === "blog"
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-            }`}
-            aria-pressed={preset === "blog"}
-          >
+          </PresetButton>
+          <PresetButton active={preset === "blog"} onClick={() => applyPreset("blog")}>
             📝 Blog / Article
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset("home")}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-              preset === "home"
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-            }`}
-            aria-pressed={preset === "home"}
-          >
+          </PresetButton>
+          <PresetButton active={preset === "home"} onClick={() => applyPreset("home")}>
             🏠 Homepage / SaaS
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset("product")}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-              preset === "product"
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-            }`}
-            aria-pressed={preset === "product"}
-          >
+          </PresetButton>
+          <PresetButton active={preset === "product"} onClick={() => applyPreset("product")}>
             🛒 Product / Landing
-          </button>
+          </PresetButton>
         </div>
 
-        {/* Title */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium">Page Title</label>
-            <span className="text-xs text-gray-500">Recommended ≤ {TITLE_MAX} chars</span>
-          </div>
-          <input
-            className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Awesome Tool — Do X in Seconds"
-            aria-describedby="title-counter"
-          />
-          <div id="title-counter" className="mt-1 text-xs">
-            <span className={titleOver ? "text-red-500" : "text-gray-500"}>
-              {title.length} / {TITLE_MAX}
-            </span>
-            {titleOver && <span className="ml-2 text-red-500">Trimmed to {TITLE_MAX} in previews</span>}
-          </div>
-        </div>
+        {/* title */}
+        <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
+            <input
+              className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Awesome Tool — Do X in Seconds"
+              aria-describedby="title-counter"
+            />
+            <div id="title-counter" className="mt-1 text-xs">
+              <span className={titleOver ? "text-red-500" : "text-gray-500"}>
+                {title.length} / {TITLE_MAX}
+              </span>
+              {titleOver && (
+                <span className="ml-2 text-red-500">Trimmed to {TITLE_MAX} in previews</span>
+              )}
+            </div>
+        </Field>
 
-        {/* Description */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium">Description</label>
-            <span className="text-xs text-gray-500">Recommended ≤ {DESC_MAX} chars</span>
-          </div>
-          <textarea
-            rows={3}
-            className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-            placeholder="Explain your page in one compelling sentence."
-            aria-describedby="desc-counter"
-          />
-          <div id="desc-counter" className="mt-1 text-xs">
-            <span className={descOver ? "text-red-500" : "text-gray-500"}>
-              {desc.length} / {DESC_MAX}
-            </span>
-            {descOver && <span className="ml-2 text-red-500">Trimmed to {DESC_MAX} in previews</span>}
-          </div>
-        </div>
+        {/* desc */}
+        <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
+            <textarea
+              rows={3}
+              className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Explain your page in one compelling sentence."
+              aria-describedby="desc-counter"
+            />
+            <div id="desc-counter" className="mt-1 text-xs">
+              <span className={descOver ? "text-red-500" : "text-gray-500"}>
+                {desc.length} / {DESC_MAX}
+              </span>
+              {descOver && (
+                <span className="ml-2 text-red-500">Trimmed to {DESC_MAX} in previews</span>
+              )}
+            </div>
+        </Field>
 
-        {/* Canonical */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Canonical URL</label>
+        {/* canonical */}
+        <Field label="Canonical URL">
           <input
             className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://toolcite.com/tools/meta-og-generator"
           />
-        </div>
+        </Field>
 
-        {/* Site + Author */}
+        {/* site + author */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium mb-1">Site Name</label>
+          <Field label="Site Name">
             <input
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               value={siteName}
               onChange={(e) => setSiteName(e.target.value)}
               placeholder="ToolCite"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Author</label>
+          </Field>
+          <Field label="Author">
             <input
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               placeholder="Bharat"
             />
-          </div>
+          </Field>
         </div>
 
-        {/* OG / Twitter image */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Preview Image (OG/Twitter)</label>
+        {/* image */}
+        <Field label="Preview Image (OG/Twitter)">
           <input
             className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
             value={image}
@@ -401,23 +358,21 @@ export default function MetaOgGenerator() {
             placeholder="https://toolcite.com/og/my-page.png"
           />
           <p className="text-xs text-gray-500 mt-1">
-            Leave empty → we will show /og-default.png in preview only. We won&apos;t pre-fill the tag.
+            Leave empty → we will show /og-default.png and also export it in the snippet.
           </p>
-        </div>
+        </Field>
 
-        {/* Theme + Twitter Card */}
+        {/* theme + twitter type */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium mb-1">Theme Color</label>
+          <Field label="Theme Color">
             <input
               type="color"
               className="h-10 w-16 rounded border bg-white/60 dark:bg-neutral-800 p-1"
               value={themeColor}
               onChange={(e) => setThemeColor(e.target.value)}
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Twitter Card Type</label>
+          </Field>
+          <Field label="Twitter Card Type">
             <select
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               value={twitterCard}
@@ -426,32 +381,29 @@ export default function MetaOgGenerator() {
               <option value="summary_large_image">summary_large_image</option>
               <option value="summary">summary</option>
             </select>
-          </div>
+          </Field>
         </div>
 
-        {/* Twitter */}
+        {/* twitter */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium mb-1">Twitter @site</label>
+          <Field label="Twitter @site">
             <input
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               value={twitterSite}
               onChange={(e) => setTwitterSite(e.target.value)}
               placeholder="@toolcite"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Twitter @creator</label>
+          </Field>
+          <Field label="Twitter @creator">
             <input
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               value={twitterCreator}
               onChange={(e) => setTwitterCreator(e.target.value)}
               placeholder="@bharat"
             />
-          </div>
+          </Field>
         </div>
 
-        {/* Actions */}
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => navigator.clipboard.writeText(snippetToShow)}
@@ -472,10 +424,10 @@ export default function MetaOgGenerator() {
       <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
         <h3 className="text-lg font-semibold">Live Previews</h3>
 
-        {/* OG Preview */}
+        {/* OG preview */}
         <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={previewImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
+          <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
           <div className="p-4">
             <div className="text-xs text-gray-500">{url.trim() || "https://example.com"}</div>
             <div className="text-base font-semibold mt-1">{safeTitle || "Your Open Graph Title"}</div>
@@ -486,11 +438,11 @@ export default function MetaOgGenerator() {
           </div>
         </div>
 
-        {/* Twitter Preview */}
+        {/* Twitter preview */}
         <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
-          {(twitterCard === "summary_large_image") && (
+          {twitterCard === "summary_large_image" && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewImage} alt="Twitter card preview image" className="w-full h-40 object-cover" />
+            <img src={resolvedImage} alt="Twitter card preview image" className="w-full h-40 object-cover" />
           )}
           <div className="p-4">
             <div className="text-xs text-gray-500">{url.trim() || "https://example.com"}</div>
@@ -504,78 +456,116 @@ export default function MetaOgGenerator() {
           </div>
         </div>
 
-        {/* Snippet tabs */}
+        {/* snippet tabs */}
         <div>
           <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => setActiveTab("html")}
-              className={`px-3 py-1.5 rounded-md text-sm ${
-                activeTab === "html"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-              }`}
-            >
+            <TabButton onClick={() => setActiveTab("html")} active={activeTab === "html"}>
               HTML &lt;head&gt;
-            </button>
-            <button
-              onClick={() => setActiveTab("next")}
-              className={`px-3 py-1.5 rounded-md text-sm ${
-                activeTab === "next"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-              }`}
-            >
+            </TabButton>
+            <TabButton onClick={() => setActiveTab("next")} active={activeTab === "next"}>
               Next.js metadata
-            </button>
-            <button
-              onClick={() => setActiveTab("basic")}
-              className={`px-3 py-1.5 rounded-md text-sm ${
-                activeTab === "basic"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-              }`}
-            >
+            </TabButton>
+            <TabButton onClick={() => setActiveTab("basic")} active={activeTab === "basic"}>
               Basic &lt;head/&gt;
-            </button>
-            <button
-              onClick={() => setActiveTab("social")}
-              className={`px-3 py-1.5 rounded-md text-sm ${
-                activeTab === "social"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-              }`}
-            >
+            </TabButton>
+            <TabButton onClick={() => setActiveTab("social")} active={activeTab === "social"}>
               Social only
-            </button>
+            </TabButton>
           </div>
           <pre className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto max-h-60">
             {snippetToShow}
           </pre>
         </div>
 
-        {/* SEO / sharing checklist */}
+        {/* checklist */}
         <div className="rounded-xl border bg-white/60 dark:bg-neutral-800 p-4 text-xs space-y-1">
           <p className="font-semibold text-gray-700 dark:text-gray-200">SEO &amp; Sharing Checks</p>
           <p className={safeTitle ? "text-green-600" : "text-red-500"}>
-            • Title {safeTitle ? "present" : "empty"} (≤ {TITLE_MAX} in previews).
+            • Title {safeTitle ? "present (≤ 60 in preview)." : "missing."}
           </p>
           <p className={safeDesc ? "text-green-600" : "text-yellow-500"}>
-            • Description {safeDesc ? "present" : "empty (code filtered?)"}.
+            • Description {safeDesc ? "present." : "empty."}
           </p>
           <p className={url.trim() ? "text-green-600" : "text-yellow-500"}>
             • Canonical URL {url.trim() ? "included." : "missing (optional)."}
           </p>
-          <p className={shouldEmitImage ? "text-green-600" : "text-yellow-500"}>
-            • OG image {shouldEmitImage ? "present." : "preview-only fallback used, not exported."}
-          </p>
-          <p className={twitterCard ? "text-green-600" : "text-yellow-500"}>
-            • Twitter card: {twitterCard}.
-          </p>
+          <p className="text-green-600">• OG image: {resolvedImage} (fallback used if empty).</p>
+          <p className="text-green-600">• Twitter card: {twitterCard}.</p>
           <p className={twitterSite.trim() ? "text-green-600" : "text-yellow-500"}>
-            • Twitter @site / @creator {twitterSite.trim() ? "present." : "missing — optional but useful."}
+            • Twitter @site / @creator {twitterSite.trim() ? "present." : "missing (optional)."}
           </p>
         </div>
       </div>
     </div>
+  );
+}
+
+// small dumb components
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-sm font-medium">{label}</label>
+        {hint ? <span className="text-xs text-gray-500">{hint}</span> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-md text-sm ${
+        active
+          ? "bg-blue-600 text-white"
+          : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
+      }`}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function PresetButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+        active
+          ? "bg-blue-600 text-white border-blue-600"
+          : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
+      }`}
+      aria-pressed={active}
+    >
+      {children}
+    </button>
   );
 }
