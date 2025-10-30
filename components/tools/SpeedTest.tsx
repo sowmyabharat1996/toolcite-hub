@@ -23,24 +23,87 @@ type Result = {
 };
 
 export default function SpeedTest() {
+  // ---------- base state ----------
   const [urlA, setUrlA] = useState("");
   const [urlB, setUrlB] = useState("");
   const [compareMode, setCompareMode] = useState(false);
   const [loading, setLoading] = useState(false);
+
   const [resultA, setResultA] = useState<Result | null>(null);
   const [resultB, setResultB] = useState<Result | null>(null);
   const [history, setHistory] = useState<Result[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const saved = localStorage.getItem("speedTestHistory");
-    if (saved) setHistory(JSON.parse(saved));
-  }, []);
+  // offline banner
+  const [online, setOnline] = useState(true);
 
+  // guard for SSR
+  const isClient = typeof window !== "undefined";
+
+  // ---------- load history + decode URL on mount ----------
+  useEffect(() => {
+    if (!isClient) return;
+
+    // load history (safe)
+    const saved = window.localStorage.getItem("speedTestHistory");
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch {
+        // ignore
+      }
+    }
+
+    // read URL params
+    const sp = new URLSearchParams(window.location.search);
+    const a = sp.get("a");
+    const b = sp.get("b");
+    const cmp = sp.get("compare");
+
+    if (a) setUrlA(a);
+    if (b) {
+      setUrlB(b);
+      setCompareMode(true);
+    }
+    if (cmp === "1") setCompareMode(true);
+
+    // online/offline listeners
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    setOnline(window.navigator.onLine);
+
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, [isClient]);
+
+  // ---------- write URL when user edits ----------
+  useEffect(() => {
+    if (!isClient) return;
+    const sp = new URLSearchParams(window.location.search);
+    if (urlA) sp.set("a", urlA);
+    else sp.delete("a");
+
+    if (urlB) sp.set("b", urlB);
+    else sp.delete("b");
+
+    if (compareMode) sp.set("compare", "1");
+    else sp.delete("compare");
+
+    const next = window.location.pathname + "?" + sp.toString();
+    window.history.replaceState(null, "", next);
+  }, [isClient, urlA, urlB, compareMode]);
+
+  // ---------- helpers ----------
   function saveHistory(newResult: Result) {
-    const updated = [newResult, ...history].slice(0, 5);
+    const updated = [newResult, ...(history || [])].slice(0, 5);
     setHistory(updated);
-    localStorage.setItem("speedTestHistory", JSON.stringify(updated));
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("speedTestHistory", JSON.stringify(updated));
+    }
   }
 
   async function runTestFor(url: string): Promise<Result | null> {
@@ -48,20 +111,61 @@ export default function SpeedTest() {
       let testUrl = url.trim();
       if (!/^https?:\/\//i.test(testUrl)) testUrl = "https://" + testUrl;
 
+      // clear previous timings to reduce noise
+      if (typeof performance !== "undefined") {
+        performance.clearResourceTimings?.();
+      }
+
       const t0 = performance.now();
       await fetch(testUrl, { mode: "no-cors" });
       const t1 = performance.now();
 
-      const timing = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+      const nav = performance.getEntriesByType("navigation")[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+      const res = performance.getEntriesByName(testUrl)[0] as
+        | PerformanceResourceTiming
+        | undefined;
+
+      const dns =
+        res?.domainLookupEnd && res?.domainLookupStart
+          ? res.domainLookupEnd - res.domainLookupStart
+          : nav
+          ? nav.domainLookupEnd - nav.domainLookupStart
+          : 0;
+
+      const connect =
+        res?.connectEnd && res?.connectStart
+          ? res.connectEnd - res.connectStart
+          : nav
+          ? nav.connectEnd - nav.connectStart
+          : 0;
+
+      const ttfb =
+        res?.responseStart && res?.requestStart
+          ? res.responseStart - res.requestStart
+          : nav
+          ? nav.responseStart - nav.requestStart
+          : (t1 - t0) / 4;
+
+      const domLoad =
+        nav?.domContentLoadedEventEnd && nav?.startTime !== undefined
+          ? nav.domContentLoadedEventEnd - nav.startTime
+          : 0;
+
+      const totalLoad =
+        nav?.loadEventEnd && nav?.startTime !== undefined
+          ? nav.loadEventEnd - nav.startTime
+          : t1 - t0;
 
       return {
         url: testUrl,
         timestamp: new Date().toLocaleTimeString(),
-        dns: timing?.domainLookupEnd - timing?.domainLookupStart || 0,
-        connect: timing?.connectEnd - timing?.connectStart || 0,
-        ttfb: timing?.responseStart - timing?.requestStart || (t1 - t0) / 4,
-        domLoad: timing?.domContentLoadedEventEnd - timing?.startTime || 0,
-        totalLoad: timing?.loadEventEnd - timing?.startTime || (t1 - t0),
+        dns,
+        connect,
+        ttfb,
+        domLoad,
+        totalLoad,
         fetchTime: t1 - t0,
       };
     } catch {
@@ -74,7 +178,6 @@ export default function SpeedTest() {
       setError("Please enter a valid URL.");
       return;
     }
-
     setLoading(true);
     setError(null);
     setResultA(null);
@@ -84,6 +187,8 @@ export default function SpeedTest() {
     if (resA) {
       setResultA(resA);
       saveHistory(resA);
+    } else {
+      setError("Could not test that URL from your browser.");
     }
 
     setLoading(false);
@@ -94,17 +199,17 @@ export default function SpeedTest() {
       setError("Please enter both URLs to compare.");
       return;
     }
-
     setLoading(true);
     setError(null);
     setResultA(null);
     setResultB(null);
 
-    const resA = await runTestFor(urlA);
-    const resB = await runTestFor(urlB);
+    const [resA, resB] = await Promise.all([runTestFor(urlA), runTestFor(urlB)]);
 
     setResultA(resA);
     setResultB(resB);
+
+    if (!resA && !resB) setError("Could not test these URLs from your browser.");
 
     if (resA) saveHistory(resA);
     if (resB) saveHistory(resB);
@@ -117,7 +222,48 @@ export default function SpeedTest() {
     return `${ms.toFixed(0)} ms`;
   }
 
-  const connection = (navigator as any)?.connection || {};
+  // share current state
+  async function shareCurrent() {
+    if (typeof window === "undefined") return;
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Website Speed Test", url });
+        return;
+      }
+    } catch {
+      // fallback to clipboard
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Link copied to clipboard.");
+    } catch {
+      alert("Unable to share. Copy the URL from the address bar.");
+    }
+  }
+
+  // export JSON
+  function exportJSON() {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      mode: compareMode ? "compare" : "single",
+      resultA,
+      resultB,
+      history,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const dl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = dl;
+    a.download = "website-speed-test.json";
+    a.click();
+    URL.revokeObjectURL(dl);
+  }
+
+  const connection =
+    (typeof navigator !== "undefined" && (navigator as any).connection) || {};
 
   const compareData =
     resultA && resultB
@@ -132,11 +278,19 @@ export default function SpeedTest() {
 
   return (
     <div className="max-w-5xl mx-auto p-4">
+      {/* offline banner */}
+      {!online && (
+        <div className="mb-3 rounded-md bg-yellow-100 text-yellow-900 text-xs px-3 py-2">
+          Offline: tests may fail for remote sites; your local history is still saved.
+        </div>
+      )}
+
       <h1 className="text-2xl font-bold mb-2">
         Website Speed Test – Free Online Tool
       </h1>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Analyze website load performance, TTFB, and connection metrics — all measured locally in your browser.
+        Analyze website load performance, TTFB, and connection metrics — all measured
+        locally in your browser.
       </p>
 
       {/* Compare Mode Toggle */}
@@ -145,7 +299,8 @@ export default function SpeedTest() {
           <input
             type="checkbox"
             checked={compareMode}
-            onChange={() => setCompareMode(!compareMode)}
+            onChange={() => setCompareMode((v) => !v)}
+            aria-label="Enable compare mode"
           />
           <span className="text-sm font-medium">🔄 Enable Compare Mode</span>
         </label>
@@ -160,6 +315,7 @@ export default function SpeedTest() {
         <input
           type="text"
           placeholder="https://example.com"
+          aria-label="Primary website URL"
           value={urlA}
           onChange={(e) => setUrlA(e.target.value)}
           className="px-4 py-2 border rounded-md dark:bg-neutral-900 dark:border-neutral-700"
@@ -168,6 +324,7 @@ export default function SpeedTest() {
           <input
             type="text"
             placeholder="https://compare.com"
+            aria-label="Compare website URL"
             value={urlB}
             onChange={(e) => setUrlB(e.target.value)}
             className="px-4 py-2 border rounded-md dark:bg-neutral-900 dark:border-neutral-700"
@@ -175,13 +332,33 @@ export default function SpeedTest() {
         )}
       </div>
 
-      <button
-        onClick={compareMode ? runCompareTest : runTest}
-        disabled={loading || !urlA || (compareMode && !urlB)}
-        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loading ? "Testing..." : compareMode ? "Run Comparison" : "Run Test"}
-      </button>
+      {/* action buttons */}
+      <div className="flex flex-wrap gap-3 mb-3">
+        <button
+          onClick={compareMode ? runCompareTest : runTest}
+          disabled={loading || !urlA || (compareMode && !urlB)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "Testing..." : compareMode ? "Run Comparison" : "Run Test"}
+        </button>
+
+        {(resultA || resultB) && (
+          <>
+            <button
+              onClick={exportJSON}
+              className="px-4 py-2 bg-white/80 dark:bg-neutral-900 border rounded-md text-sm hover:bg-white"
+            >
+              Export JSON
+            </button>
+            <button
+              onClick={shareCurrent}
+              className="px-4 py-2 bg-white/80 dark:bg-neutral-900 border rounded-md text-sm hover:bg-white"
+            >
+              Share Link
+            </button>
+          </>
+        )}
+      </div>
 
       {error && (
         <div className="p-3 mt-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded-md">
@@ -203,10 +380,22 @@ export default function SpeedTest() {
                     <h2 className="text-lg font-semibold mb-2">{r.url}</h2>
                     <table className="w-full text-sm border-collapse">
                       <tbody>
-                        <tr><td className="py-1 text-gray-600">TTFB:</td><td>{formatMs(r.ttfb)}</td></tr>
-                        <tr><td className="py-1 text-gray-600">DOM Loaded:</td><td>{formatMs(r.domLoad)}</td></tr>
-                        <tr><td className="py-1 text-gray-600">Total Load:</td><td>{formatMs(r.totalLoad)}</td></tr>
-                        <tr><td className="py-1 text-gray-600">Fetch Time:</td><td>{formatMs(r.fetchTime)}</td></tr>
+                        <tr>
+                          <td className="py-1 text-gray-600">TTFB:</td>
+                          <td>{formatMs(r.ttfb)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-1 text-gray-600">DOM Loaded:</td>
+                          <td>{formatMs(r.domLoad)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-1 text-gray-600">Total Load:</td>
+                          <td>{formatMs(r.totalLoad)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-1 text-gray-600">Fetch Time:</td>
+                          <td>{formatMs(r.fetchTime)}</td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -218,7 +407,7 @@ export default function SpeedTest() {
               )}
             </div>
 
-            {/* ✅ Comparison Summary */}
+            {/* Comparison Summary */}
             {resultA && resultB && (
               <div className="mt-8">
                 <h3 className="text-lg font-semibold mb-2">Comparison Summary</h3>
@@ -239,9 +428,13 @@ export default function SpeedTest() {
                             if (a === b)
                               return <span className="text-gray-500">Same speed</span>;
                             return a < b ? (
-                              <span className="text-green-600 font-semibold">Site A faster</span>
+                              <span className="text-green-600 font-semibold">
+                                Site A faster
+                              </span>
                             ) : (
-                              <span className="text-red-500 font-semibold">Site B faster</span>
+                              <span className="text-red-500 font-semibold">
+                                Site B faster
+                              </span>
                             );
                           })()}
                         </td>
@@ -255,15 +448,25 @@ export default function SpeedTest() {
             {/* Comparison Chart */}
             {resultA && resultB && (
               <div className="mt-8">
-                <h3 className="text-lg font-semibold mb-2">Visual Comparison (A vs B)</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  Visual Comparison (A vs B)
+                </h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={compareData}>
                     <XAxis dataKey="metric" />
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="siteA" fill="#3b82f6" name={`Site A (${resultA.url})`} />
-                    <Bar dataKey="siteB" fill="#f97316" name={`Site B (${resultB.url})`} />
+                    <Bar
+                      dataKey="siteA"
+                      fill="#3b82f6"
+                      name={`Site A (${resultA.url})`}
+                    />
+                    <Bar
+                      dataKey="siteB"
+                      fill="#f97316"
+                      name={`Site B (${resultB.url})`}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -276,10 +479,22 @@ export default function SpeedTest() {
             <h2 className="text-lg font-semibold mb-2">{resultA.url}</h2>
             <table className="w-full text-sm border-collapse">
               <tbody>
-                <tr><td className="py-1 text-gray-600">TTFB:</td><td>{formatMs(resultA.ttfb)}</td></tr>
-                <tr><td className="py-1 text-gray-600">DOM Loaded:</td><td>{formatMs(resultA.domLoad)}</td></tr>
-                <tr><td className="py-1 text-gray-600">Total Load:</td><td>{formatMs(resultA.totalLoad)}</td></tr>
-                <tr><td className="py-1 text-gray-600">Fetch Time:</td><td>{formatMs(resultA.fetchTime)}</td></tr>
+                <tr>
+                  <td className="py-1 text-gray-600">TTFB:</td>
+                  <td>{formatMs(resultA.ttfb)}</td>
+                </tr>
+                <tr>
+                  <td className="py-1 text-gray-600">DOM Loaded:</td>
+                  <td>{formatMs(resultA.domLoad)}</td>
+                </tr>
+                <tr>
+                  <td className="py-1 text-gray-600">Total Load:</td>
+                  <td>{formatMs(resultA.totalLoad)}</td>
+                </tr>
+                <tr>
+                  <td className="py-1 text-gray-600">Fetch Time:</td>
+                  <td>{formatMs(resultA.fetchTime)}</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -287,13 +502,15 @@ export default function SpeedTest() {
       )}
 
       {/* History Chart */}
-      {history.length > 0 && (
+      {history.length > 0 ? (
         <div className="mt-10">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-lg font-semibold">Recent Performance Summary</h3>
             <button
               onClick={() => {
-                localStorage.removeItem("speedTestHistory");
+                if (typeof window !== "undefined") {
+                  window.localStorage.removeItem("speedTestHistory");
+                }
                 setHistory([]);
               }}
               className="text-xs text-red-500 hover:underline"
@@ -301,6 +518,24 @@ export default function SpeedTest() {
               Clear History
             </button>
           </div>
+
+          {/* quick replay buttons */}
+          <ul className="mt-2 flex gap-2 flex-wrap text-xs">
+            {history.map((h, idx) => (
+              <li key={idx}>
+                <button
+                  onClick={() => {
+                    setUrlA(h.url);
+                    setResultA(h);
+                    setCompareMode(false);
+                  }}
+                  className="px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-neutral-800"
+                >
+                  {h.timestamp} · {h.url.replace(/^https?:\/\//, "")}
+                </button>
+              </li>
+            ))}
+          </ul>
 
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={history}>
@@ -314,6 +549,10 @@ export default function SpeedTest() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      ) : (
+        <p className="mt-10 text-xs text-gray-400">
+          Run at least one test to see recent performance history.
+        </p>
       )}
 
       <div className="mt-4 text-xs text-gray-500">
