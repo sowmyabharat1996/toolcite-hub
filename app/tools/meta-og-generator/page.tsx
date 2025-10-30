@@ -2,13 +2,10 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v3 (single Share btn)
- * - presets ✅
- * - snippet variants + SEO checks ✅
- * - URL-state sharing + copy/share ✅
+ * META-OG-GENERATOR v2 (sentinel OK)
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 const TITLE_MAX = 60;
 const DESC_MAX = 160;
@@ -54,7 +51,7 @@ const PRESETS: Record<
   },
 };
 
-/* ---------- helpers ---------- */
+/* ---------------- helpers ---------------- */
 
 function stripHtml(s: string) {
   return s.replace(/<[^>]*>/g, " ");
@@ -87,7 +84,7 @@ function sanitizeText(raw: string, max: number) {
   s = stripCodeyStuff(s);
   s = s.replace(/\s+/g, " ").trim();
   if (looksLikeCode(raw)) {
-    // user pasted code → don’t leak to preview
+    // we hide code from previews/snippets
     return "";
   }
   if (s.length > max) s = s.slice(0, max);
@@ -133,10 +130,9 @@ function download(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-/* ---------- main page ---------- */
+/* ---------------- main ---------------- */
 
 export default function Page() {
-  // base from presets
   const [preset, setPreset] = useState<PresetId>("tool");
   const p = PRESETS[preset];
 
@@ -145,7 +141,7 @@ export default function Page() {
   const [url, setUrl] = useState(p.url);
   const [siteName, setSiteName] = useState(p.siteName);
   const [author, setAuthor] = useState(p.author);
-  const [image, setImage] = useState(""); // empty → show fallback only in preview/snippet
+  const [image, setImage] = useState(""); // keep empty, we show fallback only in preview/snippet
 
   const [themeColor, setThemeColor] = useState("#0ea5e9");
   const [twitterCard, setTwitterCard] =
@@ -154,95 +150,16 @@ export default function Page() {
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
   const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
 
-  // to avoid URL thrash on first render
-  const hydratedRef = useRef(false);
-
-  /* 1) READ FROM URL ONCE */
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const sp = new URLSearchParams(window.location.search);
-
-    const qpPreset = sp.get("preset") as PresetId | null;
-    const qpTitle = sp.get("title");
-    const qpDesc = sp.get("desc");
-    const qpUrl = sp.get("url");
-    const qpSite = sp.get("site");
-    const qpAuthor = sp.get("author");
-    const qpImg = sp.get("img");
-    const qpTheme = sp.get("theme");
-    const qpTwCard = sp.get("twc") as "summary" | "summary_large_image" | null;
-    const qpTwSite = sp.get("tws");
-    const qpTwCreator = sp.get("twcr");
-
-    if (qpPreset && PRESETS[qpPreset]) {
-      const base = PRESETS[qpPreset];
-      setPreset(qpPreset);
-      setTitleInput(qpTitle ?? base.title);
-      setDescInput(qpDesc ?? base.desc);
-      setUrl(qpUrl ?? base.url);
-      setSiteName(qpSite ?? base.siteName);
-      setAuthor(qpAuthor ?? base.author);
-    } else {
-      if (qpTitle) setTitleInput(qpTitle);
-      if (qpDesc) setDescInput(qpDesc);
-      if (qpUrl) setUrl(qpUrl);
-      if (qpSite) setSiteName(qpSite);
-      if (qpAuthor) setAuthor(qpAuthor);
-    }
-
-    if (qpImg) setImage(qpImg);
-    if (qpTheme) setThemeColor(qpTheme);
-    if (qpTwCard) setTwitterCard(qpTwCard);
-    if (qpTwSite) setTwitterSite(qpTwSite);
-    if (qpTwCreator) setTwitterCreator(qpTwCreator);
-
-    hydratedRef.current = true;
-  }, []);
-
-  /* 2) WRITE TO URL WHEN STATE CHANGES */
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!hydratedRef.current) return;
-
-    const sp = new URLSearchParams();
-
-    if (preset !== "tool") sp.set("preset", preset);
-    if (titleInput && titleInput !== PRESETS[preset].title) sp.set("title", titleInput);
-    if (descInput && descInput !== PRESETS[preset].desc) sp.set("desc", descInput);
-    if (url && url !== PRESETS[preset].url) sp.set("url", url);
-    if (siteName && siteName !== PRESETS[preset].siteName) sp.set("site", siteName);
-    if (author && author !== PRESETS[preset].author) sp.set("author", author);
-    if (image) sp.set("img", image);
-    if (themeColor !== "#0ea5e9") sp.set("theme", themeColor);
-    if (twitterCard !== "summary_large_image") sp.set("twc", twitterCard);
-    if (twitterSite !== "@toolcite") sp.set("tws", twitterSite);
-    if (twitterCreator !== "@bharat") sp.set("twcr", twitterCreator);
-
-    const qs = sp.toString();
-    const next = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
-    window.history.replaceState(null, "", next);
-  }, [
-    preset,
-    titleInput,
-    descInput,
-    url,
-    siteName,
-    author,
-    image,
-    themeColor,
-    twitterCard,
-    twitterSite,
-    twitterCreator,
-  ]);
-
-  /* 3) SANITIZED VERSIONS */
+  // sanitized for actual meta tags / previews
   const safeTitle = sanitizeText(titleInput, TITLE_MAX);
   const safeDesc = sanitizeText(descInput, DESC_MAX);
+
+  // raw presence (for checks) 👇
   const hasDescRaw = descInput.trim().length > 0;
   const descFilteredOut = hasDescRaw && !safeDesc;
+
   const resolvedImage = absolutize(image || FALLBACK_OG);
 
-  /* change preset from UI */
   function applyPreset(id: PresetId) {
     const pp = PRESETS[id];
     setPreset(id);
@@ -251,9 +168,9 @@ export default function Page() {
     setUrl(pp.url);
     setSiteName(pp.siteName);
     setAuthor(pp.author);
+    // keep image field as user typed
   }
 
-  /* 4) BUILD SNIPPET */
   const htmlHead = useMemo(() => {
     const lines: string[] = [];
     if (safeTitle) lines.push(`<title>${escapeHtml(safeTitle)}</title>`);
@@ -261,17 +178,20 @@ export default function Page() {
     if (themeColor) lines.push(meta("name", "theme-color", themeColor));
     if (url) lines.push(`<link rel="canonical" href="${escapeAttr(url)}" />`);
 
+    // OG
     if (safeTitle) lines.push(meta("property", "og:title", safeTitle));
     if (safeDesc) lines.push(meta("property", "og:description", safeDesc));
     if (url) lines.push(meta("property", "og:url", url));
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
     lines.push(meta("property", "og:type", "website"));
-    // always show fallback so preview never breaks
+
+    // image (Option A → always emit)
     lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("property", "og:image:width", "1200"));
     lines.push(meta("property", "og:image:height", "630"));
     lines.push(meta("property", "og:image:alt", safeTitle || "Open Graph image"));
 
+    // Twitter
     lines.push(meta("name", "twitter:card", twitterCard));
     if (safeTitle) lines.push(meta("name", "twitter:title", safeTitle));
     if (safeDesc) lines.push(meta("name", "twitter:description", safeDesc));
@@ -298,67 +218,36 @@ export default function Page() {
     author,
   ]);
 
-  /* 5) CHECKS */
+  // ✅ checks now use raw + sanitized
   const checks = [
-    safeTitle ? { ok: true, text: "Title OK (≤ 60)." } : { ok: false, text: "Title empty." },
+    safeTitle
+      ? { ok: true, text: "Title OK (≤ 60)." }
+      : { ok: false, text: "Title empty." },
+
+    // description logic:
     !hasDescRaw
       ? { ok: false, text: "Description empty." }
       : descFilteredOut
       ? {
           ok: false,
-          text: "Description looked like code → tweak wording.",
+          text: "Description present but filtered (looked like code / JSX) — tweak wording.",
         }
       : { ok: true, text: "Description OK (≤ 160)." },
+
     url.startsWith("http")
       ? { ok: true, text: "Canonical URL absolute." }
       : { ok: false, text: "Canonical URL missing/relative." },
+
     { ok: true, text: "OG image present (custom or fallback)." },
     { ok: true, text: `Twitter card: ${twitterCard}.` },
     { ok: !!twitterSite, text: `@site: ${twitterSite || "—"}` },
     { ok: !!twitterCreator || !!author, text: `@creator/author present.` },
   ];
 
-  /* 6) SHARE HANDLER (single) */
-  async function shareCurrent() {
-    if (typeof window === "undefined") return;
-    const link = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: safeTitle || "Meta & OG Generator",
-          url: link,
-        });
-        return;
-      }
-    } catch {
-      // ignore share abort
-    }
-    try {
-      await navigator.clipboard.writeText(link);
-      alert("Share link copied.");
-    } catch {
-      alert("Unable to copy link.");
-    }
-  }
-
   return (
     <main className="max-w-6xl mx-auto px-4 py-8">
-      {/* top bar with SINGLE share */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-semibold tracking-tight">ToolCite Hub</h1>
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Smart • Fast • Shareable</p>
-          <button
-            onClick={shareCurrent}
-            className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-          >
-            Share
-          </button>
-        </div>
-      </div>
-
       <div className="grid gap-6 md:grid-cols-2">
-        {/* LEFT PANEL */}
+        {/* LEFT */}
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
           <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
@@ -392,7 +281,7 @@ export default function Page() {
             <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
           </Field>
 
-          {/* desc */}
+          {/* description */}
           <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
             <textarea
               rows={3}
@@ -405,7 +294,7 @@ export default function Page() {
             <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
           </Field>
 
-          {/* url */}
+          {/* canonical */}
           <Field label="Canonical URL">
             <input
               value={url}
@@ -443,12 +332,11 @@ export default function Page() {
               placeholder="/og-default.png"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave this empty → preview &amp; snippet use <code>/og-default.png</code>. We don’t
-              pre-fill the field.
+              Leave this empty → preview + snippet use <code>/og-default.png</code>. We don’t pre-fill.
             </p>
           </Field>
 
-          {/* theme + twitter card */}
+          {/* theme + twitter type */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Theme Color">
               <input
@@ -506,11 +394,11 @@ export default function Page() {
           </div>
         </div>
 
-        {/* RIGHT PANEL */}
+        {/* RIGHT */}
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
           <h3 className="text-lg font-semibold">Live Previews</h3>
 
-          {/* OG preview */}
+          {/* OG card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
@@ -524,7 +412,7 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Twitter preview */}
+          {/* Twitter card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {twitterCard === "summary_large_image" && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -635,7 +523,7 @@ export default function Page() {
   );
 }
 
-/* ---------- tiny helpers ---------- */
+/* ------- small UI helpers ------- */
 
 function Field({
   label,
