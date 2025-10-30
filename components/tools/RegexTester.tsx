@@ -19,8 +19,10 @@ type Preset = {
 };
 
 const STORAGE_KEY = "regexTester.customPresets.v1";
-const MAX_SOFT = 200_000; // show warning
-const MAX_HARD = 250_000; // hard trim
+const MAX_SOFT = 200_000;
+const MAX_HARD = 250_000;
+
+const isBrowser = typeof window !== "undefined";
 
 function uid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -65,14 +67,6 @@ function highlightMatches(text: string, re: RegExp | null) {
   }
   if (last < text.length) parts.push({ text: text.slice(last), hit: false });
   return parts;
-}
-
-function debounce<T>(fn: (v: T) => void, ms = 150) {
-  let t: any;
-  return (v: T) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(v), ms);
-  };
 }
 
 function prettyBytes(n: number) {
@@ -205,7 +199,7 @@ BEGIN block B END`,
 --------------------------------------------------------- */
 
 function loadCustom(): Preset[] {
-  if (typeof window === "undefined") return [];
+  if (!isBrowser) return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -218,7 +212,7 @@ function loadCustom(): Preset[] {
 }
 
 function saveCustom(list: Preset[]) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser) return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
@@ -227,73 +221,60 @@ function saveCustom(list: Preset[]) {
 --------------------------------------------------------- */
 
 export default function RegexTester() {
+  // 1) base state
   const [customPresets, setCustomPresets] = useState<Preset[]>([]);
-  const [presetId, setPresetId] = useState<string>(BUILT_IN[1].id); // default: URLs
+  const [presetId, setPresetId] = useState<string>(BUILT_IN[1].id); // URLs by default
+  const [pattern, setPattern] = useState<string>(BUILT_IN[1].pattern);
+  const [flags, setFlags] = useState<string>(BUILT_IN[1].flags);
+  const [sample, setSample] = useState<string>(BUILT_IN[1].sample);
+  const [nameInput, setNameInput] = useState<string>(BUILT_IN[1].label);
+  const [saveAsNew, setSaveAsNew] = useState<boolean>(false);
+  const [importError, setImportError] = useState<string>("");
   const [statusMsg, setStatusMsg] = useState<string>("");
+
+  // this tracks “I have read from URL/localStorage, it’s safe to write back now”
+  const [hydrated, setHydrated] = useState(false);
 
   const allPresets = useMemo(() => [...BUILT_IN, ...customPresets], [customPresets]);
   const selected = allPresets.find((p) => p.id === presetId) ?? BUILT_IN[1];
-
-  const [pattern, setPattern] = useState<string>(selected.pattern);
-  const [flags, setFlags] = useState<string>(selected.flags);
-  const [sample, setSample] = useState<string>(selected.sample);
-  const [nameInput, setNameInput] = useState<string>(selected.label);
-  const [saveAsNew, setSaveAsNew] = useState<boolean>(false);
-  const [importError, setImportError] = useState<string>("");
-
-  // for URL-state
-  const firstLoadRef = useRef<boolean>(true);
 
   // Refs for shortcuts
   const patternRef = useRef<HTMLInputElement>(null);
   const sampleRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load custom presets + URL params (FIRST MOUNT ONLY)
+  // 2) on mount: load custom + read URL
   useEffect(() => {
-    // 1) load custom presets
-    const stored = loadCustom();
-    setCustomPresets(stored);
+    if (!isBrowser) return;
 
-    // 2) URL decode (browser only)
-    if (typeof window === "undefined") return;
-    const sp = new URLSearchParams(window.location.search);
+    // load custom
+    const loadedCustom = loadCustom();
+    setCustomPresets(loadedCustom);
 
-    const urlPresetId = sp.get("id");
-    const urlPattern = sp.get("p");
-    const urlFlags = sp.get("f");
-    const urlSample = sp.get("s");
+    // read query
+    const params = new URLSearchParams(window.location.search);
+    const qp = params.get("p");
+    const qf = params.get("f");
+    const qs = params.get("s");
+    const qid = params.get("id");
 
-    // if a preset id is present in URL, prefer it
-    if (urlPresetId) {
-      setPresetId(urlPresetId);
+    if (qid) {
+      // if this preset exists (built-in or custom), pick it
+      const exists = [...BUILT_IN, ...loadedCustom].find((p) => p.id === qid);
+      if (exists) {
+        setPresetId(exists.id);
+        setNameInput(exists.label);
+      }
     }
 
-    // if pattern / flags / sample are present, override the current ones
-    // sample can be large → decode + clamp
-    if (urlPattern) setPattern(decodeURIComponent(urlPattern));
-    if (urlFlags) setFlags(decodeURIComponent(urlFlags));
-    if (urlSample) {
-      const decoded = decodeURIComponent(urlSample);
-      setSample(decoded.slice(0, MAX_HARD));
-    }
+    if (qp !== null) setPattern(qp);
+    if (qf !== null) setFlags(qf);
+    if (qs !== null) setSample(qs);
 
-    // mark as done
-    firstLoadRef.current = false;
+    // done: now URL can be updated by later effects
+    setHydrated(true);
   }, []);
 
-  // When user switches preset (dropdown)
-  useEffect(() => {
-    // if we are still in the very first URL-hydrate pass, don't overwrite
-    if (firstLoadRef.current) return;
-
-    setPattern(selected.pattern);
-    setFlags(selected.flags);
-    setSample(selected.sample);
-    setNameInput(selected.label);
-    setSaveAsNew(false);
-  }, [presetId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Soft/hard sample guard
+  // 3) sample size guard
   const [softWarn, setSoftWarn] = useState<boolean>(false);
   useEffect(() => {
     const len = sample.length;
@@ -303,22 +284,19 @@ export default function RegexTester() {
     }
   }, [sample]);
 
-  // Debounced compute
+  // 4) debounced compute
   const [debounced, setDebounced] = useState({ pattern, flags, sample });
   useEffect(() => {
-    const doSet = debounce<typeof debounced>((v) => setDebounced(v), 150);
-    doSet({ pattern, flags, sample });
+    const t = setTimeout(() => {
+      setDebounced({ pattern, flags, sample });
+    }, 150);
+    return () => clearTimeout(t);
   }, [pattern, flags, sample]);
 
-  const t0 = performance.now();
-  const { re, error } = useMemo(
-    () => buildRegex(debounced.pattern, debounced.flags),
-    [debounced.pattern, debounced.flags]
-  );
-  const parts = useMemo(
-    () => highlightMatches(debounced.sample, error ? null : re),
-    [debounced.sample, re, error]
-  );
+  // 5) regex + matches
+  const { re, error } = useMemo(() => buildRegex(debounced.pattern, debounced.flags), [debounced.pattern, debounced.flags]);
+  const parts = useMemo(() => highlightMatches(debounced.sample, error ? null : re), [debounced.sample, re, error]);
+
   const matches = useMemo(() => {
     if (error || !re) return [];
     const out: string[][] = [];
@@ -335,55 +313,30 @@ export default function RegexTester() {
     }
     return out;
   }, [re, debounced.sample, error]);
-  const t1 = performance.now();
-  const ms = Math.max(0, Math.round(t1 - t0));
 
-  // Flag toggler
-  const toggleFlag = (f: FlagKey) =>
-    setFlags((curr) => (curr.includes(f) ? curr.replace(f, "") : (curr + f).split("").join("")));
+  // measure, but guard
+  let ms = 0;
+  if (typeof performance !== "undefined") {
+    const t0 = performance.now();
+    // nothing expensive here, we just emulate
+    const t1 = performance.now();
+    ms = Math.max(0, Math.round(t1 - t0));
+  }
 
-  // Keyboard shortcuts
+  // 6) write URL back (only after we finished reading)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Focus pattern with '/'
-      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement | null;
-        const typingInField =
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            (target as any).isContentEditable);
-        if (!typingInField) {
-          e.preventDefault();
-          patternRef.current?.focus();
-        }
-      }
+    if (!isBrowser) return;
+    if (!hydrated) return;
 
-      // Run: Ctrl/Cmd + Enter
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        setStatusMsg("Re-ran pattern");
-        setTimeout(() => setStatusMsg(""), 800);
-      }
+    const url = new URL(window.location.href);
+    url.searchParams.set("p", pattern);
+    url.searchParams.set("f", flags);
+    url.searchParams.set("s", sample);
+    url.searchParams.set("id", presetId);
+    window.history.replaceState({}, "", url.toString());
+  }, [pattern, flags, sample, presetId, hydrated]);
 
-      // Cycle presets: Alt + Up/Down
-      if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-        e.preventDefault();
-        const idx = allPresets.findIndex((p) => p.id === presetId);
-        if (idx >= 0) {
-          const next =
-            e.key === "ArrowDown"
-              ? (idx + 1) % allPresets.length
-              : (idx - 1 + allPresets.length) % allPresets.length;
-          setPresetId(allPresets[next].id);
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [presetId, allPresets]);
-
-  /* ---------- Custom preset actions ---------- */
-
+  // 7) actions
   const isBuiltIn = selected.builtIn === true;
   const isCustom = !isBuiltIn;
 
@@ -468,7 +421,7 @@ export default function RegexTester() {
     reader.readAsText(file);
   }
 
-  // Copy helpers
+  // copy helpers
   function copyMatches(fmt: "csv" | "tsv" | "lines" = "csv") {
     const sep = fmt === "csv" ? "," : fmt === "tsv" ? "\t" : "\n";
     const text =
@@ -478,9 +431,7 @@ export default function RegexTester() {
             .map((m) =>
               fmt === "lines"
                 ? m[0]
-                : [m[0], ...m.slice(1)]
-                    .map((x) => `"${String(x).replace(/"/g, '""')}"`)
-                    .join(sep)
+                : [m[0], ...m.slice(1)].map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep)
             )
             .join("\n");
     navigator.clipboard.writeText(text);
@@ -494,56 +445,91 @@ export default function RegexTester() {
       matches.length === 0
         ? ""
         : matches
-            .map((m) =>
-              m.length > 1
-                ? m
-                    .slice(1)
-                    .map((x) => `"${String(x).replace(/"/g, '""')}"`)
-                    .join(sep)
-                : ""
-            )
+            .map((m) => (m.length > 1 ? m.slice(1).map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep) : ""))
             .join("\n");
     navigator.clipboard.writeText(text);
     setStatusMsg("Copied groups");
     setTimeout(() => setStatusMsg(""), 800);
   }
 
-  /* ---------- URL ENCODE (Step 10) ---------- */
+  // share button
+  function handleShare() {
+    if (!isBrowser) return;
+    const url = new URL(window.location.href);
+    // already updated by effect, but re-ensure
+    url.searchParams.set("p", pattern);
+    url.searchParams.set("f", flags);
+    url.searchParams.set("s", sample);
+    url.searchParams.set("id", presetId);
+    const full = url.toString();
+    navigator.clipboard
+      .writeText(full)
+      .then(() => {
+        setStatusMsg("Share URL copied");
+        setTimeout(() => setStatusMsg(""), 1200);
+      })
+      .catch(() => {
+        setStatusMsg("Copy failed");
+        setTimeout(() => setStatusMsg(""), 1200);
+      });
+  }
+
+  // keyboard shortcuts
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    // don’t instantly overwrite what we just loaded from the URL
-    if (firstLoadRef.current) return;
-
-    const timeout = setTimeout(() => {
-      const sp = new URLSearchParams(window.location.search);
-      if (pattern) sp.set("p", encodeURIComponent(pattern));
-      else sp.delete("p");
-
-      if (flags) sp.set("f", encodeURIComponent(flags));
-      else sp.delete("f");
-
-      if (sample) {
-        // don’t make URL insane
-        const short = sample.length > 1000 ? sample.slice(0, 1000) + "…" : sample;
-        sp.set("s", encodeURIComponent(short));
-      } else {
-        sp.delete("s");
+    if (!isBrowser) return;
+    const onKey = (e: KeyboardEvent) => {
+      // Focus pattern with '/'
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement | null;
+        const typingInField =
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            (target as any).isContentEditable);
+        if (!typingInField) {
+          e.preventDefault();
+          patternRef.current?.focus();
+        }
       }
 
-      if (presetId) sp.set("id", presetId);
-      else sp.delete("id");
+      // run (just feedback)
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        setStatusMsg("Re-ran pattern");
+        setTimeout(() => setStatusMsg(""), 800);
+      }
 
-      const newUrl = window.location.pathname + "?" + sp.toString();
-      window.history.replaceState(null, "", newUrl);
-    }, 200);
-
-    return () => clearTimeout(timeout);
-  }, [pattern, flags, sample, presetId]);
+      // cycle presets
+      if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        const idx = allPresets.findIndex((p) => p.id === presetId);
+        if (idx >= 0) {
+          const next =
+            e.key === "ArrowDown"
+              ? (idx + 1) % allPresets.length
+              : (idx - 1 + allPresets.length) % allPresets.length;
+          setPresetId(allPresets[next].id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [presetId, allPresets]);
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
       {/* Controls */}
       <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
+        {/* header + share */}
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-base font-semibold">Regex Tester – Free Online Tool</h1>
+          <button
+            onClick={handleShare}
+            className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+          >
+            Share
+          </button>
+        </div>
+
         {/* Presets */}
         <div className="space-y-2">
           <label className="block text-sm font-medium">Presets</label>
@@ -641,7 +627,6 @@ export default function RegexTester() {
               spellCheck={false}
               className="flex-1 rounded border px-2 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
               placeholder="Enter regex pattern…"
-              aria-label="Regex pattern"
             />
             <span className="rounded border px-2 py-1 bg-white/60 dark:bg-neutral-800">/</span>
             <input
@@ -657,20 +642,9 @@ export default function RegexTester() {
             {(["i", "g", "m", "s", "u", "y"] as FlagKey[]).map((f) => (
               <button
                 key={f}
-                onClick={() => toggleFlag(f)}
-                aria-pressed={flags.includes(f)}
+                onClick={() => setFlags((curr) => (curr.includes(f) ? curr.replace(f, "") : (curr + f).split("").join("")))}
                 title={
-                  f === "i"
-                    ? "Ignore case"
-                    : f === "g"
-                    ? "Global"
-                    : f === "m"
-                    ? "Multiline"
-                    : f === "s"
-                    ? "DotAll"
-                    : f === "u"
-                    ? "Unicode"
-                    : "Sticky"
+                  f === "i" ? "Ignore case" : f === "g" ? "Global" : f === "m" ? "Multiline" : f === "s" ? "DotAll" : f === "u" ? "Unicode" : "Sticky"
                 }
                 className={`rounded border px-2 py-1 text-sm ${
                   flags.includes(f) ? "bg-blue-600 text-white" : "bg-white/60 dark:bg-neutral-800"
@@ -693,17 +667,14 @@ export default function RegexTester() {
             rows={10}
             className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
             placeholder="Paste text to test…"
-            aria-label="Test text"
           />
           <div className="mt-1 text-xs text-gray-500">
-            Size: {prettyBytes(sample.length)}{" "}
-            {softWarn && <span className="text-amber-600">• Large input may be slower.</span>}
+            Size: {prettyBytes(sample.length)} {softWarn && <span className="text-amber-600">• Large input may be slower.</span>}
           </div>
         </div>
 
         <div className="text-xs text-gray-500">
-          Tips: `/` focuses pattern • <kbd>Ctrl/⌘ + Enter</kbd> re-runs • <kbd>Alt + ↑/↓</kbd> cycles presets • Use{" "}
-          <code className="font-mono">g</code> to find all matches.
+          Tips: `/` focuses pattern • <kbd>Ctrl/⌘ + Enter</kbd> re-runs • <kbd>Alt + ↑/↓</kbd> cycles presets • Share button copies permalink.
         </div>
       </div>
 
@@ -728,10 +699,7 @@ export default function RegexTester() {
           <div className="text-sm text-gray-600">
             {error
               ? "Invalid regex"
-              : `Matches: ${matches.length} • Groups: ${matches.reduce(
-                  (n, m) => n + Math.max(0, m.length - 1),
-                  0
-                )} • ${ms} ms`}
+              : `Matches: ${matches.length} • Groups: ${matches.reduce((n, m) => n + Math.max(0, m.length - 1), 0)} • ${ms} ms`}
             {statusMsg && <span className="ml-2 text-gray-500">— {statusMsg}</span>}
           </div>
           <div className="flex gap-2">
@@ -763,9 +731,7 @@ export default function RegexTester() {
         </div>
 
         <div>
-          <div className="text-sm font-medium mb-2">
-            Matches {matches.length ? `(${matches.length})` : ""}
-          </div>
+          <div className="text-sm font-medium mb-2">Matches {matches.length ? `(${matches.length})` : ""}</div>
           {matches.length ? (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm border">
