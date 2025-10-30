@@ -87,33 +87,117 @@ function prettyBytes(n: number) {
 }
 
 /* ---------------------------------------------------------
-   Built-in presets (same as before)
+   Built-in presets
 --------------------------------------------------------- */
 
 const BUILT_IN: Preset[] = [
-  { id: "emails", label: "Emails (user + domain)", pattern: String.raw`([\w.+-]+)@([\w-]+\.[\w.-]+)`, flags: "g", sample: `Emails:
+  {
+    id: "emails",
+    label: "Emails (user + domain)",
+    pattern: String.raw`([\w.+-]+)@([\w-]+\.[\w.-]+)`,
+    flags: "g",
+    sample: `Emails:
 hello@example.com
 admin@test.io
 invalid@@nope
-jane.doe+news@sub.mail.co.uk`, builtIn: true },
-  { id: "urls", label: "URLs (http/https w/ optional path)", pattern: String.raw`https?:\/\/([\w.-]+)(\/[^\s]*)?`, flags: "g", sample: `See https://toolcite.com and http://example.org/docs/index.html
-Also ftp://nope.com should not match.`, builtIn: true },
-  { id: "hex", label: "Hex Colors (#RGB or #RRGGBB)", pattern: String.raw`#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b`, flags: "g", sample: `Colors: #fff, #1e90ff, #ABC, #12345 (bad), #12FG34 (bad)`, builtIn: true },
-  { id: "iso-dates", label: "Dates (YYYY-MM-DD)", pattern: String.raw`(\d{4})-(\d{2})-(\d{2})`, flags: "g", sample: `Releases: 2024-12-31, 2025-01-01, 24-1-1 (bad)`, builtIn: true },
-  { id: "ipv4-basic", label: "IPv4 (basic; not strict)", pattern: String.raw`\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b`, flags: "g", sample: `Servers: 192.168.1.7, 10.0.0.1, 256.1.1.1 (bad but will match)`, builtIn: true },
-  { id: "hashtags", label: "Hashtags", pattern: String.raw`#([A-Za-z0-9_]+)`, flags: "g", sample: `Tags: #ToolCite #regex #v2_update #bad-char!`, builtIn: true },
-  { id: "todo-lines", label: "Multiline anchors (TODO lines)", pattern: String.raw`^TODO:(.*)$`, flags: "gm", sample: `DONE: ship QR tool
+jane.doe+news@sub.mail.co.uk`,
+    builtIn: true,
+  },
+  {
+    id: "urls",
+    label: "URLs (http/https w/ optional path)",
+    pattern: String.raw`https?:\/\/([\w.-]+)(\/[^\s]*)?`,
+    flags: "g",
+    sample: `See https://toolcite.com and http://example.org/docs/index.html
+Also ftp://nope.com should not match.`,
+    builtIn: true,
+  },
+  {
+    id: "hex",
+    label: "Hex Colors (#RGB or #RRGGBB)",
+    pattern: String.raw`#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b`,
+    flags: "g",
+    sample: `Colors: #fff, #1e90ff, #ABC, #12345 (bad), #12FG34 (bad)`,
+    builtIn: true,
+  },
+  {
+    id: "iso-dates",
+    label: "Dates (YYYY-MM-DD)",
+    pattern: String.raw`(\d{4})-(\d{2})-(\d{2})`,
+    flags: "g",
+    sample: `Releases: 2024-12-31, 2025-01-01, 24-1-1 (bad)`,
+    builtIn: true,
+  },
+  {
+    id: "ipv4-basic",
+    label: "IPv4 (basic; not strict)",
+    pattern: String.raw`\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b`,
+    flags: "g",
+    sample: `Servers: 192.168.1.7, 10.0.0.1, 256.1.1.1 (bad but will match)`,
+    builtIn: true,
+  },
+  {
+    id: "hashtags",
+    label: "Hashtags",
+    pattern: String.raw`#([A-Za-z0-9_]+)`,
+    flags: "g",
+    sample: `Tags: #ToolCite #regex #v2_update #bad-char!`,
+    builtIn: true,
+  },
+  {
+    id: "todo-lines",
+    label: "Multiline anchors (TODO lines)",
+    pattern: String.raw`^TODO:(.*)$`,
+    flags: "gm",
+    sample: `DONE: ship QR tool
 TODO: add regex tester
 TODO: docs for image compressor
-NOTE: later`, builtIn: true },
-  { id: "dotall-block", label: "DotAll block (BEGIN…END)", pattern: String.raw`BEGIN([\s\S]*?)END`, flags: "g", sample: `BEGIN
+NOTE: later`,
+    builtIn: true,
+  },
+  {
+    id: "dotall-block",
+    label: "DotAll block (BEGIN…END)",
+    pattern: String.raw`BEGIN([\s\S]*?)END`,
+    flags: "g",
+    sample: `BEGIN
 block A
 END
-BEGIN block B END`, builtIn: true },
-  { id: "exact-word", label: "Exact word (\\bcat\\b)", pattern: String.raw`\bcat\b`, flags: "g", sample: `cat scatter catalog catty dog-cat`, builtIn: true },
-  { id: "unicode-words", label: "Unicode letters (\\p{L}+)", pattern: String.raw`\p{L}+`, flags: "gu", sample: `café Москва 東京 cafe`, builtIn: true },
-  { id: "phones", label: "Phones (optional country + groups)", pattern: String.raw`(?:\+(\d{1,3})\s*)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})`, flags: "g", sample: `Call +1 415-555-2671 or (212) 555 9034 or 305.555.1200.`, builtIn: true },
-  { id: "sticky", label: "Sticky vs Global (\\d+ with y)", pattern: String.raw`\d+`, flags: "y", sample: `12 345 67`, builtIn: true },
+BEGIN block B END`,
+    builtIn: true,
+  },
+  {
+    id: "exact-word",
+    label: "Exact word (\\bcat\\b)",
+    pattern: String.raw`\bcat\b`,
+    flags: "g",
+    sample: `cat scatter catalog catty dog-cat`,
+    builtIn: true,
+  },
+  {
+    id: "unicode-words",
+    label: "Unicode letters (\\p{L}+)",
+    pattern: String.raw`\p{L}+`,
+    flags: "gu",
+    sample: `café Москва 東京 cafe`,
+    builtIn: true,
+  },
+  {
+    id: "phones",
+    label: "Phones (optional country + groups)",
+    pattern: String.raw`(?:\+(\d{1,3})\s*)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})`,
+    flags: "g",
+    sample: `Call +1 415-555-2671 or (212) 555 9034 or 305.555.1200.`,
+    builtIn: true,
+  },
+  {
+    id: "sticky",
+    label: "Sticky vs Global (\\d+ with y)",
+    pattern: String.raw`\d+`,
+    flags: "y",
+    sample: `12 345 67`,
+    builtIn: true,
+  },
 ];
 
 /* ---------------------------------------------------------
@@ -121,6 +205,7 @@ BEGIN block B END`, builtIn: true },
 --------------------------------------------------------- */
 
 function loadCustom(): Preset[] {
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -133,6 +218,7 @@ function loadCustom(): Preset[] {
 }
 
 function saveCustom(list: Preset[]) {
+  if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
@@ -155,21 +241,57 @@ export default function RegexTester() {
   const [saveAsNew, setSaveAsNew] = useState<boolean>(false);
   const [importError, setImportError] = useState<string>("");
 
+  // for URL-state
+  const firstLoadRef = useRef<boolean>(true);
+
   // Refs for shortcuts
   const patternRef = useRef<HTMLInputElement>(null);
   const sampleRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load custom presets
-  useEffect(() => setCustomPresets(loadCustom()), []);
-
-  // Apply selected preset
+  // Load custom presets + URL params (FIRST MOUNT ONLY)
   useEffect(() => {
+    // 1) load custom presets
+    const stored = loadCustom();
+    setCustomPresets(stored);
+
+    // 2) URL decode (browser only)
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+
+    const urlPresetId = sp.get("id");
+    const urlPattern = sp.get("p");
+    const urlFlags = sp.get("f");
+    const urlSample = sp.get("s");
+
+    // if a preset id is present in URL, prefer it
+    if (urlPresetId) {
+      setPresetId(urlPresetId);
+    }
+
+    // if pattern / flags / sample are present, override the current ones
+    // sample can be large → decode + clamp
+    if (urlPattern) setPattern(decodeURIComponent(urlPattern));
+    if (urlFlags) setFlags(decodeURIComponent(urlFlags));
+    if (urlSample) {
+      const decoded = decodeURIComponent(urlSample);
+      setSample(decoded.slice(0, MAX_HARD));
+    }
+
+    // mark as done
+    firstLoadRef.current = false;
+  }, []);
+
+  // When user switches preset (dropdown)
+  useEffect(() => {
+    // if we are still in the very first URL-hydrate pass, don't overwrite
+    if (firstLoadRef.current) return;
+
     setPattern(selected.pattern);
     setFlags(selected.flags);
     setSample(selected.sample);
     setNameInput(selected.label);
     setSaveAsNew(false);
-  }, [presetId]); // eslint-disable-line
+  }, [presetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Soft/hard sample guard
   const [softWarn, setSoftWarn] = useState<boolean>(false);
@@ -237,7 +359,7 @@ export default function RegexTester() {
         }
       }
 
-      // Run: Ctrl/Cmd + Enter (no-op here because it’s already debounced)
+      // Run: Ctrl/Cmd + Enter
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         setStatusMsg("Re-ran pattern");
         setTimeout(() => setStatusMsg(""), 800);
@@ -356,7 +478,9 @@ export default function RegexTester() {
             .map((m) =>
               fmt === "lines"
                 ? m[0]
-                : [m[0], ...m.slice(1)].map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep)
+                : [m[0], ...m.slice(1)]
+                    .map((x) => `"${String(x).replace(/"/g, '""')}"`)
+                    .join(sep)
             )
             .join("\n");
     navigator.clipboard.writeText(text);
@@ -370,12 +494,51 @@ export default function RegexTester() {
       matches.length === 0
         ? ""
         : matches
-            .map((m) => (m.length > 1 ? m.slice(1).map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep) : ""))
+            .map((m) =>
+              m.length > 1
+                ? m
+                    .slice(1)
+                    .map((x) => `"${String(x).replace(/"/g, '""')}"`)
+                    .join(sep)
+                : ""
+            )
             .join("\n");
     navigator.clipboard.writeText(text);
     setStatusMsg("Copied groups");
     setTimeout(() => setStatusMsg(""), 800);
   }
+
+  /* ---------- URL ENCODE (Step 10) ---------- */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // don’t instantly overwrite what we just loaded from the URL
+    if (firstLoadRef.current) return;
+
+    const timeout = setTimeout(() => {
+      const sp = new URLSearchParams(window.location.search);
+      if (pattern) sp.set("p", encodeURIComponent(pattern));
+      else sp.delete("p");
+
+      if (flags) sp.set("f", encodeURIComponent(flags));
+      else sp.delete("f");
+
+      if (sample) {
+        // don’t make URL insane
+        const short = sample.length > 1000 ? sample.slice(0, 1000) + "…" : sample;
+        sp.set("s", encodeURIComponent(short));
+      } else {
+        sp.delete("s");
+      }
+
+      if (presetId) sp.set("id", presetId);
+      else sp.delete("id");
+
+      const newUrl = window.location.pathname + "?" + sp.toString();
+      window.history.replaceState(null, "", newUrl);
+    }, 200);
+
+    return () => clearTimeout(timeout);
+  }, [pattern, flags, sample, presetId]);
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -478,6 +641,7 @@ export default function RegexTester() {
               spellCheck={false}
               className="flex-1 rounded border px-2 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
               placeholder="Enter regex pattern…"
+              aria-label="Regex pattern"
             />
             <span className="rounded border px-2 py-1 bg-white/60 dark:bg-neutral-800">/</span>
             <input
@@ -494,8 +658,19 @@ export default function RegexTester() {
               <button
                 key={f}
                 onClick={() => toggleFlag(f)}
+                aria-pressed={flags.includes(f)}
                 title={
-                  f === "i" ? "Ignore case" : f === "g" ? "Global" : f === "m" ? "Multiline" : f === "s" ? "DotAll" : f === "u" ? "Unicode" : "Sticky"
+                  f === "i"
+                    ? "Ignore case"
+                    : f === "g"
+                    ? "Global"
+                    : f === "m"
+                    ? "Multiline"
+                    : f === "s"
+                    ? "DotAll"
+                    : f === "u"
+                    ? "Unicode"
+                    : "Sticky"
                 }
                 className={`rounded border px-2 py-1 text-sm ${
                   flags.includes(f) ? "bg-blue-600 text-white" : "bg-white/60 dark:bg-neutral-800"
@@ -518,14 +693,17 @@ export default function RegexTester() {
             rows={10}
             className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
             placeholder="Paste text to test…"
+            aria-label="Test text"
           />
           <div className="mt-1 text-xs text-gray-500">
-            Size: {prettyBytes(sample.length)} {softWarn && <span className="text-amber-600">• Large input may be slower.</span>}
+            Size: {prettyBytes(sample.length)}{" "}
+            {softWarn && <span className="text-amber-600">• Large input may be slower.</span>}
           </div>
         </div>
 
         <div className="text-xs text-gray-500">
-          Tips: `/` focuses pattern • <kbd>Ctrl/⌘ + Enter</kbd> re-runs • <kbd>Alt + ↑/↓</kbd> cycles presets • Use <code className="font-mono">g</code> to find all matches.
+          Tips: `/` focuses pattern • <kbd>Ctrl/⌘ + Enter</kbd> re-runs • <kbd>Alt + ↑/↓</kbd> cycles presets • Use{" "}
+          <code className="font-mono">g</code> to find all matches.
         </div>
       </div>
 
@@ -550,29 +728,44 @@ export default function RegexTester() {
           <div className="text-sm text-gray-600">
             {error
               ? "Invalid regex"
-              : `Matches: ${matches.length} • Groups: ${
-                  matches.reduce((n, m) => n + Math.max(0, m.length - 1), 0)
-                } • ${ms} ms`}
+              : `Matches: ${matches.length} • Groups: ${matches.reduce(
+                  (n, m) => n + Math.max(0, m.length - 1),
+                  0
+                )} • ${ms} ms`}
             {statusMsg && <span className="ml-2 text-gray-500">— {statusMsg}</span>}
           </div>
           <div className="flex gap-2">
-            <button onClick={() => copyMatches("csv")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+            <button
+              onClick={() => copyMatches("csv")}
+              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+            >
               Copy matches (CSV)
             </button>
-            <button onClick={() => copyMatches("tsv")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+            <button
+              onClick={() => copyMatches("tsv")}
+              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+            >
               TSV
             </button>
-            <button onClick={() => copyMatches("lines")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+            <button
+              onClick={() => copyMatches("lines")}
+              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+            >
               Lines
             </button>
-            <button onClick={() => copyGroupsOnly("csv")} className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800">
+            <button
+              onClick={() => copyGroupsOnly("csv")}
+              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+            >
               Copy groups
             </button>
           </div>
         </div>
 
         <div>
-          <div className="text-sm font-medium mb-2">Matches {matches.length ? `(${matches.length})` : ""}</div>
+          <div className="text-sm font-medium mb-2">
+            Matches {matches.length ? `(${matches.length})` : ""}
+          </div>
           {matches.length ? (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm border">
@@ -585,10 +778,15 @@ export default function RegexTester() {
                 </thead>
                 <tbody>
                   {matches.map((m, idx) => (
-                    <tr key={idx} className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800">
+                    <tr
+                      key={idx}
+                      className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800"
+                    >
                       <td className="px-2 py-1 border text-center">{idx + 1}</td>
                       <td className="px-2 py-1 border font-mono break-all">{m[0]}</td>
-                      <td className="px-2 py-1 border font-mono break-all">{m.slice(1).length ? m.slice(1).join(" | ") : "—"}</td>
+                      <td className="px-2 py-1 border font-mono break-all">
+                        {m.slice(1).length ? m.slice(1).join(" | ") : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
