@@ -1,25 +1,26 @@
+// app/tools/meta-og-generator/page.tsx
 "use client";
+
+/**
+ * META-OG-GENERATOR v2 (sentinel)
+ * If you don't see this comment in your built source (view-source),
+ * you're still on an old bundle (likely a Service Worker cache).
+ */
 
 import React, { useMemo, useState } from "react";
 
 const TITLE_MAX = 60;
 const DESC_MAX = 160;
-const FALLBACK_IMAGE = "/og-default.png"; // 👈 UI + generated code both use this if empty
+const FALLBACK_OG = "/og-default.png";
 
-type PresetKey = "tool" | "blog" | "home" | "product";
-type SnippetTab = "html" | "next" | "basic" | "social";
+type PresetId = "tool" | "blog" | "homepage" | "product";
 
 const PRESETS: Record<
-  PresetKey,
-  {
-    title: string;
-    desc: string;
-    url: string;
-    siteName: string;
-    author: string;
-  }
+  PresetId,
+  { label: string; title: string; desc: string; url: string; siteName: string; author: string }
 > = {
   tool: {
+    label: "⚒️ Tool / Feature page",
     title: "Free Online Tool – Fast, Private, In-Browser",
     desc: "Use this free online tool to generate, test, and export SEO-ready data instantly.",
     url: "https://toolcite.com/tools/example",
@@ -27,32 +28,67 @@ const PRESETS: Record<
     author: "Bharat",
   },
   blog: {
+    label: "📝 Blog / Article",
     title: "How to Optimize Meta Tags for Social Sharing",
     desc: "A quick guide to title, description, OG, and Twitter tags that actually render right.",
     url: "https://toolcite.com/blog/meta-tags-guide",
     siteName: "ToolCite Blog",
     author: "Bharat",
   },
-  home: {
-    title: "ToolCite – 70+ Front-End Tools for Creators",
-    desc: "SEO, dev, image, PDF — instantly usable, no login.",
+  homepage: {
+    label: "🏠 Homepage / SaaS",
+    title: "ToolCite – 70+ Tools for Creators",
+    desc: "SEO, image, dev, PDF – all in-browser, no login.",
     url: "https://toolcite.com",
     siteName: "ToolCite",
     author: "Bharat",
   },
   product: {
-    title: "Product / Landing Page – Convert Visitors Faster",
-    desc: "Add clean OG + Twitter tags so your links look premium in chat & social.",
-    url: "https://toolcite.com/product/example",
+    label: "🛒 Product / Landing",
+    title: "Launch tools faster with ToolCite Hub",
+    desc: "Drop-in, SEO-ready meta tags for every page.",
+    url: "https://toolcite.com/tools/meta-og-generator",
     siteName: "ToolCite",
     author: "Bharat",
   },
 };
 
-// ---------- small helpers ----------
-function clamp(str: string, max: number) {
-  return str.length > max ? str.slice(0, max) : str;
+/* ---------------- helpers ---------------- */
+
+function stripHtml(s: string) {
+  return s.replace(/<[^>]*>/g, " ");
 }
+function stripBackticks(s: string) {
+  // remove fenced blocks ```...``` and inline `...`
+  return s.replace(/```[\s\S]*?```/g, " ").replace(/`[^`]*`/g, " ");
+}
+function looksLikeCode(raw: string) {
+  const bad = (raw.match(/[{}[\];]/g) || []).length;
+  const kw = (raw.match(/\b(import|export|from|return|const|let|var|function|class|interface|type|enum|extends|implements|new)\b/gi) || []).length;
+  return bad >= 3 || kw >= 1;
+}
+function stripCodeyStuff(s: string) {
+  // remove common codey tokens and punctuation
+  s = s.replace(/\b(use client)\b/gi, " ");
+  s = s.replace(/\b(import|export|from|return|const|let|var|function|class|interface|type|enum|extends|implements|new)\b/gi, " ");
+  s = s.replace(/[{}[\]();]/g, " ");
+  return s;
+}
+function sanitizeText(raw: string, max: number) {
+  if (!raw.trim()) return "";
+  let s = raw;
+  s = stripBackticks(s);
+  s = stripHtml(s);
+  s = stripCodeyStuff(s);
+  s = s.replace(/\s+/g, " ").trim();
+  if (looksLikeCode(raw)) {
+    // too code-ish → hide instead of leaking TS/JS into previews
+    return "";
+  }
+  if (s.length > max) s = s.slice(0, max);
+  return s;
+}
+
 function escapeAttr(s: string) {
   return String(s).replace(/"/g, "&quot;");
 }
@@ -69,104 +105,87 @@ function ensureAt(s: string) {
   if (!t) return "";
   return t.startsWith("@") ? t : "@" + t;
 }
-function download(filename: string, text: string) {
-  const blob = new Blob([text], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+function absolutize(img: string) {
+  if (!img.trim()) {
+    if (typeof window !== "undefined") return window.location.origin + FALLBACK_OG;
+    return FALLBACK_OG;
+  }
+  if (/^https?:\/\//i.test(img)) return img;
+  if (typeof window !== "undefined") {
+    return window.location.origin + (img.startsWith("/") ? img : `/${img}`);
+  }
+  return img;
 }
 
-export default function MetaOgGenerator() {
-  // ---------- state ----------
-  const [preset, setPreset] = useState<PresetKey>("tool");
+/* ---------------- main ---------------- */
 
-  const [title, setTitle] = useState(PRESETS.tool.title);
-  const [desc, setDesc] = useState(PRESETS.tool.desc);
-  const [url, setUrl] = useState(PRESETS.tool.url);
-  const [siteName, setSiteName] = useState(PRESETS.tool.siteName);
-  const [author, setAuthor] = useState(PRESETS.tool.author);
+export default function Page() {
+  const [preset, setPreset] = useState<PresetId>("tool");
+  const p = PRESETS[preset];
 
-  // 👇 user-editable image, but we will *resolve* it to a fallback for preview AND snippet
+  const [titleInput, setTitleInput] = useState(p.title);
+  const [descInput, setDescInput] = useState(p.desc);
+  const [url, setUrl] = useState(p.url);
+  const [siteName, setSiteName] = useState(p.siteName);
+  const [author, setAuthor] = useState(p.author);
+
+  // keep IMAGE INPUT EMPTY by default (no prefill)
   const [image, setImage] = useState("");
 
   const [themeColor, setThemeColor] = useState("#0ea5e9");
-  const [twitterCard, setTwitterCard] = useState<"summary" | "summary_large_image">("summary_large_image");
+  const [twitterCard, setTwitterCard] =
+    useState<"summary" | "summary_large_image">("summary_large_image");
   const [twitterSite, setTwitterSite] = useState("@toolcite");
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
+  const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
 
-  const [activeTab, setActiveTab] = useState<SnippetTab>("html");
+  const safeTitle = sanitizeText(titleInput, TITLE_MAX);
+  const safeDesc = sanitizeText(descInput, DESC_MAX);
+  const resolvedImage = absolutize(image || FALLBACK_OG);
 
-  // ---------- derived ----------
-  const safeTitle = clamp(title, TITLE_MAX);
-  const safeDesc = clamp(desc, DESC_MAX);
-
-  // 👇 THIS is the key difference (Option A):
-  // if user didn't type image → we *still* use /og-default.png everywhere
-  const resolvedImage = (image || "").trim() || FALLBACK_IMAGE;
-
-  // ---------- actions ----------
-  function applyPreset(kind: PresetKey) {
-    const p = PRESETS[kind];
-    setPreset(kind);
-    setTitle(p.title);
-    setDesc(p.desc);
-    setUrl(p.url);
-    setSiteName(p.siteName);
-    setAuthor(p.author);
-    // NOTE: we do NOT overwrite image – user can keep their own
+  function applyPreset(id: PresetId) {
+    const pp = PRESETS[id];
+    setPreset(id);
+    setTitleInput(pp.title);
+    setDescInput(pp.desc);
+    setUrl(pp.url);
+    setSiteName(pp.siteName);
+    setAuthor(pp.author);
+    // leave user's image as-is
   }
 
-  // ---------- snippets ----------
-  const htmlHeadSnippet = useMemo(() => {
+  const htmlHead = useMemo(() => {
     const lines: string[] = [];
-
-    // base
     if (safeTitle) lines.push(`<title>${escapeHtml(safeTitle)}</title>`);
     if (safeDesc) lines.push(meta("name", "description", safeDesc));
     if (themeColor) lines.push(meta("name", "theme-color", themeColor));
+    if (url) lines.push(`<link rel="canonical" href="${escapeAttr(url)}" />`);
 
-    // canonical (optional)
-    if (url.trim()) {
-      lines.push(`<link rel="canonical" href="${escapeAttr(url.trim())}" />`);
-    }
-
-    // OG
+    // Open Graph
     if (safeTitle) lines.push(meta("property", "og:title", safeTitle));
     if (safeDesc) lines.push(meta("property", "og:description", safeDesc));
-    if (url.trim()) lines.push(meta("property", "og:url", url.trim()));
-    if (siteName.trim()) lines.push(meta("property", "og:site_name", siteName.trim()));
+    if (url) lines.push(meta("property", "og:url", url));
+    if (siteName) lines.push(meta("property", "og:site_name", siteName));
+    if (resolvedImage) {
+      lines.push(meta("property", "og:image", resolvedImage));
+      lines.push(meta("property", "og:image:width", "1200"));
+      lines.push(meta("property", "og:image:height", "630"));
+      lines.push(meta("property", "og:image:alt", safeTitle || "Open Graph image"));
+    }
     lines.push(meta("property", "og:type", "website"));
 
-    // 👇 always emit image (Option A)
-    lines.push(meta("property", "og:image", resolvedImage));
-    lines.push(meta("property", "og:image:width", "1200"));
-    lines.push(meta("property", "og:image:height", "630"));
-    lines.push(meta("property", "og:image:alt", safeTitle || "Open Graph image"));
-
-    // Twitter
+    // Twitter (kept intact)
     lines.push(meta("name", "twitter:card", twitterCard));
     if (safeTitle) lines.push(meta("name", "twitter:title", safeTitle));
     if (safeDesc) lines.push(meta("name", "twitter:description", safeDesc));
-    // also always emit twitter image so pasted links look good
-    if (twitterCard === "summary_large_image") {
+    if (resolvedImage && twitterCard === "summary_large_image") {
       lines.push(meta("name", "twitter:image", resolvedImage));
     }
-    if (twitterSite.trim()) {
-      lines.push(meta("name", "twitter:site", ensureAt(twitterSite)));
-    }
-    if (twitterCreator.trim()) {
-      lines.push(meta("name", "twitter:creator", ensureAt(twitterCreator)));
-    }
+    if (twitterSite) lines.push(meta("name", "twitter:site", ensureAt(twitterSite)));
+    if (twitterCreator || author)
+      lines.push(meta("name", "twitter:creator", ensureAt(twitterCreator) || author));
 
-    // generic author
-    if (author.trim()) {
-      lines.push(meta("name", "author", author.trim()));
-    }
+    if (author) lines.push(meta("name", "author", author));
 
     return lines.join("\n");
   }, [
@@ -182,390 +201,322 @@ export default function MetaOgGenerator() {
     author,
   ]);
 
-  const nextJsMetadataSnippet = useMemo(() => {
-    return `export const metadata = {
-  title: "${escapeAttr(safeTitle || "Meta Tag & Open Graph Generator")}",
-  description: "${escapeAttr(
-    safeDesc || "Generate SEO meta tags, Open Graph, Twitter cards, and canonical URLs."
-  )}",
-  alternates: { canonical: "${escapeAttr(url.trim() || "https://toolcite.com/tools/meta-og-generator")}" },
-  openGraph: {
-    type: "website",
-    title: "${escapeAttr(safeTitle || "Meta Tag & Open Graph Generator")}",
-    description: "${escapeAttr(safeDesc || "Create social previews and meta tags for your pages quickly.")}",
-    url: "${escapeAttr(url.trim() || "https://toolcite.com/tools/meta-og-generator")}",
-    siteName: "${escapeAttr(siteName || "ToolCite")}",
-    images: [
-      {
-        url: "${escapeAttr(resolvedImage)}",
-        width: 1200,
-        height: 630,
-        alt: "${escapeAttr(safeTitle || "Open Graph image")}",
-      },
-    ],
-  },
-  twitter: {
-    card: "${twitterCard}",
-    title: "${escapeAttr(safeTitle || "Meta Tag & Open Graph Generator")}",
-    description: "${escapeAttr(safeDesc || "Build meta tags for SEO, Facebook, and Twitter. Copy in 1 click.")}",
-    images: ["${escapeAttr(resolvedImage)}"],
-    site: "${escapeAttr(ensureAt(twitterSite) || "@site")}",
-    creator: "${escapeAttr(ensureAt(twitterCreator) || "@creator")}",
-  },
-};`;
-  }, [
-    safeTitle,
-    safeDesc,
-    url,
-    siteName,
-    resolvedImage,
-    twitterCard,
-    twitterSite,
-    twitterCreator,
-  ]);
-
-  const basicHeadSnippet = useMemo(() => {
-    const lines: string[] = [];
-    if (safeTitle) lines.push(`<title>${escapeHtml(safeTitle)}</title>`);
-    if (safeDesc) lines.push(meta("name", "description", safeDesc));
-    if (url.trim()) lines.push(`<link rel="canonical" href="${escapeAttr(url.trim())}" />`);
-    return lines.join("\n");
-  }, [safeTitle, safeDesc, url]);
-
-  const socialOnlySnippet = useMemo(() => {
-    const lines: string[] = [];
-    if (safeTitle) lines.push(meta("property", "og:title", safeTitle));
-    if (safeDesc) lines.push(meta("property", "og:description", safeDesc));
-    if (url.trim()) lines.push(meta("property", "og:url", url.trim()));
-    lines.push(meta("property", "og:type", "website"));
-    if (siteName.trim()) lines.push(meta("property", "og:site_name", siteName.trim()));
-    lines.push(meta("property", "og:image", resolvedImage));
-    lines.push(meta("name", "twitter:card", twitterCard));
-    if (safeTitle) lines.push(meta("name", "twitter:title", safeTitle));
-    if (safeDesc) lines.push(meta("name", "twitter:description", safeDesc));
-    if (twitterCard === "summary_large_image") {
-      lines.push(meta("name", "twitter:image", resolvedImage));
-    }
-    return lines.join("\n");
-  }, [safeTitle, safeDesc, url, siteName, resolvedImage, twitterCard]);
-
-  // which one to show
-  let snippetToShow = htmlHeadSnippet;
-  if (activeTab === "next") snippetToShow = nextJsMetadataSnippet;
-  else if (activeTab === "basic") snippetToShow = basicHeadSnippet;
-  else if (activeTab === "social") snippetToShow = socialOnlySnippet;
-
-  const titleOver = title.length > TITLE_MAX;
-  const descOver = desc.length > DESC_MAX;
+  const checks = [
+    safeTitle ? { ok: true, text: "Title OK (≤ 60)." } : { ok: false, text: "Title empty." },
+    safeDesc ? { ok: true, text: "Description OK (≤ 160)." } : { ok: false, text: "Description empty (code filtered?)." },
+    url.startsWith("http")
+      ? { ok: true, text: "Canonical URL absolute." }
+      : { ok: false, text: "Canonical URL missing/relative." },
+    { ok: true, text: "OG image present (custom or fallback)." },
+    { ok: true, text: `Twitter card: ${twitterCard}.` },
+    { ok: !!twitterSite, text: `@site: ${twitterSite || "—"}` },
+    { ok: !!twitterCreator || !!author, text: `@creator/author present.` },
+  ];
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      {/* LEFT */}
-      <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
-        <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
+    <main className="max-w-6xl mx-auto px-4 py-8">
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* LEFT */}
+        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
+          <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
-        {/* presets */}
-        <div className="flex flex-wrap gap-2">
-          <PresetButton active={preset === "tool"} onClick={() => applyPreset("tool")}>
-            🛠️ Tool / Feature page
-          </PresetButton>
-          <PresetButton active={preset === "blog"} onClick={() => applyPreset("blog")}>
-            📝 Blog / Article
-          </PresetButton>
-          <PresetButton active={preset === "home"} onClick={() => applyPreset("home")}>
-            🏠 Homepage / SaaS
-          </PresetButton>
-          <PresetButton active={preset === "product"} onClick={() => applyPreset("product")}>
-            🛒 Product / Landing
-          </PresetButton>
-        </div>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(PRESETS) as PresetId[]).map((id) => (
+              <button
+                key={id}
+                onClick={() => applyPreset(id)}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${
+                  preset === id
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
+                }`}
+                aria-pressed={preset === id}
+              >
+                {PRESETS[id].label}
+              </button>
+            ))}
+          </div>
 
-        {/* title */}
-        <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
+          <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
             <input
+              value={titleInput}
+              onChange={(e) => setTitleInput(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
               placeholder="Awesome Tool — Do X in Seconds"
               aria-describedby="title-counter"
             />
-            <div id="title-counter" className="mt-1 text-xs">
-              <span className={titleOver ? "text-red-500" : "text-gray-500"}>
-                {title.length} / {TITLE_MAX}
-              </span>
-              {titleOver && (
-                <span className="ml-2 text-red-500">Trimmed to {TITLE_MAX} in previews</span>
-              )}
-            </div>
-        </Field>
+            <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
+          </Field>
 
-        {/* desc */}
-        <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
+          <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
             <textarea
               rows={3}
+              value={descInput}
+              onChange={(e) => setDescInput(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
               placeholder="Explain your page in one compelling sentence."
               aria-describedby="desc-counter"
             />
-            <div id="desc-counter" className="mt-1 text-xs">
-              <span className={descOver ? "text-red-500" : "text-gray-500"}>
-                {desc.length} / {DESC_MAX}
-              </span>
-              {descOver && (
-                <span className="ml-2 text-red-500">Trimmed to {DESC_MAX} in previews</span>
-              )}
-            </div>
-        </Field>
+            <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
+          </Field>
 
-        {/* canonical */}
-        <Field label="Canonical URL">
-          <input
-            className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://toolcite.com/tools/meta-og-generator"
-          />
-        </Field>
-
-        {/* site + author */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Site Name">
+          <Field label="Canonical URL">
             <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              value={siteName}
-              onChange={(e) => setSiteName(e.target.value)}
-              placeholder="ToolCite"
+              placeholder="https://toolcite.com/tools/meta-og-generator"
+              inputMode="url"
             />
           </Field>
-          <Field label="Author">
-            <input
-              className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="Bharat"
-            />
-          </Field>
-        </div>
 
-        {/* image */}
-        <Field label="Preview Image (OG/Twitter)">
-          <input
-            className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-            value={image}
-            onChange={(e) => setImage(e.target.value)}
-            placeholder="https://toolcite.com/og/my-page.png"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Leave empty → we will show /og-default.png and also export it in the snippet.
-          </p>
-        </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Site Name">
+              <input
+                value={siteName}
+                onChange={(e) => setSiteName(e.target.value)}
+                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+              />
+            </Field>
+            <Field label="Author">
+              <input
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+              />
+            </Field>
+          </div>
 
-        {/* theme + twitter type */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Theme Color">
+          <Field label="Preview Image (OG/Twitter)">
             <input
-              type="color"
-              className="h-10 w-16 rounded border bg-white/60 dark:bg-neutral-800 p-1"
-              value={themeColor}
-              onChange={(e) => setThemeColor(e.target.value)}
-            />
-          </Field>
-          <Field label="Twitter Card Type">
-            <select
+              value={image}
+              onChange={(e) => setImage(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              value={twitterCard}
-              onChange={(e) => setTwitterCard(e.target.value as any)}
+              placeholder="/og-default.png"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave this empty if you want the preview to use{" "}
+              <code>/og-default.png</code>. We don’t pre-fill the input.
+            </p>
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Theme Color">
+              <input
+                type="color"
+                value={themeColor}
+                onChange={(e) => setThemeColor(e.target.value)}
+                className="h-10 w-16 rounded border bg-white/60 dark:bg-neutral-800 p-1"
+              />
+            </Field>
+            <Field label="Twitter Card Type">
+              <select
+                value={twitterCard}
+                onChange={(e) => setTwitterCard(e.target.value as any)}
+                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+              >
+                <option value="summary_large_image">summary_large_image</option>
+                <option value="summary">summary</option>
+              </select>
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Twitter @site">
+              <input
+                value={twitterSite}
+                onChange={(e) => setTwitterSite(e.target.value)}
+                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+                placeholder="@toolcite"
+              />
+            </Field>
+            <Field label="Twitter @creator">
+              <input
+                value={twitterCreator}
+                onChange={(e) => setTwitterCreator(e.target.value)}
+                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+                placeholder="@bharat"
+              />
+            </Field>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => navigator.clipboard.writeText(htmlHead)}
+              className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700"
             >
-              <option value="summary_large_image">summary_large_image</option>
-              <option value="summary">summary</option>
-            </select>
-          </Field>
+              Copy snippet
+            </button>
+            <button
+              onClick={() => download("meta-tags.html", htmlHead)}
+              className="rounded border px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800"
+            >
+              Download HTML
+            </button>
+          </div>
         </div>
 
-        {/* twitter */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Twitter @site">
-            <input
-              className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              value={twitterSite}
-              onChange={(e) => setTwitterSite(e.target.value)}
-              placeholder="@toolcite"
-            />
-          </Field>
-          <Field label="Twitter @creator">
-            <input
-              className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              value={twitterCreator}
-              onChange={(e) => setTwitterCreator(e.target.value)}
-              placeholder="@bharat"
-            />
-          </Field>
-        </div>
+        {/* RIGHT */}
+        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
+          <h3 className="text-lg font-semibold">Live Previews</h3>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => navigator.clipboard.writeText(snippetToShow)}
-            className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Copy snippet
-          </button>
-          <button
-            onClick={() => download("meta-tags.html", snippetToShow)}
-            className="rounded border px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800"
-          >
-            Download HTML
-          </button>
+          {/* OG preview */}
+          <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
+            <div className="p-4">
+              <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
+              <div className="text-base font-semibold mt-1">{safeTitle || "Your Open Graph Title"}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                {safeDesc || "Your Open Graph description shows here."}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">{siteName || "ToolCite"}</div>
+            </div>
+          </div>
+
+          {/* Twitter preview */}
+          <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
+            {twitterCard === "summary_large_image" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={resolvedImage} alt="Twitter card preview image" className="w-full h-40 object-cover" />
+            )}
+            <div className="p-4">
+              <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
+              <div className="text-base font-semibold mt-1">{safeTitle || "Twitter Card Title"}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                {safeDesc || "Twitter Card description preview."}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                {(ensureAt(twitterSite) || "@site")} • {(ensureAt(twitterCreator) || "@creator")}
+              </div>
+            </div>
+          </div>
+
+          {/* snippet tabs */}
+          <div>
+            <div className="flex gap-2 mb-2">
+              {(["html", "next", "react", "social"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`px-3 py-1.5 rounded-md text-sm ${
+                    tab === t ? "bg-blue-600 text-white" : "bg-white/30 dark:bg-neutral-800"
+                  }`}
+                >
+                  {t === "html"
+                    ? "HTML <head>"
+                    : t === "next"
+                    ? "Next.js metadata"
+                    : t === "react"
+                    ? "React <Head>"
+                    : "Social only"}
+                </button>
+              ))}
+            </div>
+
+            <pre className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto">
+              {tab === "html" && htmlHead}
+
+              {tab === "next" &&
+`export const metadata = {
+  title: "${safeTitle || "ToolCite page"}",
+  description: "${safeDesc}",
+  alternates: { canonical: "${url}" },
+  openGraph: {
+    title: "${safeTitle}",
+    description: "${safeDesc}",
+    url: "${url}",
+    siteName: "${siteName}",
+    images: [{ url: "${resolvedImage}", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "${twitterCard}",
+    title: "${safeTitle}",
+    description: "${safeDesc}",
+    images: ["${resolvedImage}"],
+    site: "${ensureAt(twitterSite)}",
+    creator: "${ensureAt(twitterCreator)}",
+  },
+};`}
+
+              {tab === "react" &&
+`<Head>
+  <title>${escapeHtml(safeTitle || "ToolCite page")}</title>
+  <meta name="description" content="${escapeAttr(safeDesc)}" />
+  <link rel="canonical" href="${escapeAttr(url)}" />
+  <meta property="og:title" content="${escapeAttr(safeTitle)}" />
+  <meta property="og:description" content="${escapeAttr(safeDesc)}" />
+  <meta property="og:image" content="${escapeAttr(resolvedImage)}" />
+  <meta name="twitter:card" content="${twitterCard}" />
+  <meta name="twitter:title" content="${escapeAttr(safeTitle)}" />
+  <meta name="twitter:description" content="${escapeAttr(safeDesc)}" />
+  <meta name="twitter:image" content="${escapeAttr(resolvedImage)}" />
+  <meta name="twitter:site" content="${ensureAt(twitterSite)}" />
+  <meta name="twitter:creator" content="${ensureAt(twitterCreator)}" />
+</Head>`}
+
+              {tab === "social" &&
+                [
+                  meta("property", "og:title", safeTitle || "ToolCite page"),
+                  meta("property", "og:description", safeDesc),
+                  meta("property", "og:image", resolvedImage),
+                  meta("name", "twitter:card", twitterCard),
+                  meta("name", "twitter:title", safeTitle || "ToolCite page"),
+                  meta("name", "twitter:description", safeDesc),
+                  meta("name", "twitter:image", resolvedImage),
+                  meta("name", "twitter:site", ensureAt(twitterSite)),
+                  meta("name", "twitter:creator", ensureAt(twitterCreator)),
+                ].join("\n")}
+            </pre>
+          </div>
+
+          {/* checks */}
+          <div className="rounded-xl border bg-white/40 dark:bg-neutral-800 p-4 space-y-1 text-xs">
+            <p className="font-medium mb-1">SEO &amp; Sharing Checks</p>
+            {checks.map((c, i) => (
+              <p key={i} className={c.ok ? "text-green-500" : "text-amber-400"}>
+                {c.ok ? "✓ " : "• "} {c.text}
+              </p>
+            ))}
+          </div>
         </div>
       </div>
-
-      {/* RIGHT */}
-      <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
-        <h3 className="text-lg font-semibold">Live Previews</h3>
-
-        {/* OG preview */}
-        <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
-          <div className="p-4">
-            <div className="text-xs text-gray-500">{url.trim() || "https://example.com"}</div>
-            <div className="text-base font-semibold mt-1">{safeTitle || "Your Open Graph Title"}</div>
-            <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-              {safeDesc || "Your Open Graph description shows here."}
-            </div>
-            <div className="text-xs text-gray-500 mt-2">{siteName || "ToolCite"}</div>
-          </div>
-        </div>
-
-        {/* Twitter preview */}
-        <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
-          {twitterCard === "summary_large_image" && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={resolvedImage} alt="Twitter card preview image" className="w-full h-40 object-cover" />
-          )}
-          <div className="p-4">
-            <div className="text-xs text-gray-500">{url.trim() || "https://example.com"}</div>
-            <div className="text-base font-semibold mt-1">{safeTitle || "Twitter Card Title"}</div>
-            <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-              {safeDesc || "Twitter Card description preview."}
-            </div>
-            <div className="text-xs text-gray-500 mt-2">
-              {(ensureAt(twitterSite) || "@site")} • {(ensureAt(twitterCreator) || "@creator")}
-            </div>
-          </div>
-        </div>
-
-        {/* snippet tabs */}
-        <div>
-          <div className="flex gap-2 mb-2">
-            <TabButton onClick={() => setActiveTab("html")} active={activeTab === "html"}>
-              HTML &lt;head&gt;
-            </TabButton>
-            <TabButton onClick={() => setActiveTab("next")} active={activeTab === "next"}>
-              Next.js metadata
-            </TabButton>
-            <TabButton onClick={() => setActiveTab("basic")} active={activeTab === "basic"}>
-              Basic &lt;head/&gt;
-            </TabButton>
-            <TabButton onClick={() => setActiveTab("social")} active={activeTab === "social"}>
-              Social only
-            </TabButton>
-          </div>
-          <pre className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto max-h-60">
-            {snippetToShow}
-          </pre>
-        </div>
-
-        {/* checklist */}
-        <div className="rounded-xl border bg-white/60 dark:bg-neutral-800 p-4 text-xs space-y-1">
-          <p className="font-semibold text-gray-700 dark:text-gray-200">SEO &amp; Sharing Checks</p>
-          <p className={safeTitle ? "text-green-600" : "text-red-500"}>
-            • Title {safeTitle ? "present (≤ 60 in preview)." : "missing."}
-          </p>
-          <p className={safeDesc ? "text-green-600" : "text-yellow-500"}>
-            • Description {safeDesc ? "present." : "empty."}
-          </p>
-          <p className={url.trim() ? "text-green-600" : "text-yellow-500"}>
-            • Canonical URL {url.trim() ? "included." : "missing (optional)."}
-          </p>
-          <p className="text-green-600">• OG image: {resolvedImage} (fallback used if empty).</p>
-          <p className="text-green-600">• Twitter card: {twitterCard}.</p>
-          <p className={twitterSite.trim() ? "text-green-600" : "text-yellow-500"}>
-            • Twitter @site / @creator {twitterSite.trim() ? "present." : "missing (optional)."}
-          </p>
-        </div>
-      </div>
-    </div>
+    </main>
   );
 }
 
-// small dumb components
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+/* ------- small UI helpers ------- */
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <label className="block text-sm font-medium">{label}</label>
-        {hint ? <span className="text-xs text-gray-500">{hint}</span> : null}
+        {hint && <span className="text-xs text-gray-500">{hint}</span>}
       </div>
       {children}
     </div>
   );
 }
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function Counter({ id, raw, safe, max }: { id: string; raw: string; safe: string; max: number }) {
+  const over = raw.length > max;
   return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded-md text-sm ${
-        active
-          ? "bg-blue-600 text-white"
-          : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-      }`}
-      type="button"
-    >
-      {children}
-    </button>
+    <div id={id} className="mt-1 text-xs">
+      <span className={over ? "text-red-500" : "text-gray-500"}>
+        {raw.length} / {max}
+      </span>
+      {over && <span className="ml-2 text-red-500">Trimmed to {safe.length} in previews</span>}
+    </div>
   );
 }
-
-function PresetButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-        active
-          ? "bg-blue-600 text-white border-blue-600"
-          : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
-      }`}
-      aria-pressed={active}
-    >
-      {children}
-    </button>
-  );
+function download(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
