@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -22,160 +22,125 @@ type Result = {
   fetchTime: number;
 };
 
+const HISTORY_KEY = "tc_speedtest_history_v1";
+
+// safe browser check
+const isBrowser = typeof window !== "undefined";
+
 export default function SpeedTest() {
-  // ---------- base state ----------
   const [urlA, setUrlA] = useState("");
   const [urlB, setUrlB] = useState("");
   const [compareMode, setCompareMode] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const [resultA, setResultA] = useState<Result | null>(null);
   const [resultB, setResultB] = useState<Result | null>(null);
   const [history, setHistory] = useState<Result[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [online, setOnline] = useState<boolean>(isBrowser ? navigator.onLine : true);
 
-  // offline banner
-  const [online, setOnline] = useState(true);
-
-  // guard for SSR
-  const isClient = typeof window !== "undefined";
-
-  // ---------- load history + decode URL on mount ----------
+  // load from URL + localStorage on mount
   useEffect(() => {
-    if (!isClient) return;
+    if (!isBrowser) return;
 
-    // load history (safe)
-    const saved = window.localStorage.getItem("speedTestHistory");
-    if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch {
-        // ignore
-      }
-    }
-
-    // read URL params
+    // 1) restore from query params
     const sp = new URLSearchParams(window.location.search);
-    const a = sp.get("a");
-    const b = sp.get("b");
-    const cmp = sp.get("compare");
+    const a = sp.get("a") || "";
+    const b = sp.get("b") || "";
+    const cmp = sp.get("compare") === "1";
 
     if (a) setUrlA(a);
-    if (b) {
-      setUrlB(b);
-      setCompareMode(true);
-    }
-    if (cmp === "1") setCompareMode(true);
+    if (b) setUrlB(b);
+    if (cmp) setCompareMode(true);
 
-    // online/offline listeners
+    // 2) restore history
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) setHistory(JSON.parse(raw));
+    } catch {
+      // ignore
+    }
+
+    // 3) online/offline listeners
     const goOnline = () => setOnline(true);
     const goOffline = () => setOnline(false);
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
-    setOnline(window.navigator.onLine);
-
     return () => {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
-  }, [isClient]);
+  }, []);
 
-  // ---------- write URL when user edits ----------
+  // sync to URL (a, b, compare)
   useEffect(() => {
-    if (!isClient) return;
+    if (!isBrowser) return;
     const sp = new URLSearchParams(window.location.search);
     if (urlA) sp.set("a", urlA);
     else sp.delete("a");
-
     if (urlB) sp.set("b", urlB);
     else sp.delete("b");
-
     if (compareMode) sp.set("compare", "1");
     else sp.delete("compare");
 
     const next = window.location.pathname + "?" + sp.toString();
     window.history.replaceState(null, "", next);
-  }, [isClient, urlA, urlB, compareMode]);
+  }, [urlA, urlB, compareMode]);
 
-  // ---------- helpers ----------
   function saveHistory(newResult: Result) {
-    const updated = [newResult, ...(history || [])].slice(0, 5);
+    if (!isBrowser) return;
+    const updated = [newResult, ...history].slice(0, 6);
     setHistory(updated);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("speedTestHistory", JSON.stringify(updated));
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+    } catch {
+      // ignore
     }
   }
 
   async function runTestFor(url: string): Promise<Result | null> {
+    if (!isBrowser) return null;
     try {
       let testUrl = url.trim();
       if (!/^https?:\/\//i.test(testUrl)) testUrl = "https://" + testUrl;
 
-      // clear previous timings to reduce noise
-      if (typeof performance !== "undefined") {
-        performance.clearResourceTimings?.();
-      }
-
       const t0 = performance.now();
+      // NOTE: no-cors because we just want timing, not content
       await fetch(testUrl, { mode: "no-cors" });
       const t1 = performance.now();
 
-      const nav = performance.getEntriesByType("navigation")[0] as
-        | PerformanceNavigationTiming
-        | undefined;
-      const res = performance.getEntriesByName(testUrl)[0] as
-        | PerformanceResourceTiming
-        | undefined;
+      // read the latest navigation entry (may be 0 on some browsers)
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
 
-      const dns =
-        res?.domainLookupEnd && res?.domainLookupStart
-          ? res.domainLookupEnd - res.domainLookupStart
-          : nav
-          ? nav.domainLookupEnd - nav.domainLookupStart
-          : 0;
-
-      const connect =
-        res?.connectEnd && res?.connectStart
-          ? res.connectEnd - res.connectStart
-          : nav
-          ? nav.connectEnd - nav.connectStart
-          : 0;
-
-      const ttfb =
-        res?.responseStart && res?.requestStart
-          ? res.responseStart - res.requestStart
-          : nav
-          ? nav.responseStart - nav.requestStart
-          : (t1 - t0) / 4;
-
-      const domLoad =
-        nav?.domContentLoadedEventEnd && nav?.startTime !== undefined
-          ? nav.domContentLoadedEventEnd - nav.startTime
-          : 0;
-
-      const totalLoad =
-        nav?.loadEventEnd && nav?.startTime !== undefined
-          ? nav.loadEventEnd - nav.startTime
-          : t1 - t0;
+      const dns = nav ? nav.domainLookupEnd - nav.domainLookupStart : 0;
+      const connect = nav ? nav.connectEnd - nav.connectStart : 0;
+      const ttfb = nav
+        ? nav.responseStart - nav.requestStart
+        : (t1 - t0) / 4;
+      const domLoad = nav ? nav.domContentLoadedEventEnd - nav.startTime : 0;
+      const totalLoad = nav ? nav.loadEventEnd - nav.startTime : t1 - t0;
 
       return {
         url: testUrl,
         timestamp: new Date().toLocaleTimeString(),
-        dns,
-        connect,
-        ttfb,
-        domLoad,
-        totalLoad,
-        fetchTime: t1 - t0,
+        dns: Math.max(0, dns),
+        connect: Math.max(0, connect),
+        ttfb: Math.max(0, ttfb),
+        domLoad: Math.max(0, domLoad),
+        totalLoad: Math.max(0, totalLoad),
+        fetchTime: Math.max(0, t1 - t0),
       };
-    } catch {
+    } catch (e) {
       return null;
     }
   }
 
-  async function runTest() {
+  async function runSingle() {
     if (!urlA) {
       setError("Please enter a valid URL.");
+      return;
+    }
+    if (!online) {
+      setError("You are offline. Connect to the internet to run a test.");
       return;
     }
     setLoading(true);
@@ -184,19 +149,22 @@ export default function SpeedTest() {
     setResultB(null);
 
     const resA = await runTestFor(urlA);
-    if (resA) {
+    if (!resA) {
+      setError("Could not measure this site (CORS / blocked / very slow). Try another URL.");
+    } else {
       setResultA(resA);
       saveHistory(resA);
-    } else {
-      setError("Could not test that URL from your browser.");
     }
-
     setLoading(false);
   }
 
-  async function runCompareTest() {
+  async function runCompare() {
     if (!urlA || !urlB) {
       setError("Please enter both URLs to compare.");
+      return;
+    }
+    if (!online) {
+      setError("You are offline. Connect to the internet to run a test.");
       return;
     }
     setLoading(true);
@@ -205,15 +173,17 @@ export default function SpeedTest() {
     setResultB(null);
 
     const [resA, resB] = await Promise.all([runTestFor(urlA), runTestFor(urlB)]);
-
-    setResultA(resA);
-    setResultB(resB);
-
-    if (!resA && !resB) setError("Could not test these URLs from your browser.");
-
-    if (resA) saveHistory(resA);
-    if (resB) saveHistory(resB);
-
+    if (!resA && !resB) {
+      setError("Could not measure either site. They may block cross-origin requests.");
+    }
+    if (resA) {
+      setResultA(resA);
+      saveHistory(resA);
+    }
+    if (resB) {
+      setResultB(resB);
+      saveHistory(resB);
+    }
     setLoading(false);
   }
 
@@ -222,53 +192,12 @@ export default function SpeedTest() {
     return `${ms.toFixed(0)} ms`;
   }
 
-  // share current state
-  async function shareCurrent() {
-    if (typeof window === "undefined") return;
-    const url = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: "Website Speed Test", url });
-        return;
-      }
-    } catch {
-      // fallback to clipboard
-    }
-    try {
-      await navigator.clipboard.writeText(url);
-      alert("Link copied to clipboard.");
-    } catch {
-      alert("Unable to share. Copy the URL from the address bar.");
-    }
-  }
-
-  // export JSON
-  function exportJSON() {
-    const payload = {
-      generatedAt: new Date().toISOString(),
-      mode: compareMode ? "compare" : "single",
-      resultA,
-      resultB,
-      history,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const dl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = dl;
-    a.download = "website-speed-test.json";
-    a.click();
-    URL.revokeObjectURL(dl);
-  }
-
-  const connection =
-    (typeof navigator !== "undefined" && (navigator as any).connection) || {};
+  const connection = (isBrowser ? (navigator as any)?.connection : {}) || {};
 
   const compareData =
     resultA && resultB
       ? [
-          { metric: "DNS Lookup", siteA: resultA.dns, siteB: resultB.dns },
+          { metric: "DNS", siteA: resultA.dns, siteB: resultB.dns },
           { metric: "TTFB", siteA: resultA.ttfb, siteB: resultB.ttfb },
           { metric: "DOM Load", siteA: resultA.domLoad, siteB: resultB.domLoad },
           { metric: "Total Load", siteA: resultA.totalLoad, siteB: resultB.totalLoad },
@@ -276,288 +205,298 @@ export default function SpeedTest() {
         ]
       : [];
 
+  // export current run as JSON
+  function exportJSON() {
+    const payload = {
+      compared: compareMode,
+      a: resultA,
+      b: resultB,
+      testedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "speed-test.json";
+    link.click();
+  }
+
+  // share link
+  async function shareLink() {
+    if (!isBrowser) return;
+    const href = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Website Speed Test – ToolCite",
+          text: "Compare site load performance in-browser.",
+          url: href,
+        });
+        return;
+      }
+    } catch {
+      // fall through to clipboard
+    }
+    try {
+      await navigator.clipboard.writeText(href);
+      alert("Link copied to clipboard.");
+    } catch {
+      alert("Copy failed. You can copy the URL from the address bar.");
+    }
+  }
+
   return (
-    <div className="max-w-5xl mx-auto p-4">
+    <div className="max-w-5xl mx-auto p-4 md:p-6">
+      {/* a11y live region for errors */}
+      <div aria-live="polite" className="sr-only">
+        {error ? `Error: ${error}` : ""}
+      </div>
+
       {/* offline banner */}
       {!online && (
-        <div className="mb-3 rounded-md bg-yellow-100 text-yellow-900 text-xs px-3 py-2">
-          Offline: tests may fail for remote sites; your local history is still saved.
+        <div className="mb-3 rounded-md bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
+          You are offline — tests will not run, but your settings are saved.
         </div>
       )}
 
-      <h1 className="text-2xl font-bold mb-2">
-        Website Speed Test – Free Online Tool
-      </h1>
-      <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Analyze website load performance, TTFB, and connection metrics — all measured
-        locally in your browser.
-      </p>
+      <div className="rounded-2xl bg-white/80 dark:bg-neutral-950/40 border border-slate-200/60 dark:border-neutral-800 shadow-sm p-4 md:p-6">
+        <h1 className="text-2xl font-semibold mb-1 flex items-center gap-2">
+          <span role="img" aria-label="lightning">
+            ⚡
+          </span>{" "}
+          Website Speed Test – Free Online Tool
+        </h1>
+        <p className="text-slate-600 dark:text-slate-300 mb-6">
+          Analyze website load performance, TTFB, and connection metrics — all measured locally in your browser.
+        </p>
 
-      {/* Compare Mode Toggle */}
-      <div className="flex items-center gap-3 mb-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={compareMode}
-            onChange={() => setCompareMode((v) => !v)}
-            aria-label="Enable compare mode"
-          />
-          <span className="text-sm font-medium">🔄 Enable Compare Mode</span>
-        </label>
-      </div>
+        {/* compare toggle */}
+        <div className="flex items-center gap-3 mb-4">
+          <label htmlFor="compare-toggle" className="flex items-center gap-2 cursor-pointer">
+            <input
+              id="compare-toggle"
+              type="checkbox"
+              checked={compareMode}
+              onChange={() => setCompareMode((v) => !v)}
+              className="h-4 w-4"
+            />
+            <span className="text-sm font-medium">Enable Compare Mode</span>
+          </label>
+        </div>
 
-      {/* Inputs */}
-      <div
-        className={`grid gap-3 ${
-          compareMode ? "sm:grid-cols-2" : "sm:grid-cols-1"
-        } mb-4`}
-      >
-        <input
-          type="text"
-          placeholder="https://example.com"
-          aria-label="Primary website URL"
-          value={urlA}
-          onChange={(e) => setUrlA(e.target.value)}
-          className="px-4 py-2 border rounded-md dark:bg-neutral-900 dark:border-neutral-700"
-        />
-        {compareMode && (
-          <input
-            type="text"
-            placeholder="https://compare.com"
-            aria-label="Compare website URL"
-            value={urlB}
-            onChange={(e) => setUrlB(e.target.value)}
-            className="px-4 py-2 border rounded-md dark:bg-neutral-900 dark:border-neutral-700"
-          />
-        )}
-      </div>
-
-      {/* action buttons */}
-      <div className="flex flex-wrap gap-3 mb-3">
-        <button
-          onClick={compareMode ? runCompareTest : runTest}
-          disabled={loading || !urlA || (compareMode && !urlB)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+        {/* inputs row */}
+        <div
+          className={`grid gap-3 mb-4 ${
+            compareMode ? "md:grid-cols-2" : "md:grid-cols-1"
+          }`}
         >
-          {loading ? "Testing..." : compareMode ? "Run Comparison" : "Run Test"}
-        </button>
-
-        {(resultA || resultB) && (
-          <>
-            <button
-              onClick={exportJSON}
-              className="px-4 py-2 bg-white/80 dark:bg-neutral-900 border rounded-md text-sm hover:bg-white"
-            >
-              Export JSON
-            </button>
-            <button
-              onClick={shareCurrent}
-              className="px-4 py-2 bg-white/80 dark:bg-neutral-900 border rounded-md text-sm hover:bg-white"
-            >
-              Share Link
-            </button>
-          </>
-        )}
-      </div>
-
-      {error && (
-        <div className="p-3 mt-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded-md">
-          {error}
+          <input
+            id="url-a"
+            type="text"
+            placeholder="https://example.com"
+            aria-label="Test URL A"
+            value={urlA}
+            onChange={(e) => setUrlA(e.target.value)}
+            className="px-4 py-2 rounded-md border border-slate-200 dark:border-neutral-700 dark:bg-neutral-900 outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {compareMode && (
+            <input
+              id="url-b"
+              type="text"
+              placeholder="https://compare.com"
+              aria-label="Test URL B"
+              value={urlB}
+              onChange={(e) => setUrlB(e.target.value)}
+              className="px-4 py-2 rounded-md border border-slate-200 dark:border-neutral-700 dark:bg-neutral-900 outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          )}
         </div>
-      )}
 
-      {/* Results */}
-      {compareMode ? (
-        (resultA || resultB) && (
-          <>
-            <div className="grid md:grid-cols-2 gap-6 mt-8">
-              {[resultA, resultB].map((r, i) =>
-                r ? (
-                  <div
-                    key={i}
-                    className="rounded-xl border p-4 bg-white/70 dark:bg-neutral-900/60"
-                  >
-                    <h2 className="text-lg font-semibold mb-2">{r.url}</h2>
-                    <table className="w-full text-sm border-collapse">
+        {/* buttons */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          <button
+            onClick={compareMode ? runCompare : runSingle}
+            disabled={
+              loading ||
+              !urlA ||
+              (compareMode && !urlB) ||
+              !online
+            }
+            className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? "Testing..." : compareMode ? "Run Comparison" : "Run Test"}
+          </button>
+          <button
+            onClick={exportJSON}
+            className="px-4 py-2 rounded-md border border-slate-200 dark:border-neutral-700 hover:bg-slate-50 dark:hover:bg-neutral-900"
+          >
+            Export JSON
+          </button>
+          <button
+            onClick={shareLink}
+            className="px-4 py-2 rounded-md border border-slate-200 dark:border-neutral-700 hover:bg-slate-50 dark:hover:bg-neutral-900"
+          >
+            Share Link
+          </button>
+        </div>
+
+        {/* error */}
+        {error && (
+          <div className="mb-4 rounded-md bg-red-100/80 dark:bg-red-900/30 text-red-700 dark:text-red-200 px-3 py-2 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* results */}
+        {compareMode ? (
+          (resultA || resultB) && (
+            <>
+              <div className="grid md:grid-cols-2 gap-6 mt-4">
+                {[resultA, resultB].map((r, i) =>
+                  r ? (
+                    <div key={i} className="rounded-xl border bg-white/80 dark:bg-neutral-900/40 dark:border-neutral-800 p-4">
+                      <h2 className="text-lg font-semibold mb-2">{r.url}</h2>
+                      <table className="w-full text-sm">
+                        <tbody>
+                          <tr>
+                            <td className="py-1 text-slate-500 dark:text-slate-400">TTFB:</td>
+                            <td>{formatMs(r.ttfb)}</td>
+                          </tr>
+                          <tr>
+                            <td className="py-1 text-slate-500 dark:text-slate-400">DOM Loaded:</td>
+                            <td>{formatMs(r.domLoad)}</td>
+                          </tr>
+                          <tr>
+                            <td className="py-1 text-slate-500 dark:text-slate-400">Total Load:</td>
+                            <td>{formatMs(r.totalLoad)}</td>
+                          </tr>
+                          <tr>
+                            <td className="py-1 text-slate-500 dark:text-slate-400">Fetch Time:</td>
+                            <td>{formatMs(r.fetchTime)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div key={i} className="text-slate-400 text-sm italic flex items-center">
+                      No data for Site {i === 0 ? "A" : "B"}
+                    </div>
+                  )
+                )}
+              </div>
+
+              {resultA && resultB && (
+                <>
+                  <div className="mt-6 border-t dark:border-neutral-800 pt-4">
+                    <h3 className="text-base font-semibold mb-3">Comparison Summary</h3>
+                    <table className="w-full text-sm">
                       <tbody>
-                        <tr>
-                          <td className="py-1 text-gray-600">TTFB:</td>
-                          <td>{formatMs(r.ttfb)}</td>
-                        </tr>
-                        <tr>
-                          <td className="py-1 text-gray-600">DOM Loaded:</td>
-                          <td>{formatMs(r.domLoad)}</td>
-                        </tr>
-                        <tr>
-                          <td className="py-1 text-gray-600">Total Load:</td>
-                          <td>{formatMs(r.totalLoad)}</td>
-                        </tr>
-                        <tr>
-                          <td className="py-1 text-gray-600">Fetch Time:</td>
-                          <td>{formatMs(r.fetchTime)}</td>
-                        </tr>
+                        {[
+                          ["DNS Lookup", resultA.dns, resultB.dns],
+                          ["TTFB", resultA.ttfb, resultB.ttfb],
+                          ["DOM Loaded", resultA.domLoad, resultB.domLoad],
+                          ["Total Load", resultA.totalLoad, resultB.totalLoad],
+                          ["Fetch Time", resultA.fetchTime, resultB.fetchTime],
+                        ].map(([label, a, b], idx) => (
+                          <tr key={idx} className="border-t dark:border-neutral-800">
+                            <td className="py-2 text-slate-500 dark:text-slate-400">{label}:</td>
+                            <td className="py-2 text-right">
+                              {(() => {
+                                if (!a || !b) return "—";
+                                if (a === b) return <span className="text-slate-400">Same speed</span>;
+                                return a < b ? (
+                                  <span className="text-green-600 dark:text-green-400 font-semibold">Site A faster</span>
+                                ) : (
+                                  <span className="text-red-500 dark:text-red-400 font-semibold">Site B faster</span>
+                                );
+                              })()}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
-                ) : (
-                  <div key={i} className="text-gray-500 italic">
-                    No data for Site {i === 0 ? "A" : "B"}
+
+                  <div className="mt-6">
+                    <h3 className="text-base font-semibold mb-3">Visual Comparison (A vs B)</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={compareData}>
+                        <XAxis dataKey="metric" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="siteA" fill="#3b82f6" name={`Site A (${resultA.url})`} />
+                        <Bar dataKey="siteB" fill="#f97316" name={`Site B (${resultB.url})`} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
-                )
+                </>
               )}
+            </>
+          )
+        ) : (
+          resultA && (
+            <div className="mt-4 rounded-xl border bg-white/80 dark:bg-neutral-900/40 dark:border-neutral-800 p-4">
+              <h2 className="text-lg font-semibold mb-2">{resultA.url}</h2>
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr>
+                    <td className="py-1 text-slate-500 dark:text-slate-400">TTFB:</td>
+                    <td>{formatMs(resultA.ttfb)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1 text-slate-500 dark:text-slate-400">DOM Loaded:</td>
+                    <td>{formatMs(resultA.domLoad)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1 text-slate-500 dark:text-slate-400">Total Load:</td>
+                    <td>{formatMs(resultA.totalLoad)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1 text-slate-500 dark:text-slate-400">Fetch Time:</td>
+                    <td>{formatMs(resultA.fetchTime)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
+          )
+        )}
 
-            {/* Comparison Summary */}
-            {resultA && resultB && (
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold mb-2">Comparison Summary</h3>
-                <table className="w-full text-sm border-collapse">
-                  <tbody>
-                    {[
-                      ["DNS Lookup", resultA.dns, resultB.dns],
-                      ["TTFB", resultA.ttfb, resultB.ttfb],
-                      ["DOM Loaded", resultA.domLoad, resultB.domLoad],
-                      ["Total Load", resultA.totalLoad, resultB.totalLoad],
-                      ["Fetch Time", resultA.fetchTime, resultB.fetchTime],
-                    ].map(([label, a, b], i) => (
-                      <tr key={i} className="border-t">
-                        <td className="py-2 text-gray-600">{label}:</td>
-                        <td className="py-2 text-right">
-                          {(() => {
-                            if (!a || !b) return "—";
-                            if (a === b)
-                              return <span className="text-gray-500">Same speed</span>;
-                            return a < b ? (
-                              <span className="text-green-600 font-semibold">
-                                Site A faster
-                              </span>
-                            ) : (
-                              <span className="text-red-500 font-semibold">
-                                Site B faster
-                              </span>
-                            );
-                          })()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Comparison Chart */}
-            {resultA && resultB && (
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold mb-2">
-                  Visual Comparison (A vs B)
-                </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={compareData}>
-                    <XAxis dataKey="metric" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar
-                      dataKey="siteA"
-                      fill="#3b82f6"
-                      name={`Site A (${resultA.url})`}
-                    />
-                    <Bar
-                      dataKey="siteB"
-                      fill="#f97316"
-                      name={`Site B (${resultB.url})`}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </>
-        )
-      ) : (
-        resultA && (
-          <div className="mt-8 rounded-xl border p-4 bg-white/70 dark:bg-neutral-900/60">
-            <h2 className="text-lg font-semibold mb-2">{resultA.url}</h2>
-            <table className="w-full text-sm border-collapse">
-              <tbody>
-                <tr>
-                  <td className="py-1 text-gray-600">TTFB:</td>
-                  <td>{formatMs(resultA.ttfb)}</td>
-                </tr>
-                <tr>
-                  <td className="py-1 text-gray-600">DOM Loaded:</td>
-                  <td>{formatMs(resultA.domLoad)}</td>
-                </tr>
-                <tr>
-                  <td className="py-1 text-gray-600">Total Load:</td>
-                  <td>{formatMs(resultA.totalLoad)}</td>
-                </tr>
-                <tr>
-                  <td className="py-1 text-gray-600">Fetch Time:</td>
-                  <td>{formatMs(resultA.fetchTime)}</td>
-                </tr>
-              </tbody>
-            </table>
+        {/* history */}
+        {history.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base font-semibold">Recent Performance Summary</h3>
+              <button
+                onClick={() => {
+                  if (!isBrowser) return;
+                  localStorage.removeItem(HISTORY_KEY);
+                  setHistory([]);
+                }}
+                className="text-xs text-red-500 hover:underline"
+              >
+                Clear history
+              </button>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={history}>
+                <XAxis dataKey="timestamp" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="totalLoad" fill="#3b82f6" name="Total Load (ms)" />
+                <Bar dataKey="domLoad" fill="#10b981" name="DOM Load (ms)" />
+                <Bar dataKey="ttfb" fill="#f97316" name="TTFB (ms)" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        )
-      )}
+        )}
 
-      {/* History Chart */}
-      {history.length > 0 ? (
-        <div className="mt-10">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold">Recent Performance Summary</h3>
-            <button
-              onClick={() => {
-                if (typeof window !== "undefined") {
-                  window.localStorage.removeItem("speedTestHistory");
-                }
-                setHistory([]);
-              }}
-              className="text-xs text-red-500 hover:underline"
-            >
-              Clear History
-            </button>
-          </div>
-
-          {/* quick replay buttons */}
-          <ul className="mt-2 flex gap-2 flex-wrap text-xs">
-            {history.map((h, idx) => (
-              <li key={idx}>
-                <button
-                  onClick={() => {
-                    setUrlA(h.url);
-                    setResultA(h);
-                    setCompareMode(false);
-                  }}
-                  className="px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-neutral-800"
-                >
-                  {h.timestamp} · {h.url.replace(/^https?:\/\//, "")}
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={history}>
-              <XAxis dataKey="timestamp" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="totalLoad" fill="#3b82f6" name="Total Load (ms)" />
-              <Bar dataKey="domLoad" fill="#10b981" name="DOM Load (ms)" />
-              <Bar dataKey="ttfb" fill="#f59e0b" name="TTFB (ms)" />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+          Network: {connection.effectiveType || "unknown"} • Downlink:{" "}
+          {connection.downlink ? connection.downlink + " Mbps" : "N/A"}
         </div>
-      ) : (
-        <p className="mt-10 text-xs text-gray-400">
-          Run at least one test to see recent performance history.
-        </p>
-      )}
-
-      <div className="mt-4 text-xs text-gray-500">
-        Network: {connection.effectiveType || "unknown"} • Downlink:{" "}
-        {connection.downlink ? connection.downlink + " Mbps" : "N/A"}
       </div>
     </div>
   );
