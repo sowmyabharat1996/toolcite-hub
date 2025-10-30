@@ -1,7 +1,7 @@
-// app/tools/keyword-research-basic/page.tsx
 import type { Metadata } from "next";
-import KeywordResearch from "@/components/tools/KeywordResearch";
+import dynamic from "next/dynamic";
 
+// 1) SEO stays on the server
 export const metadata: Metadata = {
   title: "Keyword Research Tool (Instant Suggestions, KSI, Exports) | ToolCite",
   description:
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     siteName: "ToolCite",
     images: [
       {
-        // if you don't have a per-tool OG yet, use /og-default.png
+        // if you don't have this yet, change to "/og-default.png"
         url: "/og-keyword-research.png",
         width: 1200,
         height: 630,
@@ -38,6 +38,20 @@ export const metadata: Metadata = {
   },
 };
 
+// 2) Tool itself is client-only → avoids `localStorage is not defined`
+const KeywordResearchClient = dynamic(
+  () => import("@/components/tools/KeywordResearch"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="max-w-5xl mx-auto p-6 rounded-xl border border-neutral-200/20 bg-black/10 dark:bg-neutral-900/30">
+        Loading keyword tool…
+      </div>
+    ),
+  }
+);
+
+// 3) Page component just renders the client tool
 export default function Page() {
-  return <KeywordResearch />;
+  return <KeywordResearchClient />;
 }
