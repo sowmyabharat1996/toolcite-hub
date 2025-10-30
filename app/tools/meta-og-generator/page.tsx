@@ -2,10 +2,10 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v3
- * - Step 6: Presets ✅
- * - Step 7: Snippet variants + SEO checks ✅
- * - Step 8: URL-state sharing + Share button ✅
+ * META-OG-GENERATOR v3 (single Share btn)
+ * - presets ✅
+ * - snippet variants + SEO checks ✅
+ * - URL-state sharing + copy/share ✅
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -54,7 +54,7 @@ const PRESETS: Record<
   },
 };
 
-/* ---------------- helpers ---------------- */
+/* ---------- helpers ---------- */
 
 function stripHtml(s: string) {
   return s.replace(/<[^>]*>/g, " ");
@@ -87,6 +87,7 @@ function sanitizeText(raw: string, max: number) {
   s = stripCodeyStuff(s);
   s = s.replace(/\s+/g, " ").trim();
   if (looksLikeCode(raw)) {
+    // user pasted code → don’t leak to preview
     return "";
   }
   if (s.length > max) s = s.slice(0, max);
@@ -132,10 +133,10 @@ function download(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-/* ---------------- main ---------------- */
+/* ---------- main page ---------- */
 
 export default function Page() {
-  // -------- 1. BASE STATE (with presets) --------
+  // base from presets
   const [preset, setPreset] = useState<PresetId>("tool");
   const p = PRESETS[preset];
 
@@ -144,7 +145,7 @@ export default function Page() {
   const [url, setUrl] = useState(p.url);
   const [siteName, setSiteName] = useState(p.siteName);
   const [author, setAuthor] = useState(p.author);
-  const [image, setImage] = useState(""); // keep empty, fallback used in preview/snippet
+  const [image, setImage] = useState(""); // empty → show fallback only in preview/snippet
 
   const [themeColor, setThemeColor] = useState("#0ea5e9");
   const [twitterCard, setTwitterCard] =
@@ -153,10 +154,10 @@ export default function Page() {
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
   const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
 
-  // we need this to avoid writing to URL while we are still reading initial params
-  const hasHydratedFromURL = useRef(false);
+  // to avoid URL thrash on first render
+  const hydratedRef = useRef(false);
 
-  // -------- 2. HYDRATE FROM URL (on mount) --------
+  /* 1) READ FROM URL ONCE */
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sp = new URLSearchParams(window.location.search);
@@ -174,16 +175,14 @@ export default function Page() {
     const qpTwCreator = sp.get("twcr");
 
     if (qpPreset && PRESETS[qpPreset]) {
-      setPreset(qpPreset);
-      // start from preset values, then overwrite with query ones
       const base = PRESETS[qpPreset];
+      setPreset(qpPreset);
       setTitleInput(qpTitle ?? base.title);
       setDescInput(qpDesc ?? base.desc);
       setUrl(qpUrl ?? base.url);
       setSiteName(qpSite ?? base.siteName);
       setAuthor(qpAuthor ?? base.author);
     } else {
-      // no preset in URL → use current, but still apply query overrides
       if (qpTitle) setTitleInput(qpTitle);
       if (qpDesc) setDescInput(qpDesc);
       if (qpUrl) setUrl(qpUrl);
@@ -197,17 +196,16 @@ export default function Page() {
     if (qpTwSite) setTwitterSite(qpTwSite);
     if (qpTwCreator) setTwitterCreator(qpTwCreator);
 
-    hasHydratedFromURL.current = true;
+    hydratedRef.current = true;
   }, []);
 
-  // -------- 3. WRITE TO URL (whenever state changes) --------
+  /* 2) WRITE TO URL WHEN STATE CHANGES */
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!hasHydratedFromURL.current) return; // wait until initial read is done
+    if (!hydratedRef.current) return;
 
     const sp = new URLSearchParams();
 
-    // only write the things that are NOT default, so links stay short
     if (preset !== "tool") sp.set("preset", preset);
     if (titleInput && titleInput !== PRESETS[preset].title) sp.set("title", titleInput);
     if (descInput && descInput !== PRESETS[preset].desc) sp.set("desc", descInput);
@@ -237,14 +235,14 @@ export default function Page() {
     twitterCreator,
   ]);
 
-  // -------- 4. SANITIZED VERSIONS --------
+  /* 3) SANITIZED VERSIONS */
   const safeTitle = sanitizeText(titleInput, TITLE_MAX);
   const safeDesc = sanitizeText(descInput, DESC_MAX);
   const hasDescRaw = descInput.trim().length > 0;
   const descFilteredOut = hasDescRaw && !safeDesc;
   const resolvedImage = absolutize(image || FALLBACK_OG);
 
-  // when user manually chooses a preset from UI
+  /* change preset from UI */
   function applyPreset(id: PresetId) {
     const pp = PRESETS[id];
     setPreset(id);
@@ -253,10 +251,9 @@ export default function Page() {
     setUrl(pp.url);
     setSiteName(pp.siteName);
     setAuthor(pp.author);
-    // do not touch image
   }
 
-  // -------- 5. GENERATE HTML HEAD --------
+  /* 4) BUILD SNIPPET */
   const htmlHead = useMemo(() => {
     const lines: string[] = [];
     if (safeTitle) lines.push(`<title>${escapeHtml(safeTitle)}</title>`);
@@ -269,8 +266,7 @@ export default function Page() {
     if (url) lines.push(meta("property", "og:url", url));
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
     lines.push(meta("property", "og:type", "website"));
-
-    // always emit fallback
+    // always show fallback so preview never breaks
     lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("property", "og:image:width", "1200"));
     lines.push(meta("property", "og:image:height", "630"));
@@ -302,17 +298,15 @@ export default function Page() {
     author,
   ]);
 
-  // -------- 6. CHECKS (now smarter) --------
+  /* 5) CHECKS */
   const checks = [
-    safeTitle
-      ? { ok: true, text: "Title OK (≤ 60)." }
-      : { ok: false, text: "Title empty." },
+    safeTitle ? { ok: true, text: "Title OK (≤ 60)." } : { ok: false, text: "Title empty." },
     !hasDescRaw
       ? { ok: false, text: "Description empty." }
       : descFilteredOut
       ? {
           ok: false,
-          text: "Description present but filtered (looked like code) — tweak wording.",
+          text: "Description looked like code → tweak wording.",
         }
       : { ok: true, text: "Description OK (≤ 160)." },
     url.startsWith("http")
@@ -324,20 +318,23 @@ export default function Page() {
     { ok: !!twitterCreator || !!author, text: `@creator/author present.` },
   ];
 
-  // -------- 7. SHARE HANDLER --------
+  /* 6) SHARE HANDLER (single) */
   async function shareCurrent() {
     if (typeof window === "undefined") return;
-    const urlToShare = window.location.href;
+    const link = window.location.href;
     try {
       if (navigator.share) {
-        await navigator.share({ title: safeTitle || "Meta & OG Generator", url: urlToShare });
+        await navigator.share({
+          title: safeTitle || "Meta & OG Generator",
+          url: link,
+        });
         return;
       }
     } catch {
-      // ignore
+      // ignore share abort
     }
     try {
-      await navigator.clipboard.writeText(urlToShare);
+      await navigator.clipboard.writeText(link);
       alert("Share link copied.");
     } catch {
       alert("Unable to copy link.");
@@ -346,6 +343,7 @@ export default function Page() {
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8">
+      {/* top bar with SINGLE share */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-semibold tracking-tight">ToolCite Hub</h1>
         <div className="flex items-center gap-3">
@@ -360,7 +358,7 @@ export default function Page() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* LEFT */}
+        {/* LEFT PANEL */}
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
           <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
@@ -394,7 +392,7 @@ export default function Page() {
             <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
           </Field>
 
-          {/* description */}
+          {/* desc */}
           <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
             <textarea
               rows={3}
@@ -407,7 +405,7 @@ export default function Page() {
             <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
           </Field>
 
-          {/* canonical */}
+          {/* url */}
           <Field label="Canonical URL">
             <input
               value={url}
@@ -445,11 +443,12 @@ export default function Page() {
               placeholder="/og-default.png"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave this empty → preview + snippet use <code>/og-default.png</code>. We don’t pre-fill.
+              Leave this empty → preview &amp; snippet use <code>/og-default.png</code>. We don’t
+              pre-fill the field.
             </p>
           </Field>
 
-          {/* theme + twitter type */}
+          {/* theme + twitter card */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Theme Color">
               <input
@@ -507,11 +506,11 @@ export default function Page() {
           </div>
         </div>
 
-        {/* RIGHT */}
+        {/* RIGHT PANEL */}
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
           <h3 className="text-lg font-semibold">Live Previews</h3>
 
-          {/* OG card */}
+          {/* OG preview */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
@@ -525,7 +524,7 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Twitter card */}
+          {/* Twitter preview */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {twitterCard === "summary_large_image" && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -636,7 +635,7 @@ export default function Page() {
   );
 }
 
-/* ------- small UI helpers ------- */
+/* ---------- tiny helpers ---------- */
 
 function Field({
   label,
