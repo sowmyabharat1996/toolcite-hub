@@ -2,14 +2,17 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v2 (a11y fixed)
+ * META-OG-GENERATOR v2 (sentinel OK)
+ * Steps 1–10 done
+ * Step 11 added: URL-state / deep-link sharing
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 const TITLE_MAX = 60;
 const DESC_MAX = 160;
 const FALLBACK_OG = "/og-default.png";
+const STORAGE_KEY = "toolcite.metaOg.v1";
 
 type PresetId = "tool" | "blog" | "homepage" | "product";
 
@@ -51,7 +54,7 @@ const PRESETS: Record<
   },
 };
 
-/* ---------- helpers ---------- */
+/* ---------------- helpers ---------------- */
 
 function stripHtml(s: string) {
   return s.replace(/<[^>]*>/g, " ");
@@ -84,6 +87,7 @@ function sanitizeText(raw: string, max: number) {
   s = stripCodeyStuff(s);
   s = s.replace(/\s+/g, " ").trim();
   if (looksLikeCode(raw)) {
+    // hide code-y stuff from previews
     return "";
   }
   if (s.length > max) s = s.slice(0, max);
@@ -129,9 +133,42 @@ function download(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-/* ---------- main ---------- */
+/* simple <head> importer (step 9) */
+function parseImport(raw: string) {
+  const out: Partial<{
+    title: string;
+    description: string;
+    url: string;
+    image: string;
+    siteName: string;
+    author: string;
+  }> = {};
+
+  const titleTag = raw.match(/<title>([^<]+)<\/title>/i);
+  if (titleTag) out.title = titleTag[1].trim();
+
+  const descTag = raw.match(/name=["']description["']\s+content=["']([^"']+)["']/i);
+  if (descTag) out.description = descTag[1].trim();
+
+  const canonTag = raw.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
+  if (canonTag) out.url = canonTag[1].trim();
+
+  const ogImg = raw.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i);
+  if (ogImg) out.image = ogImg[1].trim();
+
+  const ogSite = raw.match(/property=["']og:site_name["']\s+content=["']([^"']+)["']/i);
+  if (ogSite) out.siteName = ogSite[1].trim();
+
+  const author = raw.match(/name=["']author["']\s+content=["']([^"']+)["']/i);
+  if (author) out.author = author[1].trim();
+
+  return out;
+}
+
+/* ---------------- main ---------------- */
 
 export default function Page() {
+  // ---------- state -------------
   const [preset, setPreset] = useState<PresetId>("tool");
   const p = PRESETS[preset];
 
@@ -140,7 +177,7 @@ export default function Page() {
   const [url, setUrl] = useState(p.url);
   const [siteName, setSiteName] = useState(p.siteName);
   const [author, setAuthor] = useState(p.author);
-  const [image, setImage] = useState(""); // empty → preview/snippet fallbacks
+  const [image, setImage] = useState(""); // keep empty, preview uses fallback
 
   const [themeColor, setThemeColor] = useState("#0ea5e9");
   const [twitterCard, setTwitterCard] =
@@ -149,9 +186,155 @@ export default function Page() {
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
   const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
 
+  // step 9 panel
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+
+  // used to avoid pushing URL before we finish initial hydration
+  const [hydrated, setHydrated] = useState(false);
+
+  // ---------- FIRST LOAD: querystring → localStorage → preset ----------
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    let loadedFromQuery = false;
+
+    if (params.toString().length > 0) {
+      // 1) from URL
+      const qpPreset = params.get("preset") as PresetId | null;
+      if (qpPreset && PRESETS[qpPreset]) {
+        setPreset(qpPreset);
+        const base = PRESETS[qpPreset];
+        setTitleInput(params.get("title") ?? base.title);
+        setDescInput(params.get("desc") ?? base.desc);
+        setUrl(params.get("url") ?? base.url);
+        setSiteName(params.get("site") ?? base.siteName);
+        setAuthor(params.get("author") ?? base.author);
+      } else {
+        // no valid preset in query → still try to load fields
+        if (params.get("title")) setTitleInput(params.get("title") || "");
+        if (params.get("desc")) setDescInput(params.get("desc") || "");
+        if (params.get("url")) setUrl(params.get("url") || "");
+        if (params.get("site")) setSiteName(params.get("site") || "");
+        if (params.get("author")) setAuthor(params.get("author") || "");
+      }
+
+      if (params.get("image")) setImage(params.get("image") || "");
+      if (params.get("theme")) setThemeColor(params.get("theme") || "#0ea5e9");
+      if (params.get("card")) setTwitterCard((params.get("card") as any) || "summary_large_image");
+      if (params.get("site_handle")) setTwitterSite(params.get("site_handle") || "@toolcite");
+      if (params.get("creator")) setTwitterCreator(params.get("creator") || "@bharat");
+      if (params.get("tab")) setTab((params.get("tab") as any) || "html");
+
+      loadedFromQuery = true;
+    }
+
+    if (!loadedFromQuery) {
+      // 2) from localStorage
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved.preset) setPreset(saved.preset);
+          if (saved.titleInput !== undefined) setTitleInput(saved.titleInput);
+          if (saved.descInput !== undefined) setDescInput(saved.descInput);
+          if (saved.url !== undefined) setUrl(saved.url);
+          if (saved.siteName !== undefined) setSiteName(saved.siteName);
+          if (saved.author !== undefined) setAuthor(saved.author);
+          if (saved.image !== undefined) setImage(saved.image);
+          if (saved.themeColor !== undefined) setThemeColor(saved.themeColor);
+          if (saved.twitterCard !== undefined) setTwitterCard(saved.twitterCard);
+          if (saved.twitterSite !== undefined) setTwitterSite(saved.twitterSite);
+          if (saved.twitterCreator !== undefined) setTwitterCreator(saved.twitterCreator);
+          if (saved.tab !== undefined) setTab(saved.tab);
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    setHydrated(true);
+  }, []);
+
+  // ---------- AUTOSAVE to localStorage ----------
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hydrated) return; // wait for initial hydration
+    const payload = {
+      preset,
+      titleInput,
+      descInput,
+      url,
+      siteName,
+      author,
+      image,
+      themeColor,
+      twitterCard,
+      twitterSite,
+      twitterCreator,
+      tab,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }, [
+    hydrated,
+    preset,
+    titleInput,
+    descInput,
+    url,
+    siteName,
+    author,
+    image,
+    themeColor,
+    twitterCard,
+    twitterSite,
+    twitterCreator,
+    tab,
+  ]);
+
+  // ---------- PUSH STATE TO URL (Step 11) ----------
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hydrated) return; // don't push while we're still loading
+    const params = new URLSearchParams();
+    params.set("preset", preset);
+    if (titleInput) params.set("title", titleInput);
+    if (descInput) params.set("desc", descInput);
+    if (url) params.set("url", url);
+    if (siteName) params.set("site", siteName);
+    if (author) params.set("author", author);
+    if (image) params.set("image", image);
+    if (themeColor && themeColor !== "#0ea5e9") params.set("theme", themeColor);
+    if (twitterCard && twitterCard !== "summary_large_image") params.set("card", twitterCard);
+    if (twitterSite && twitterSite !== "@toolcite") params.set("site_handle", twitterSite);
+    if (twitterCreator && twitterCreator !== "@bharat") params.set("creator", twitterCreator);
+    if (tab && tab !== "html") params.set("tab", tab);
+
+    const qs = params.toString();
+    const newUrl = qs
+      ? `${window.location.pathname}?${qs}`
+      : window.location.pathname;
+    window.history.replaceState(null, "", newUrl);
+  }, [
+    hydrated,
+    preset,
+    titleInput,
+    descInput,
+    url,
+    siteName,
+    author,
+    image,
+    themeColor,
+    twitterCard,
+    twitterSite,
+    twitterCreator,
+    tab,
+  ]);
+
+  // sanitized for previews
   const safeTitle = sanitizeText(titleInput, TITLE_MAX);
   const safeDesc = sanitizeText(descInput, DESC_MAX);
 
+  // for checks
   const hasDescRaw = descInput.trim().length > 0;
   const descFilteredOut = hasDescRaw && !safeDesc;
 
@@ -165,8 +348,40 @@ export default function Page() {
     setUrl(pp.url);
     setSiteName(pp.siteName);
     setAuthor(pp.author);
+    // keep image field as user typed
   }
 
+  function handleResetToPreset() {
+    const pp = PRESETS[preset];
+    setTitleInput(pp.title);
+    setDescInput(pp.desc);
+    setUrl(pp.url);
+    setSiteName(pp.siteName);
+    setAuthor(pp.author);
+  }
+
+  function handleClearAll() {
+    setTitleInput("");
+    setDescInput("");
+    setUrl("");
+    setSiteName("");
+    setAuthor("");
+    setImage("");
+    // keep twitter + theme
+  }
+
+  function handleRunImport() {
+    const parsed = parseImport(importText);
+    if (parsed.title) setTitleInput(parsed.title);
+    if (parsed.description) setDescInput(parsed.description);
+    if (parsed.url) setUrl(parsed.url);
+    if (parsed.image) setImage(parsed.image);
+    if (parsed.siteName) setSiteName(parsed.siteName);
+    if (parsed.author) setAuthor(parsed.author);
+    setShowImport(false);
+  }
+
+  // build snippet
   const htmlHead = useMemo(() => {
     const lines: string[] = [];
     if (safeTitle) lines.push(`<title>${escapeHtml(safeTitle)}</title>`);
@@ -180,7 +395,8 @@ export default function Page() {
     if (url) lines.push(meta("property", "og:url", url));
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
     lines.push(meta("property", "og:type", "website"));
-    // always emit image (Option A)
+
+    // image (Option A - always)
     lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("property", "og:image:width", "1200"));
     lines.push(meta("property", "og:image:height", "630"));
@@ -214,13 +430,15 @@ export default function Page() {
   ]);
 
   const checks = [
-    safeTitle ? { ok: true, text: "Title OK (≤ 60)." } : { ok: false, text: "Title empty." },
+    safeTitle
+      ? { ok: true, text: "Title OK (≤ 60)." }
+      : { ok: false, text: "Title empty." },
     !hasDescRaw
       ? { ok: false, text: "Description empty." }
       : descFilteredOut
       ? {
           ok: false,
-          text: "Description present but filtered (looked like code) — rewrite human text.",
+          text: "Description present but filtered (looked like code / JSX).",
         }
       : { ok: true, text: "Description OK (≤ 160)." },
     url.startsWith("http")
@@ -233,13 +451,32 @@ export default function Page() {
   ];
 
   return (
-    <main id="main" className="max-w-6xl mx-auto px-4 py-6 lg:py-8">
-      <div className="grid gap-6 lg:grid-cols-2 items-start">
-        {/* LEFT */}
-        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5 min-w-0">
-          <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
+    <main className="max-w-6xl mx-auto px-4 py-8">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-semibold">Meta &amp; Social Tag Generator</h1>
+      </div>
 
-          {/* presets */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* LEFT */}
+        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={handleResetToPreset}
+                className="text-xs rounded-md border px-3 py-1 bg-white/30 dark:bg-neutral-800"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleClearAll}
+                className="text-xs rounded-md border px-3 py-1 bg-white/30 dark:bg-neutral-800"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {(Object.keys(PRESETS) as PresetId[]).map((id) => (
               <button
@@ -251,28 +488,25 @@ export default function Page() {
                     : "bg-white/40 dark:bg-neutral-800 hover:bg-white/70 dark:hover:bg-neutral-700"
                 }`}
                 aria-pressed={preset === id}
-                type="button"
               >
                 {PRESETS[id].label}
               </button>
             ))}
           </div>
 
-          <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`} id="title">
+          <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
             <input
-              id="title"
               value={titleInput}
               onChange={(e) => setTitleInput(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               placeholder="Awesome Tool — Do X in Seconds"
               aria-describedby="title-counter"
             />
-            <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
+            <Counter id="title-counter" raw={titleInput} safe={sanitizeText(titleInput, TITLE_MAX)} max={TITLE_MAX} />
           </Field>
 
-          <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`} id="description">
+          <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
             <textarea
-              id="description"
               rows={3}
               value={descInput}
               onChange={(e) => setDescInput(e.target.value)}
@@ -280,12 +514,11 @@ export default function Page() {
               placeholder="Explain your page in one compelling sentence."
               aria-describedby="desc-counter"
             />
-            <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
+            <Counter id="desc-counter" raw={descInput} safe={sanitizeText(descInput, DESC_MAX)} max={DESC_MAX} />
           </Field>
 
-          <Field label="Canonical URL" id="canonical-url">
+          <Field label="Canonical URL">
             <input
-              id="canonical-url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -295,17 +528,15 @@ export default function Page() {
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Site Name" id="site-name">
+            <Field label="Site Name">
               <input
-                id="site-name"
                 value={siteName}
                 onChange={(e) => setSiteName(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               />
             </Field>
-            <Field label="Author" id="author">
+            <Field label="Author">
               <input
-                id="author"
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -313,33 +544,29 @@ export default function Page() {
             </Field>
           </div>
 
-          <Field label="Preview Image (OG/Twitter)" id="preview-image">
+          <Field label="Preview Image (OG/Twitter)">
             <input
-              id="preview-image"
               value={image}
               onChange={(e) => setImage(e.target.value)}
               className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
               placeholder="/og-default.png"
             />
-            <p className="text-xs text-gray-500 dark:text-gray-200/70 mt-1">
-              Leave this empty → preview &amp; snippet will use{" "}
-              <code className="dark:text-gray-100">/og-default.png</code>.
+            <p className="text-xs text-gray-500 mt-1">
+              Leave this empty → preview + snippet use <code>/og-default.png</code>. We don’t pre-fill.
             </p>
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Theme Color" id="theme-color">
+            <Field label="Theme Color">
               <input
-                id="theme-color"
                 type="color"
                 value={themeColor}
                 onChange={(e) => setThemeColor(e.target.value)}
                 className="h-10 w-16 rounded border bg-white/60 dark:bg-neutral-800 p-1"
               />
             </Field>
-            <Field label="Twitter Card Type" id="twitter-card">
+            <Field label="Twitter Card Type">
               <select
-                id="twitter-card"
                 value={twitterCard}
                 onChange={(e) => setTwitterCard(e.target.value as any)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -351,18 +578,16 @@ export default function Page() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Twitter @site" id="twitter-site">
+            <Field label="Twitter @site">
               <input
-                id="twitter-site"
                 value={twitterSite}
                 onChange={(e) => setTwitterSite(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
                 placeholder="@toolcite"
               />
             </Field>
-            <Field label="Twitter @creator" id="twitter-creator">
+            <Field label="Twitter @creator">
               <input
-                id="twitter-creator"
                 value={twitterCreator}
                 onChange={(e) => setTwitterCreator(e.target.value)}
                 className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
@@ -373,91 +598,90 @@ export default function Page() {
 
           <div className="flex flex-wrap gap-3">
             <button
-              type="button"
               onClick={() => navigator.clipboard.writeText(htmlHead)}
               className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700"
             >
-                Copy snippet
+              Copy snippet
             </button>
             <button
-              type="button"
               onClick={() => download("meta-tags.html", htmlHead)}
               className="rounded border px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800"
             >
               Download HTML
             </button>
+            <button
+              onClick={() => setShowImport((p) => !p)}
+              className="rounded border px-3 py-2 text-sm bg-white/40 dark:bg-neutral-800"
+            >
+              {showImport ? "Hide" : "Import fields"}
+            </button>
           </div>
+
+          {showImport && (
+            <div className="border rounded-xl p-3 bg-white/40 dark:bg-neutral-800 space-y-2 text-xs">
+              <p className="font-medium">Paste raw &lt;head&gt; or meta tags:</p>
+              <textarea
+                rows={5}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                className="w-full rounded border bg-white/60 dark:bg-neutral-900 p-2 text-xs"
+                placeholder={`<title>My page</title>\n<meta name="description" content="...">`}
+              />
+              <button
+                onClick={handleRunImport}
+                className="rounded border px-3 py-1 bg-blue-600 text-white text-xs"
+              >
+                Import
+              </button>
+            </div>
+          )}
         </div>
 
         {/* RIGHT */}
-        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6 min-w-0">
+        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
           <h3 className="text-lg font-semibold">Live Previews</h3>
 
-          {/* OG card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={resolvedImage}
-              alt="Open Graph preview image"
-              className="w-full h-40 object-cover"
-              loading="lazy"
-              decoding="async"
-            />
+            <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
             <div className="p-4">
-              <div className="text-xs text-gray-500 dark:text-gray-200/80 break-all">
-                {url || "https://example.com"}
-              </div>
+              <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
               <div className="text-base font-semibold mt-1">
                 {safeTitle || "Your Open Graph Title"}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-100 mt-1">
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
                 {safeDesc || "Your Open Graph description shows here."}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-200/80 mt-2">
-                {siteName || "ToolCite"}
-              </div>
+              <div className="text-xs text-gray-500 mt-2">{siteName || "ToolCite"}</div>
             </div>
           </div>
 
-          {/* Twitter card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {twitterCard === "summary_large_image" && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={resolvedImage}
-                alt="Twitter card preview image"
-                className="w-full h-40 object-cover"
-                loading="lazy"
-                decoding="async"
-              />
+              <img src={resolvedImage} alt="Twitter card preview image" className="w-full h-40 object-cover" />
             )}
             <div className="p-4">
-              <div className="text-xs text-gray-500 dark:text-gray-200/80 break-all">
-                {url || "https://example.com"}
-              </div>
+              <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
               <div className="text-base font-semibold mt-1">
                 {safeTitle || "Twitter Card Title"}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-100 mt-1">
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
                 {safeDesc || "Twitter Card description preview."}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-200/80 mt-2">
+              <div className="text-xs text-gray-500 mt-2">
                 {(ensureAt(twitterSite) || "@site")} • {(ensureAt(twitterCreator) || "@creator")}
               </div>
             </div>
           </div>
 
-          {/* snippet tabs */}
-          <div className="min-w-0">
-            <div className="flex gap-2 mb-2 overflow-x-auto md:overflow-visible" role="tablist">
+          <div>
+            <div className="flex gap-2 mb-2">
               {(["html", "next", "react", "social"] as const).map((t) => (
                 <button
                   key={t}
-                  type="button"
                   onClick={() => setTab(t)}
-                  role="tab"
-                  aria-selected={tab === t}
-                  className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-md text-sm ${
                     tab === t ? "bg-blue-600 text-white" : "bg-white/30 dark:bg-neutral-800"
                   }`}
                 >
@@ -472,10 +696,7 @@ export default function Page() {
               ))}
             </div>
 
-            <pre
-              className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-x-auto max-w-full sm:max-w-none whitespace-pre-wrap sm:whitespace-pre"
-              aria-label="Generated meta tags snippet"
-            >
+            <pre className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto">
               {tab === "html" && htmlHead}
 
               {tab === "next" &&
@@ -531,7 +752,6 @@ export default function Page() {
             </pre>
           </div>
 
-          {/* checks */}
           <div className="rounded-xl border bg-white/40 dark:bg-neutral-800 p-4 space-y-1 text-xs">
             <p className="font-medium mb-1">SEO &amp; Sharing Checks</p>
             {checks.map((c, i) => (
@@ -552,20 +772,16 @@ function Field({
   label,
   hint,
   children,
-  id,
 }: {
   label: string;
   hint?: string;
   children: React.ReactNode;
-  id: string;
 }) {
   return (
-    <div className="min-w-0">
-      <div className="flex items-center justify-between mb-1 gap-3">
-        <label className="block text-sm font-medium" htmlFor={id}>
-          {label}
-        </label>
-        {hint && <span className="text-xs text-gray-500 dark:text-gray-200/70">{hint}</span>}
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-sm font-medium">{label}</label>
+        {hint && <span className="text-xs text-gray-500">{hint}</span>}
       </div>
       {children}
     </div>
@@ -576,7 +792,7 @@ function Counter({ id, raw, safe, max }: { id: string; raw: string; safe: string
   const over = raw.length > max;
   return (
     <div id={id} className="mt-1 text-xs">
-      <span className={over ? "text-red-500" : "text-gray-500 dark:text-gray-200/70"}>
+      <span className={over ? "text-red-500" : "text-gray-500"}>
         {raw.length} / {max}
       </span>
       {over && (
