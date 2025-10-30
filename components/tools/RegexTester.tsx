@@ -452,6 +452,32 @@ export default function RegexTester() {
     setTimeout(() => setStatusMsg(""), 800);
   }
 
+
+function exportCurrentAsJSON() {
+  const payload = {
+    presetId,
+    pattern,
+    flags,
+    sample,
+    matches,
+    ts: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "regex-session.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  setStatusMsg("Exported JSON");
+  setTimeout(() => setStatusMsg(""), 1000);
+}
+
+
   // share button
   function handleShare() {
     if (!isBrowser) return;
@@ -520,14 +546,22 @@ export default function RegexTester() {
       {/* Controls */}
       <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
         {/* header + share */}
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-base font-semibold">Regex Tester – Free Online Tool</h1>
-          <button
-            onClick={handleShare}
-            className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+         <div className="flex items-center justify-between gap-3">
+        <h1 className="text-base font-semibold">Regex Tester - Free Online Tool</h1>
+        <div className="flex gap-2">
+        <button
+         onClick={exportCurrentAsJSON}
+         className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
           >
+         Export JSON
+         </button>
+         <button
+         onClick={handleShare}
+         className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+      >
             Share
           </button>
+        </div>
         </div>
 
         {/* Presets */}
