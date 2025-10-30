@@ -4,16 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 
 export default function QrCodeGenerator() {
+  // 👇 keep what the user is typing as string
+  const [sizeInput, setSizeInput] = useState("256");
+  const [marginInput, setMarginInput] = useState("2");
+
+  // actual values we feed to QR
+  const size = Math.min(Math.max(Number(sizeInput || "256"), 128), 1024);
+  const margin = Math.min(Math.max(Number(marginInput || "2"), 0), 16);
+
   const [text, setText] = useState("");
-  const [size, setSize] = useState(256);
-  const [margin, setMargin] = useState(2);
   const [errorLevel, setErrorLevel] = useState<"L" | "M" | "Q" | "H">("M");
   const [fg, setFg] = useState("#111827");
   const [bg, setBg] = useState("#ffffff");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // render QR
-  const render = async () => {
+  async function render() {
     if (!canvasRef.current) return;
     await QRCode.toCanvas(canvasRef.current, text || "https://toolcite.com", {
       width: size,
@@ -22,7 +27,7 @@ export default function QrCodeGenerator() {
       errorCorrectionLevel: errorLevel,
       scale: 8,
     });
-  };
+  }
 
   useEffect(() => {
     void render();
@@ -31,7 +36,6 @@ export default function QrCodeGenerator() {
   function download(type: "png" | "jpg" | "webp" | "svg") {
     const value = text || "https://toolcite.com";
 
-    // SVG branch
     if (type === "svg") {
       QRCode.toString(value, {
         type: "svg",
@@ -52,17 +56,16 @@ export default function QrCodeGenerator() {
     }
 
     if (!canvasRef.current) return;
-    const link = document.createElement("a");
-    link.href = canvasRef.current.toDataURL(
+    const a = document.createElement("a");
+    a.href = canvasRef.current.toDataURL(
       `image/${type === "jpg" ? "jpeg" : type}`
     );
-    link.download = `qrcode.${type === "jpg" ? "jpg" : type}`;
-    link.click();
+    a.download = `qrcode.${type === "jpg" ? "jpg" : type}`;
+    a.click();
   }
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      {/* Controls */}
       <div className="rounded-2xl border p-5 bg-white/70 dark:bg-neutral-900/80">
         <div className="mb-4">
           <label
@@ -73,15 +76,16 @@ export default function QrCodeGenerator() {
           </label>
           <textarea
             id="qr-text"
-            className="mt-1 w-full rounded-lg border border-neutral-200/70 dark:border-neutral-700 bg-white dark:bg-neutral-950/40 p-3 text-sm"
-            rows={4}
-            placeholder="Paste text or a URL"
             value={text}
             onChange={(e) => setText(e.target.value)}
+            rows={4}
+            className="mt-1 w-full rounded-lg border border-neutral-200/70 dark:border-neutral-700 bg-white dark:bg-neutral-950/40 p-3 text-sm"
+            placeholder="Paste text or a URL"
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
+          {/* Size */}
           <div>
             <label
               htmlFor="qr-size"
@@ -91,13 +95,17 @@ export default function QrCodeGenerator() {
             </label>
             <input
               id="qr-size"
-              type="number"
-              min={128}
-              max={1024}
-              step={32}
-              value={size}
-              onChange={(e) => setSize(Number(e.target.value) || 256)}
+              inputMode="numeric"
+              value={sizeInput}
+              onChange={(e) => {
+                // allow empty while typing
+                const v = e.target.value;
+                if (v === "" || /^[0-9]+$/.test(v)) {
+                  setSizeInput(v);
+                }
+              }}
               className="mt-1 w-full rounded-lg border border-neutral-200/70 dark:border-neutral-700 bg-white dark:bg-neutral-950/40 p-2 text-sm"
+              placeholder="256"
               aria-describedby="qr-size-hint"
             />
             <p id="qr-size-hint" className="sr-only">
@@ -105,6 +113,7 @@ export default function QrCodeGenerator() {
             </p>
           </div>
 
+          {/* Margin */}
           <div>
             <label
               htmlFor="qr-margin"
@@ -114,12 +123,16 @@ export default function QrCodeGenerator() {
             </label>
             <input
               id="qr-margin"
-              type="number"
-              min={0}
-              max={16}
-              value={margin}
-              onChange={(e) => setMargin(Number(e.target.value) || 2)}
+              inputMode="numeric"
+              value={marginInput}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "" || /^[0-9]+$/.test(v)) {
+                  setMarginInput(v);
+                }
+              }}
               className="mt-1 w-full rounded-lg border border-neutral-200/70 dark:border-neutral-700 bg-white dark:bg-neutral-950/40 p-2 text-sm"
+              placeholder="2"
             />
           </div>
         </div>
@@ -138,10 +151,10 @@ export default function QrCodeGenerator() {
               onChange={(e) => setErrorLevel(e.target.value as any)}
               className="mt-1 w-full rounded-lg border border-neutral-200/70 dark:border-neutral-700 bg-white dark:bg-neutral-950/40 p-2 text-sm"
             >
-              <option value="L">L (low, biggest capacity)</option>
+              <option value="L">L (low)</option>
               <option value="M">M (default)</option>
               <option value="Q">Q</option>
-              <option value="H">H (highest, best for logos)</option>
+              <option value="H">H (highest)</option>
             </select>
           </div>
 
@@ -184,35 +197,30 @@ export default function QrCodeGenerator() {
           <button
             onClick={() => void render()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
-            aria-label="Generate QR code"
           >
             Generate QR
           </button>
           <button
             onClick={() => download("png")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm hover:bg-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-neutral-500"
-            aria-label="Download QR code as PNG"
+            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
           >
             PNG
           </button>
           <button
             onClick={() => download("jpg")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm hover:bg-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-neutral-500"
-            aria-label="Download QR code as JPG"
+            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
           >
             JPG
           </button>
           <button
             onClick={() => download("webp")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm hover:bg-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-neutral-500"
-            aria-label="Download QR code as WEBP"
+            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
           >
             WEBP
           </button>
           <button
             onClick={() => download("svg")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm hover:bg-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-neutral-500"
-            aria-label="Download QR code as SVG"
+            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
           >
             SVG
           </button>
@@ -227,8 +235,7 @@ export default function QrCodeGenerator() {
               u.searchParams.set("bg", bg);
               navigator.clipboard.writeText(u.toString());
             }}
-            className="rounded-lg border border-neutral-500/50 px-4 py-2 text-sm text-neutral-100 hover:bg-neutral-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-neutral-500"
-            aria-label="Copy a shareable link to this QR code"
+            className="rounded-lg border border-neutral-500/50 px-4 py-2 text-sm text-neutral-100 hover:bg-neutral-900/40"
           >
             Share Link
           </button>
