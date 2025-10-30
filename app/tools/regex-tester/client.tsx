@@ -37,7 +37,7 @@ export default function RegexTesterClient() {
   const regex = useMemo(() => {
     try {
       return new RegExp(pattern, flags.join(""));
-    } catch (e) {
+    } catch {
       return null;
     }
   }, [pattern, flags]);
@@ -45,12 +45,12 @@ export default function RegexTesterClient() {
   const matches = useMemo(() => {
     if (!regex) return [];
     const all: { match: string; index: number; groups: string[] }[] = [];
-    const m = text.matchAll(regex);
-    for (const item of m) {
+    const it = text.matchAll(regex);
+    for (const m of it) {
       all.push({
-        match: item[0] ?? "",
-        index: item.index ?? 0,
-        groups: item.slice(1),
+        match: m[0] ?? "",
+        index: m.index ?? 0,
+        groups: m.slice(1),
       });
     }
     return all;
@@ -68,10 +68,9 @@ export default function RegexTesterClient() {
   }
 
   function exportJSON() {
-    const blob = new Blob(
-      [JSON.stringify({ pattern, flags, text }, null, 2)],
-      { type: "application/json" }
-    );
+    const blob = new Blob([JSON.stringify({ pattern, flags, text }, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -84,9 +83,8 @@ export default function RegexTesterClient() {
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      {/* LEFT PANEL */}
+      {/* LEFT */}
       <div className="flex-1 min-w-0 space-y-4">
-        {/* top actions */}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -95,10 +93,8 @@ export default function RegexTesterClient() {
           >
             Export JSON
           </button>
-          {/* your SHARE button from layout still shows on top, so we keep this one lean */}
         </div>
 
-        {/* presets */}
         <div className="space-y-2">
           <p className="text-sm font-medium text-gray-200 lg:text-gray-100">Presets</p>
           <div className="flex flex-wrap gap-2">
@@ -119,7 +115,6 @@ export default function RegexTesterClient() {
           </div>
         </div>
 
-        {/* pattern + flags */}
         <div className="space-y-2">
           <label htmlFor="pattern" className="text-sm font-medium block">
             Pattern
@@ -133,7 +128,6 @@ export default function RegexTesterClient() {
               spellCheck={false}
               autoComplete="off"
             />
-            {/* flags */}
             <div className="flex gap-1">
               {(["g", "i", "m", "s", "u", "y"] as Flag[]).map((f) => (
                 <button
@@ -154,7 +148,6 @@ export default function RegexTesterClient() {
           </div>
         </div>
 
-        {/* test text */}
         <div className="space-y-2">
           <label htmlFor="test-text" className="text-sm font-medium block">
             Test Text
@@ -169,21 +162,17 @@ export default function RegexTesterClient() {
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
+      {/* RIGHT */}
       <div className="lg:w-80 w-full space-y-3">
         <div className="rounded-lg border border-gray-700 bg-black/10 dark:bg-neutral-900 p-3">
           <p className="text-sm font-semibold mb-2">Matches ({matches.length})</p>
           <div className="max-h-64 overflow-y-auto space-y-2">
-            {regex == null && (
-              <p className="text-xs text-red-400">Invalid regex / flags combination.</p>
-            )}
-
+            {!regex && <p className="text-xs text-red-400">Invalid regex / flags.</p>}
             {regex && matches.length === 0 && (
               <p className="text-xs text-gray-400">No matches in current text.</p>
             )}
-
             {matches.map((m, idx) => (
-              <div key={idx} className="rounded bg-black/20 p-2 text-xs break-All">
+              <div key={idx} className="rounded bg-black/20 p-2 text-xs break-all">
                 <p className="text-gray-100">
                   <span className="font-mono">#{idx + 1}</span> — {m.match}
                 </p>
@@ -202,12 +191,9 @@ export default function RegexTesterClient() {
           </div>
         </div>
 
-        {/* raw regex preview */}
         <div className="rounded-lg border border-gray-700 bg-black/5 dark:bg-neutral-900 p-3 text-xs overflow-x-auto">
           <p className="text-gray-300 mb-1 font-semibold">Current RegExp</p>
-          <code className="whitespace-pre">
-            /{pattern}/{flags.join("") || "∅"}
-          </code>
+          <code className="whitespace-pre">/{pattern}/{flags.join("") || "∅"}</code>
         </div>
       </div>
     </div>
