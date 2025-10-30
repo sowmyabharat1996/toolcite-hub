@@ -1,43 +1,7 @@
-// app/tools/meta-og-generator/page.tsx
-"use client"; // <- keep this because the UI is interactive
-
-/**
- * META-OG-GENERATOR v2 (a11y + SEO metadata)
- */
+// app/tools/meta-og-generator/client.tsx
+"use client";
 
 import React, { useMemo, useState } from "react";
-import type { Metadata } from "next";
-
-const CANONICAL = "https://toolcite.com/tools/meta-og-generator";
-
-export const metadata: Metadata = {
-  title: "Meta & Social Tag Generator – Open Graph, Twitter, Canonical | ToolCite",
-  description:
-    "Generate ready-to-paste SEO, Open Graph, and Twitter meta tags in seconds. Supports presets, fallbacks, and shareable snippets.",
-  alternates: { canonical: CANONICAL },
-  openGraph: {
-    type: "website",
-    url: CANONICAL,
-    title: "Meta & Social Tag Generator – ToolCite",
-    description: "SEO + OG + Twitter tags, all in-browser. No login.",
-    images: [
-      {
-        url: "/og/tools/meta-og-generator.png",
-        width: 1200,
-        height: 630,
-        alt: "ToolCite Meta & Social Tag Generator",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Meta & Social Tag Generator – ToolCite",
-    description: "Generate Open Graph, Twitter, and canonical meta tags instantly.",
-    images: ["/og/tools/meta-og-generator.png"],
-    site: "@toolcite",
-    creator: "@bharat",
-  },
-};
 
 const TITLE_MAX = 60;
 const DESC_MAX = 160;
@@ -83,7 +47,7 @@ const PRESETS: Record<
   },
 };
 
-/* ---------- helpers ---------- */
+/* ---------------- helpers ---------------- */
 function stripHtml(s: string) {
   return s.replace(/<[^>]*>/g, " ");
 }
@@ -159,8 +123,9 @@ function download(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-/* ---------- main ---------- */
-export default function Page() {
+/* ---------------- main (client) ---------------- */
+
+export default function MetaOgGeneratorClient() {
   const [preset, setPreset] = useState<PresetId>("tool");
   const p = PRESETS[preset];
 
@@ -247,7 +212,7 @@ export default function Page() {
       : descFilteredOut
       ? {
           ok: false,
-          text: "Description present but filtered (looked like code) — rewrite human text.",
+          text: "Description present but filtered (looked like code / JSX) — tweak wording.",
         }
       : { ok: true, text: "Description OK (≤ 160)." },
     url.startsWith("http")
@@ -348,7 +313,8 @@ export default function Page() {
               placeholder="/og-default.png"
             />
             <p className="text-xs text-gray-500 dark:text-gray-200/70 mt-1">
-              Leave this empty → preview &amp; snippet will use <code>/og-default.png</code>.
+              Leave this empty → preview &amp; snippet use <code>/og-default.png</code>. We don’t
+              pre-fill.
             </p>
           </Field>
 
@@ -416,15 +382,135 @@ export default function Page() {
 
         {/* RIGHT */}
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6 min-w-0">
-            {/* ... same as your last confirmed version ... */}
-            {/* I’m not repeating to save space, but keep the Live Preview + tabs + checks exactly as above */}
+          <h3 className="text-lg font-semibold">Live Previews</h3>
+
+          {/* OG card */}
+          <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
+            <div className="p-4">
+              <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
+              <div className="text-base font-semibold mt-1">{safeTitle || "Your Open Graph Title"}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                {safeDesc || "Your Open Graph description shows here."}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">{siteName || "ToolCite"}</div>
+            </div>
+          </div>
+
+          {/* Twitter card */}
+          <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
+            {twitterCard === "summary_large_image" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={resolvedImage} alt="Twitter card preview image" className="w-full h-40 object-cover" />
+            )}
+            <div className="p-4">
+              <div className="text-xs text-gray-500">{url || "https://example.com"}</div>
+              <div className="text-base font-semibold mt-1">{safeTitle || "Twitter Card Title"}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                {safeDesc || "Twitter Card description preview."}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                {(ensureAt(twitterSite) || "@site")} • {(ensureAt(twitterCreator) || "@creator")}
+              </div>
+            </div>
+          </div>
+
+          {/* snippet tabs */}
+          <div>
+            <div className="flex gap-2 mb-2">
+              {(["html", "next", "react", "social"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`px-3 py-1.5 rounded-md text-sm ${
+                    tab === t ? "bg-blue-600 text-white" : "bg-white/30 dark:bg-neutral-800"
+                  }`}
+                  type="button"
+                >
+                  {t === "html"
+                    ? "HTML <head>"
+                    : t === "next"
+                    ? "Next.js metadata"
+                    : t === "react"
+                    ? "React <Head>"
+                    : "Social only"}
+                </button>
+              ))}
+            </div>
+
+            <pre className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto">
+              {tab === "html" && htmlHead}
+
+              {tab === "next" &&
+`export const metadata = {
+  title: "${safeTitle || "ToolCite page"}",
+  description: "${safeDesc}",
+  alternates: { canonical: "${url}" },
+  openGraph: {
+    title: "${safeTitle}",
+    description: "${safeDesc}",
+    url: "${url}",
+    siteName: "${siteName}",
+    images: [{ url: "${resolvedImage}", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "${twitterCard}",
+    title: "${safeTitle}",
+    description: "${safeDesc}",
+    images: ["${resolvedImage}"],
+    site: "${ensureAt(twitterSite)}",
+    creator: "${ensureAt(twitterCreator)}",
+  },
+};`}
+
+              {tab === "react" &&
+`<Head>
+  <title>${escapeHtml(safeTitle || "ToolCite page")}</title>
+  <meta name="description" content="${escapeAttr(safeDesc)}" />
+  <link rel="canonical" href="${escapeAttr(url)}" />
+  <meta property="og:title" content="${escapeAttr(safeTitle)}" />
+  <meta property="og:description" content="${escapeAttr(safeDesc)}" />
+  <meta property="og:image" content="${escapeAttr(resolvedImage)}" />
+  <meta name="twitter:card" content="${twitterCard}" />
+  <meta name="twitter:title" content="${escapeAttr(safeTitle)}" />
+  <meta name="twitter:description" content="${escapeAttr(safeDesc)}" />
+  <meta name="twitter:image" content="${escapeAttr(resolvedImage)}" />
+  <meta name="twitter:site" content="${ensureAt(twitterSite)}" />
+  <meta name="twitter:creator" content="${ensureAt(twitterCreator)}" />
+</Head>`}
+
+              {tab === "social" &&
+                [
+                  meta("property", "og:title", safeTitle || "ToolCite page"),
+                  meta("property", "og:description", safeDesc),
+                  meta("property", "og:image", resolvedImage),
+                  meta("name", "twitter:card", twitterCard),
+                  meta("name", "twitter:title", safeTitle || "ToolCite page"),
+                  meta("name", "twitter:description", safeDesc),
+                  meta("name", "twitter:image", resolvedImage),
+                  meta("name", "twitter:site", ensureAt(twitterSite)),
+                  meta("name", "twitter:creator", ensureAt(twitterCreator)),
+                ].join("\n")}
+            </pre>
+          </div>
+
+          {/* checks */}
+          <div className="rounded-xl border bg-white/40 dark:bg-neutral-800 p-4 space-y-1 text-xs">
+            <p className="font-medium mb-1">SEO &amp; Sharing Checks</p>
+            {checks.map((c, i) => (
+              <p key={i} className={c.ok ? "text-green-500" : "text-amber-400"}>
+                {c.ok ? "✓ " : "• "} {c.text}
+              </p>
+            ))}
+          </div>
         </div>
       </div>
     </main>
   );
 }
 
-/* helpers */
+/* small helpers */
 function Field({
   label,
   hint,
