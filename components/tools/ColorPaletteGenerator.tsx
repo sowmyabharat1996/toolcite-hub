@@ -1,4 +1,3 @@
-// components/tools/ColorPaletteGenerator.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -107,6 +106,14 @@ const loadHistory = (): SessionSnap[] => {
 };
 const saveHistory = (items: SessionSnap[]) => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 5))); } catch {} };
 
+/* =======================
+   Step 16: Favorites
+   ======================= */
+type Favorite = { id: string; name: string; colors: string[] };
+const FAV_KEY = "tc_color_faves_v1";
+const loadFavs = (): Favorite[] => { try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch { return []; } };
+const saveFavs = (x: Favorite[]) => { try { localStorage.setItem(FAV_KEY, JSON.stringify(x)); } catch {} };
+
 export default function ColorPaletteGenerator() {
   const [baseColor, setBaseColor] = useState("#06A92F");
   const [palette, setPalette] = useState<Color[]>([
@@ -135,10 +142,31 @@ export default function ColorPaletteGenerator() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
+  // Step 10: Offline banner
+  const [online, setOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
+
+  // Step 12: Contrast matrix
+  const [showMatrix, setShowMatrix] = useState(false);
+  const [matrixFilter, setMatrixFilter] = useState<"all" | "AA" | "AAA">("all");
+
+  // Step 11: Import
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+
+  // Step 16: Favorites
+  const [favs, setFavs] = useState<Favorite[]>([]);
+  const [favSelectedId, setFavSelectedId] = useState("");
+
   // SR announcer
   const announce = (msg: string) => {
     const el = document.getElementById("a11y-announcer");
     if (el) el.textContent = msg;
+  };
+
+  // Step 17: analytics shim (supports GA gtag() or Plausible)
+  const track = (event: string, params: Record<string, any> = {}) => {
+    try { (window as any).gtag?.("event", event, params); } catch {}
+    try { (window as any).plausible?.(event, { props: params }); } catch {}
   };
 
   // generator
@@ -192,23 +220,23 @@ export default function ColorPaletteGenerator() {
           }))
         )
     );
+    track("randomize", { count });
   };
 
   const toggleLock = (index: number) => {
-    setPalette((prev) =>
-      prev.map((c, i) => (i === index ? { ...c, locked: !c.locked } : c))
-    );
+    setPalette((prev) => prev.map((c, i) => (i === index ? { ...c, locked: !c.locked } : c)));
   };
 
   // Step 4: apply preset (freeze to show exactly, then let user unfreeze)
   const applyPreset = (name: keyof typeof PRESETS) => {
     const hexes = PRESETS[name];
     if (!hexes?.length) return;
-
     setFreezeAuto(true);
     setBaseColor(hexes[0]);
     setCount(hexes.length);
     setPalette((prev) => hexes.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false })));
+    announce(`${name} preset applied`);
+    track("preset_apply", { name });
   };
 
   // toast helper
@@ -216,11 +244,11 @@ export default function ColorPaletteGenerator() {
     try {
       const t = document.createElement("div");
       t.textContent = msg;
-      Object.assign(t.style, {
+      Object.assign(t.style as any, {
         position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
         background: "#333", color: "#fff", padding: "8px 16px", borderRadius: "8px",
         fontSize: "14px", zIndex: "9999", opacity: "0", transition: "opacity .3s ease",
-      } as CSSStyleDeclaration);
+      });
       document.body.appendChild(t);
       requestAnimationFrame(() => (t.style.opacity = "1"));
       setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 400); }, 1400);
@@ -230,6 +258,8 @@ export default function ColorPaletteGenerator() {
   const copyHex = async (hex: string) => {
     await navigator.clipboard.writeText(hex);
     toast(`Copied ${hex.toUpperCase()}!`);
+    announce(`Copied ${hex.toUpperCase()} to clipboard`);
+    track("copy_hex", { hex });
   };
 
   // Step 4: Copy CSS Variables
@@ -238,6 +268,8 @@ export default function ColorPaletteGenerator() {
     const css = `:root{\n${vars}\n}`;
     await navigator.clipboard.writeText(css);
     toast("CSS variables copied!");
+    announce("CSS variables copied");
+    track("copy_css_vars", { count });
   };
 
   /* =======================
@@ -247,6 +279,8 @@ export default function ColorPaletteGenerator() {
     const list = palette.slice(0, count).map((c) => c.hex.toUpperCase()).join("\n");
     await navigator.clipboard.writeText(list);
     toast("HEX list copied!");
+    announce("All HEX copied");
+    track("copy_all_hex", { count });
   };
 
   const copyCsv = async () => {
@@ -259,6 +293,8 @@ export default function ColorPaletteGenerator() {
     ].join("\n");
     await navigator.clipboard.writeText(rows);
     toast("CSV copied!");
+    announce("CSV copied");
+    track("copy_csv", { count });
   };
 
   const copyTailwindSnippet = async () => {
@@ -278,6 +314,8 @@ ${entries}
 }`;
     await navigator.clipboard.writeText(js);
     toast("Tailwind snippet copied!");
+    announce("Tailwind snippet copied");
+    track("copy_tailwind", { count });
   };
 
   const exportGpl = () => {
@@ -294,15 +332,16 @@ ${entries}
         return `${r} ${g} ${b} ${label}`;
       }),
     ].join("\n");
-
     const blob = new Blob([lines], { type: "text/plain" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "palette.gpl";
     link.click();
+    announce("GIMP palette downloaded");
+    track("export_gpl", { count });
   };
 
-  // export (JSON/PNG legacy)
+  // export (JSON/PNG upgraded with previews)
   const exportPalette = async (type: "json" | "png") => {
     if (type === "json") {
       const blob = new Blob([JSON.stringify(palette.slice(0, count), null, 2)], {
@@ -312,25 +351,47 @@ ${entries}
       link.href = URL.createObjectURL(blob);
       link.download = "palette.json";
       link.click();
-    } else if (type === "png") {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d")!;
-      const sw = 120, sh = 120;
-      const arr = palette.slice(0, count);
-      canvas.width = arr.length * sw;
-      canvas.height = sh;
-      arr.forEach((c, i) => {
-        ctx.fillStyle = c.hex;
-        ctx.fillRect(i * sw, 0, sw, sh);
-      });
-      const link = document.createElement("a");
-      link.href = canvas.toDataURL("image/png");
-      link.download = "palette.png";
-      link.click();
+      announce("JSON exported");
+      track("export_json", { count });
+      return;
     }
+
+    // PNG with swatches + tiny preview
+    const sw = 120, sh = 120;
+    const arr = palette.slice(0, count);
+    const w = Math.max(600, arr.length * sw);
+    const h = sh + 160; // extra space for previews
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    canvas.width = w; canvas.height = h;
+
+    // swatches row
+    arr.forEach((c, i) => {
+      ctx.fillStyle = c.hex; ctx.fillRect(i * sw, 0, sw, sh);
+    });
+
+    // preview area (simple hero + button)
+    const c0 = arr[0]?.hex || "#333", c2 = arr[2]?.hex || "#666";
+    ctx.fillStyle = c0; ctx.fillRect(0, sh + 10, w, 140);
+    ctx.fillStyle = bestTextColor(c0);
+    ctx.font = "bold 20px system-ui, sans-serif";
+    ctx.fillText("Preview", 16, sh + 40);
+    // button
+    ctx.fillStyle = c2; ctx.fillRect(16, sh + 60, 120, 40);
+    ctx.fillStyle = bestTextColor(c2);
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillText("Action", 50, sh + 85);
+
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = "palette.png";
+    link.click();
+    announce("PNG exported");
+    track("export_png", { count });
   };
 
-  // share
+  // share (Step 10: offline-safe + tracking)
   const sharePalette = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("base", baseColor);
@@ -341,11 +402,94 @@ ${entries}
     url.searchParams.set("colors", palette.slice(0, count).map((p) => p.hex).join(","));
     const href = url.toString();
 
-    if (navigator.share) {
-      await navigator.share({ title: "My Color Palette", text: "Check out my color palette!", url: href });
-    } else {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "My Color Palette", text: "Check out my color palette!", url: href });
+        announce("Shared via native share");
+        track("share_native");
+      } else {
+        await navigator.clipboard.writeText(href);
+        toast("Link copied to clipboard!");
+        announce("Link copied to clipboard");
+        track("share_clipboard");
+      }
+    } catch {
       await navigator.clipboard.writeText(href);
       toast("Link copied to clipboard!");
+      announce("Link copied to clipboard");
+      track("share_clipboard_fallback");
+    }
+  };
+
+  // Step 11: Import helpers
+  const parseHexes = (txt: string): string[] => {
+    const matches = (txt.match(/#[0-9a-fA-F]{6}\b/g) || []).map((s) => s.toUpperCase());
+    return Array.from(new Set(matches));
+  };
+  const applyImport = () => {
+    const hexes = parseHexes(importText);
+    if (hexes.length < 3) {
+      toast("Need at least 3 valid HEX codes");
+      announce("Import failed");
+      return;
+    }
+    setFreezeAuto(true);
+    setBaseColor(hexes[0]);
+    setCount(Math.min(10, hexes.length));
+    setPalette((prev) => hexes.slice(0, 10).map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false })));
+    toast(`Imported ${hexes.length} colors`);
+    announce(`Imported ${hexes.length} colors`);
+    track("import_palette", { count: hexes.length });
+  };
+
+  // Step 15: From image → extract palette
+  const extractFromImageFile = async (file: File) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    await new Promise<void>((res) => {
+      img.onload = () => res();
+      img.src = url;
+    });
+    const size = 64;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    canvas.width = size; canvas.height = size;
+    ctx.drawImage(img, 0, 0, size, size);
+    const data = ctx.getImageData(0, 0, size, size).data;
+
+    const bins = new Map<string, number>();
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3]; if (a < 200) continue;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const hex = rgbToHex(r, g, b).toUpperCase();
+      bins.set(hex, (bins.get(hex) || 0) + 1);
+    }
+    const sorted = Array.from(bins.entries()).sort((a, b) => b[1] - a[1]).map(([hex]) => hex);
+
+    // pick distinct colors
+    const picked: string[] = [];
+    for (const hex of sorted) {
+      const { r, g, b } = hexToRgb(hex);
+      const distinct = picked.every((p) => {
+        const q = hexToRgb(p);
+        const d = Math.sqrt((r - q.r) ** 2 + (g - q.g) ** 2 + (b - q.b) ** 2);
+        return d > 40;
+      });
+      if (distinct) picked.push(hex);
+      if (picked.length >= Math.max(5, count)) break;
+    }
+
+    if (picked.length >= 3) {
+      setFreezeAuto(true);
+      setBaseColor(picked[0]);
+      setCount(Math.min(10, picked.length));
+      setPalette(picked.slice(0, 10).map((hex) => ({ hex, locked: true })));
+      toast(`Extracted ${picked.length} colors`);
+      announce("Palette extracted from image");
+      track("extract_from_image", { count: picked.length });
+    } else {
+      toast("Couldn’t extract enough distinct colors");
+      announce("Image extraction failed");
     }
   };
 
@@ -376,8 +520,19 @@ ${entries}
       setFreezeAuto(true);
     }
 
-    // Step 5: load saved history on first mount
+    // Step 5: load saved history & Step 16: favorites on first mount
     setHistory(loadHistory());
+    setFavs(loadFavs());
+
+    // Step 10: online listeners
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
   }, []);
 
   /* ---------- URL encode ---------- */
@@ -423,6 +578,7 @@ ${entries}
     saveHistory(next);
     setSelectedHistoryId(snap.id);
     toast("Session saved!");
+    track("session_save", { count });
   };
 
   const loadSession = (id: string) => {
@@ -439,6 +595,7 @@ ${entries}
       snap.colors.map((hex, i) => (prev[i]?.locked ? prev[i] : { hex, locked: false }))
     );
     toast("Session loaded — click Generate from Base to edit");
+    track("session_load", { count: snap.colors.length });
   };
 
   const clearHistory = () => {
@@ -446,6 +603,7 @@ ${entries}
     saveHistory([]);
     setSelectedHistoryId("");
     toast("History cleared");
+    track("session_clear");
   };
 
   /* ---------- Step 6: Reorder helpers (keyboard/buttons) ---------- */
@@ -461,6 +619,7 @@ ${entries}
       arr[to] = tmp;
       return arr;
     });
+    announce(`Moved swatch ${index + 1} ${delta < 0 ? "left" : "right"}`);
   };
 
   /* ---------- Step 7: Drag reorder (insert style) ---------- */
@@ -478,17 +637,48 @@ ${entries}
     announce(`Moved swatch ${from + 1} to position ${to + 1}`);
   };
 
+  /* ---------- Favorites helpers ---------- */
+  const addFavorite = () => {
+    const name = prompt("Save as…") || `Palette ${new Date().toLocaleString()}`;
+    const colors = palette.slice(0, count).map((c) => c.hex);
+    const fav = { id: Date.now().toString(), name, colors };
+    const next = [fav, ...favs].slice(0, 50);
+    setFavs(next); saveFavs(next);
+    toast("Saved to Favorites"); announce("Saved to favorites");
+    track("favorite_add", { count });
+  };
+  const applyFavorite = (id: string) => {
+    const f = favs.find((x) => x.id === id); if (!f) return;
+    setFreezeAuto(true);
+    setBaseColor(f.colors[0]); setCount(Math.min(10, f.colors.length));
+    setPalette(f.colors.map((hex) => ({ hex, locked: false })));
+    announce("Favorite applied"); track("favorite_apply", { count: f.colors.length });
+  };
+  const deleteFavorite = (id: string) => {
+    if (!id) return;
+    const next = favs.filter((x) => x.id !== id); setFavs(next); saveFavs(next);
+    toast("Favorite deleted"); track("favorite_delete");
+    if (favSelectedId === id) setFavSelectedId("");
+  };
+
   /* ---------- UI ---------- */
   return (
     <div className="max-w-5xl mx-auto p-6">
       {/* SR live region */}
       <div id="a11y-announcer" aria-live="polite" className="sr-only" />
 
+      {!online && (
+        <div className="mb-2 text-center text-xs bg-yellow-100 text-yellow-900 rounded px-2 py-1">
+          Offline: actions will queue locally; sharing uses clipboard.
+        </div>
+      )}
+
       <h1 className="text-2xl font-semibold mb-2 text-center flex items-center justify-center gap-2">
         🎨 Color Palette Generator – Free Online Tool
       </h1>
       <p className="text-center text-gray-600 mb-4">
-        Generate color palettes and shades from a seed color or random selection. Click a swatch to copy HEX. Lock colors to keep them during regeneration.
+        Generate color palettes and shades from a seed color or random selection. Click a swatch to copy HEX.
+        Lock colors to keep them during regeneration.
       </p>
 
       {/* Presets + CSS Vars */}
@@ -620,6 +810,31 @@ ${entries}
           Share Link
         </button>
 
+        {/* Step 11: Import toggle */}
+        <button
+          onClick={() => setImportOpen((v) => !v)}
+          className="px-4 py-2 bg-gray-100 rounded-md border border-gray-300"
+          aria-expanded={importOpen}
+        >
+          Import…
+        </button>
+
+        {/* Step 15: From Image */}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) extractFromImageFile(f); }}
+          aria-label="Upload image to extract palette"
+          className="hidden"
+          id="img-extract"
+        />
+        <label
+          htmlFor="img-extract"
+          className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 cursor-pointer"
+        >
+          From Image
+        </label>
+
         {/* Step 6: Reorder Mode toggle */}
         <button
           onClick={() => setReorderMode((v) => !v)}
@@ -632,7 +847,24 @@ ${entries}
         </button>
       </div>
 
-      {/* Step 5: Save + History */}
+      {/* Step 11: Import UI */}
+      {importOpen && (
+        <div className="w-full max-w-3xl mx-auto my-3">
+          <textarea
+            className="w-full min-h-[120px] border rounded-md p-3 font-mono text-sm"
+            placeholder="#112233, #445566 … or paste CSS with --vars"
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            aria-label="Paste HEX list or CSS with colors"
+          />
+          <div className="mt-2 flex gap-2">
+            <button onClick={applyImport} className="px-3 py-2 rounded-md bg-blue-600 text-white">Apply Import</button>
+            <button onClick={() => setImportOpen(false)} className="px-3 py-2 rounded-md border">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 5: Save + History + Favorites */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <button
           onClick={saveCurrentSession}
@@ -667,6 +899,34 @@ ${entries}
             🧹 Clear
           </button>
         </div>
+
+        {/* Favorites */}
+        <button
+          onClick={addFavorite}
+          className="px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+          aria-label="Save to favorites"
+        >
+          ⭐ Save Favorite
+        </button>
+        {favs.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Favorites:</label>
+            <select
+              value={favSelectedId}
+              onChange={(e) => { const id = e.target.value; setFavSelectedId(id); applyFavorite(id); }}
+              className="px-3 py-2 rounded-md border min-w-[220px]"
+            >
+              <option value="">Choose…</option>
+              {favs.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.colors.length})</option>)}
+            </select>
+            <button
+              onClick={() => deleteFavorite(favSelectedId)}
+              className="px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
+            >
+              🗑 Delete
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Step 8: Pro Exports */}
@@ -721,11 +981,16 @@ ${entries}
                 outline: reorderMode && overIndex === i ? "2px solid rgba(59,130,246,.9)" : undefined,
                 outlineOffset: reorderMode && overIndex === i ? "2px" : undefined,
               }}
-              onClick={() => copyHex(c.hex)}
+              onClick={() => !reorderMode && copyHex(c.hex)}
               onKeyDown={(e) => {
-                if (!reorderMode) return;
-                if (e.key === "ArrowLeft") { e.preventDefault(); moveSwatch(i, -1); }
-                if (e.key === "ArrowRight") { e.preventDefault(); moveSwatch(i, +1); }
+                // Step 6: keyboard reorder
+                if (reorderMode) {
+                  if (e.key === "ArrowLeft") { e.preventDefault(); moveSwatch(i, -1); }
+                  if (e.key === "ArrowRight") { e.preventDefault(); moveSwatch(i, +1); }
+                } else if (e.key === "Enter" || e.key === " ") {
+                  // Step 9: Enter/Space copies
+                  e.preventDefault(); copyHex(c.hex);
+                }
               }}
               tabIndex={0}
               title={`Contrast ${ratio.toFixed(2)}:1 (${badge})`}
@@ -811,7 +1076,91 @@ ${entries}
         })}
       </div>
 
-      <p className="text-center text-gray-500 text-sm">
+      {/* Step 12: Contrast matrix controls */}
+      <div className="flex items-center justify-center gap-2 mb-2">
+        <button onClick={() => setShowMatrix((v) => !v)} className="px-3 py-2 rounded-md border">
+          {showMatrix ? "Hide Contrast Matrix" : "Show Contrast Matrix"}
+        </button>
+        {showMatrix && (
+          <select
+            value={matrixFilter}
+            onChange={(e) => setMatrixFilter(e.target.value as any)}
+            className="px-3 py-2 rounded-md border"
+          >
+            <option value="all">All</option>
+            <option value="AA">AA (≥4.5)</option>
+            <option value="AAA">AAA (≥7)</option>
+          </select>
+        )}
+      </div>
+
+      {/* Step 12: Contrast matrix table */}
+      {showMatrix && (
+        <div className="overflow-auto">
+          <table className="mx-auto text-xs border-collapse">
+            <thead>
+              <tr>
+                <th className="p-1"></th>
+                {palette.slice(0, count).map((c, i) => (
+                  <th key={"h" + i} className="p-1 font-mono">{c.hex.toUpperCase()}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {palette.slice(0, count).map((row, i) => (
+                <tr key={"r" + i}>
+                  <th className="p-1 font-mono">{row.hex.toUpperCase()}</th>
+                  {palette.slice(0, count).map((col, j) => {
+                    const ratio = contrastRatio(row.hex, col.hex);
+                    const passAA = ratio >= 4.5, passAAA = ratio >= 7;
+                    if (matrixFilter === "AA" && !passAA)
+                      return <td key={`${i}-${j}`} className="p-1 text-center text-gray-400">–</td>;
+                    if (matrixFilter === "AAA" && !passAAA)
+                      return <td key={`${i}-${j}`} className="p-1 text-center text-gray-400">–</td>;
+                    const t = bestTextColor(col.hex);
+                    return (
+                      <td key={`${i}-${j}`} className="p-1 text-center rounded" style={{ background: col.hex, color: t }}>
+                        {ratio.toFixed(1)}{passAAA ? " ★" : " "}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Step 13: Mini UI previews */}
+      <div className="max-w-3xl mx-auto mt-6 grid gap-4 sm:grid-cols-2">
+        {/* Card */}
+        <div
+          className="rounded-xl shadow p-4"
+          style={{ background: palette[1]?.hex, color: bestTextColor(palette[1]?.hex || "#fff") }}
+        >
+          <div className="text-sm opacity-80">Card</div>
+          <div className="text-lg font-semibold">Sample Card</div>
+          <p className="text-sm opacity-90">Uses c2 as background, c1 for header stripe.</p>
+          <div className="h-1 mt-2 rounded" style={{ background: palette[0]?.hex }} />
+        </div>
+
+        {/* Hero + Button */}
+        <div
+          className="rounded-xl p-6"
+          style={{ background: palette[0]?.hex, color: bestTextColor(palette[0]?.hex || "#fff") }}
+        >
+          <div className="text-xl font-bold mb-2">Hero Heading</div>
+          <p className="text-sm mb-3">Buttons use c3, text over c0.</p>
+          <button
+            className="rounded px-3 py-2 font-medium shadow"
+            style={{ background: palette[2]?.hex, color: bestTextColor(palette[2]?.hex || "#fff") }}
+          >
+            Action
+          </button>
+        </div>
+      </div>
+
+      <p className="text-center text-gray-500 text-sm mt-6">
         Tip: Toggle <strong>↔ Reorder</strong>, then drag with ⠿ or use ◀ / ▶ (or keyboard ← / → on a focused swatch).
       </p>
     </div>

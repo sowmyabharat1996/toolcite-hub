@@ -34,6 +34,14 @@ input[type="range"]:focus-visible {
   overflow:hidden;
 }
 
+/* Comfortable touch targets (used in tools) */
+.hit-44{
+  min-width:44px;
+  min-height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
 /* Softer shadows on dark backgrounds */
 @media (prefers-color-scheme: dark){
   .shadow-sm { box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); }
