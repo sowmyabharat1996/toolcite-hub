@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 /* ---------------------------------------------------------
    Types & helpers
@@ -19,25 +25,37 @@ type Preset = {
 };
 
 const STORAGE_KEY = "regexTester.customPresets.v1";
-const MAX_SOFT = 200_000;
-const MAX_HARD = 250_000;
-
-const isBrowser = typeof window !== "undefined";
+const MAX_SOFT = 200_000; // show warning
+const MAX_HARD = 250_000; // hard trim
 
 function uid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     // @ts-ignore
     return crypto.randomUUID();
   }
-  return "id_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  return (
+    "id_" +
+    Date.now().toString(36) +
+    "_" +
+    Math.random().toString(36).slice(2, 8)
+  );
 }
 
 function buildRegex(pattern: string, flags: string) {
-  const valid = Array.from(new Set(flags.split("").filter((f) => "igmsuy".includes(f)))).join("");
+  const valid = Array.from(
+    new Set(
+      flags
+        .split("")
+        .filter((f) => "igmsuy".includes(f))
+    )
+  ).join("");
   try {
     return { re: new RegExp(pattern, valid), error: "" };
   } catch (e: any) {
-    return { re: null as unknown as RegExp, error: e?.message || "Invalid pattern" };
+    return {
+      re: null as unknown as RegExp,
+      error: e?.message || "Invalid pattern",
+    };
   }
 }
 
@@ -67,6 +85,14 @@ function highlightMatches(text: string, re: RegExp | null) {
   }
   if (last < text.length) parts.push({ text: text.slice(last), hit: false });
   return parts;
+}
+
+function debounce<T>(fn: (v: T) => void, ms = 150) {
+  let t: any;
+  return (v: T) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(v), ms);
+  };
 }
 
 function prettyBytes(n: number) {
@@ -199,9 +225,9 @@ BEGIN block B END`,
 --------------------------------------------------------- */
 
 function loadCustom(): Preset[] {
-  if (!isBrowser) return [];
+  if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
@@ -212,8 +238,8 @@ function loadCustom(): Preset[] {
 }
 
 function saveCustom(list: Preset[]) {
-  if (!isBrowser) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
 /* ---------------------------------------------------------
@@ -221,60 +247,99 @@ function saveCustom(list: Preset[]) {
 --------------------------------------------------------- */
 
 export default function RegexTester() {
-  // 1) base state
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [customPresets, setCustomPresets] = useState<Preset[]>([]);
-  const [presetId, setPresetId] = useState<string>(BUILT_IN[1].id); // URLs by default
-  const [pattern, setPattern] = useState<string>(BUILT_IN[1].pattern);
-  const [flags, setFlags] = useState<string>(BUILT_IN[1].flags);
-  const [sample, setSample] = useState<string>(BUILT_IN[1].sample);
-  const [nameInput, setNameInput] = useState<string>(BUILT_IN[1].label);
-  const [saveAsNew, setSaveAsNew] = useState<boolean>(false);
-  const [importError, setImportError] = useState<string>("");
+  const [presetId, setPresetId] = useState<string>(BUILT_IN[1].id); // default: URLs
   const [statusMsg, setStatusMsg] = useState<string>("");
 
-  // this tracks “I have read from URL/localStorage, it’s safe to write back now”
-  const [hydrated, setHydrated] = useState(false);
+  // derived presets
+  const allPresets = useMemo(
+    () => [...BUILT_IN, ...customPresets],
+    [customPresets]
+  );
+  const selected =
+    allPresets.find((p) => p.id === presetId) ?? BUILT_IN[1];
 
-  const allPresets = useMemo(() => [...BUILT_IN, ...customPresets], [customPresets]);
-  const selected = allPresets.find((p) => p.id === presetId) ?? BUILT_IN[1];
+  // main states
+  const [pattern, setPattern] = useState<string>(selected.pattern);
+  const [flags, setFlags] = useState<string>(selected.flags);
+  const [sample, setSample] = useState<string>(selected.sample);
+  const [nameInput, setNameInput] = useState<string>(selected.label);
+  const [saveAsNew, setSaveAsNew] = useState<boolean>(false);
+  const [importError, setImportError] = useState<string>("");
 
   // Refs for shortcuts
   const patternRef = useRef<HTMLInputElement>(null);
   const sampleRef = useRef<HTMLTextAreaElement>(null);
 
-  // 2) on mount: load custom + read URL
+  // 1) Load custom presets (client-safe)
   useEffect(() => {
-    if (!isBrowser) return;
+    setCustomPresets(loadCustom());
+  }, []);
 
-    // load custom
-    const loadedCustom = loadCustom();
-    setCustomPresets(loadedCustom);
+  // 2) Read URL-state on mount (client-only)
+  useEffect(() => {
+    if (!searchParams) return;
 
-    // read query
-    const params = new URLSearchParams(window.location.search);
-    const qp = params.get("p");
-    const qf = params.get("f");
-    const qs = params.get("s");
-    const qid = params.get("id");
+    const qpPattern = searchParams.get("p");
+    const qpFlags = searchParams.get("f");
+    const qpSample = searchParams.get("s");
+    const qpId = searchParams.get("id");
 
-    if (qid) {
-      // if this preset exists (built-in or custom), pick it
-      const exists = [...BUILT_IN, ...loadedCustom].find((p) => p.id === qid);
-      if (exists) {
-        setPresetId(exists.id);
-        setNameInput(exists.label);
+    if (qpId) {
+      setPresetId(qpId);
+    }
+
+    if (qpPattern !== null) {
+      try {
+        setPattern(decodeURIComponent(qpPattern));
+      } catch {
+        setPattern(qpPattern);
       }
     }
 
-    if (qp !== null) setPattern(qp);
-    if (qf !== null) setFlags(qf);
-    if (qs !== null) setSample(qs);
+    if (qpFlags !== null) {
+      setFlags(qpFlags);
+    }
 
-    // done: now URL can be updated by later effects
-    setHydrated(true);
-  }, []);
+    if (qpSample !== null) {
+      try {
+        setSample(decodeURIComponent(qpSample));
+      } catch {
+        setSample(qpSample);
+      }
+    }
+  }, [searchParams]);
 
-  // 3) sample size guard
+  // 3) When user changes key state → update URL (shallow)
+  useEffect(() => {
+    // avoid running on SSR
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    params.set("id", presetId);
+    params.set("p", encodeURIComponent(pattern));
+    params.set("f", flags);
+    params.set("s", encodeURIComponent(sample));
+
+    router.replace(
+      `/tools/regex-tester?${params.toString()}`,
+      { scroll: false }
+    );
+  }, [presetId, pattern, flags, sample, router]);
+
+  // Apply selected preset when presetId changes
+  useEffect(() => {
+    setPattern(selected.pattern);
+    setFlags(selected.flags);
+    setSample(selected.sample);
+    setNameInput(selected.label);
+    setSaveAsNew(false);
+  }, [presetId, selected]);
+
+  // Soft/hard sample guard
   const [softWarn, setSoftWarn] = useState<boolean>(false);
   useEffect(() => {
     const len = sample.length;
@@ -284,19 +349,26 @@ export default function RegexTester() {
     }
   }, [sample]);
 
-  // 4) debounced compute
-  const [debounced, setDebounced] = useState({ pattern, flags, sample });
+  // Debounced compute
+  const [debounced, setDebounced] = useState({
+    pattern,
+    flags,
+    sample,
+  });
   useEffect(() => {
-    const t = setTimeout(() => {
-      setDebounced({ pattern, flags, sample });
-    }, 150);
-    return () => clearTimeout(t);
+    const doSet = debounce<typeof debounced>((v) => setDebounced(v), 150);
+    doSet({ pattern, flags, sample });
   }, [pattern, flags, sample]);
 
-  // 5) regex + matches
-  const { re, error } = useMemo(() => buildRegex(debounced.pattern, debounced.flags), [debounced.pattern, debounced.flags]);
-  const parts = useMemo(() => highlightMatches(debounced.sample, error ? null : re), [debounced.sample, re, error]);
-
+  const t0 = performance.now();
+  const { re, error } = useMemo(
+    () => buildRegex(debounced.pattern, debounced.flags),
+    [debounced.pattern, debounced.flags]
+  );
+  const parts = useMemo(
+    () => highlightMatches(debounced.sample, error ? null : re),
+    [debounced.sample, re, error]
+  );
   const matches = useMemo(() => {
     if (error || !re) return [];
     const out: string[][] = [];
@@ -313,30 +385,64 @@ export default function RegexTester() {
     }
     return out;
   }, [re, debounced.sample, error]);
+  const t1 = performance.now();
+  const ms = Math.max(0, Math.round(t1 - t0));
 
-  // measure, but guard
-  let ms = 0;
-  if (typeof performance !== "undefined") {
-    const t0 = performance.now();
-    // nothing expensive here, we just emulate
-    const t1 = performance.now();
-    ms = Math.max(0, Math.round(t1 - t0));
-  }
+  // Flag toggler
+  const toggleFlag = (f: FlagKey) =>
+    setFlags((curr) =>
+      curr.includes(f)
+        ? curr.replace(f, "")
+        : (curr + f).split("").join("")
+    );
 
-  // 6) write URL back (only after we finished reading)
+  // Keyboard shortcuts
   useEffect(() => {
-    if (!isBrowser) return;
-    if (!hydrated) return;
+    const onKey = (e: KeyboardEvent) => {
+      // Focus pattern with '/'
+      if (
+        e.key === "/" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        const target = e.target as HTMLElement | null;
+        const typingInField =
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            (target as any).isContentEditable);
+        if (!typingInField) {
+          e.preventDefault();
+          patternRef.current?.focus();
+        }
+      }
 
-    const url = new URL(window.location.href);
-    url.searchParams.set("p", pattern);
-    url.searchParams.set("f", flags);
-    url.searchParams.set("s", sample);
-    url.searchParams.set("id", presetId);
-    window.history.replaceState({}, "", url.toString());
-  }, [pattern, flags, sample, presetId, hydrated]);
+      // Run: Ctrl/Cmd + Enter → just show status
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        setStatusMsg("Re-ran pattern");
+        setTimeout(() => setStatusMsg(""), 800);
+      }
 
-  // 7) actions
+      // Cycle presets: Alt + Up/Down
+      if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        const idx = allPresets.findIndex((p) => p.id === presetId);
+        if (idx >= 0) {
+          const next =
+            e.key === "ArrowDown"
+              ? (idx + 1) % allPresets.length
+              : (idx - 1 + allPresets.length) % allPresets.length;
+          setPresetId(allPresets[next].id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [presetId, allPresets]);
+
+  /* ---------- Custom preset actions ---------- */
+
   const isBuiltIn = selected.builtIn === true;
   const isCustom = !isBuiltIn;
 
@@ -421,7 +527,7 @@ export default function RegexTester() {
     reader.readAsText(file);
   }
 
-  // copy helpers
+  // Copy helpers
   function copyMatches(fmt: "csv" | "tsv" | "lines" = "csv") {
     const sep = fmt === "csv" ? "," : fmt === "tsv" ? "\t" : "\n";
     const text =
@@ -431,7 +537,11 @@ export default function RegexTester() {
             .map((m) =>
               fmt === "lines"
                 ? m[0]
-                : [m[0], ...m.slice(1)].map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep)
+                : [m[0], ...m.slice(1)]
+                    .map((x) =>
+                      `"${String(x).replace(/"/g, '""')}"`
+                    )
+                    .join(sep)
             )
             .join("\n");
     navigator.clipboard.writeText(text);
@@ -445,356 +555,416 @@ export default function RegexTester() {
       matches.length === 0
         ? ""
         : matches
-            .map((m) => (m.length > 1 ? m.slice(1).map((x) => `"${String(x).replace(/"/g, '""')}"`).join(sep) : ""))
+            .map((m) =>
+              m.length > 1
+                ? m
+                    .slice(1)
+                    .map((x) =>
+                      `"${String(x).replace(/"/g, '""')}"`
+                    )
+                    .join(sep)
+                : ""
+            )
             .join("\n");
     navigator.clipboard.writeText(text);
     setStatusMsg("Copied groups");
     setTimeout(() => setStatusMsg(""), 800);
   }
 
-
-function exportCurrentAsJSON() {
-  const payload = {
-    presetId,
-    pattern,
-    flags,
-    sample,
-    matches,
-    ts: new Date().toISOString(),
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "regex-session.json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  setStatusMsg("Exported JSON");
-  setTimeout(() => setStatusMsg(""), 1000);
-}
-
-
-  // share button
   function handleShare() {
-    if (!isBrowser) return;
-    const url = new URL(window.location.href);
-    // already updated by effect, but re-ensure
-    url.searchParams.set("p", pattern);
-    url.searchParams.set("f", flags);
-    url.searchParams.set("s", sample);
-    url.searchParams.set("id", presetId);
-    const full = url.toString();
-    navigator.clipboard
-      .writeText(full)
-      .then(() => {
-        setStatusMsg("Share URL copied");
-        setTimeout(() => setStatusMsg(""), 1200);
-      })
-      .catch(() => {
-        setStatusMsg("Copy failed");
-        setTimeout(() => setStatusMsg(""), 1200);
-      });
+    if (typeof window === "undefined") return;
+    const fullUrl = window.location.href;
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(fullUrl);
+      setStatusMsg("Share link copied");
+      setTimeout(() => setStatusMsg(""), 1000);
+    } else {
+      alert(fullUrl);
+    }
   }
 
-  // keyboard shortcuts
-  useEffect(() => {
-    if (!isBrowser) return;
-    const onKey = (e: KeyboardEvent) => {
-      // Focus pattern with '/'
-      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement | null;
-        const typingInField =
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            (target as any).isContentEditable);
-        if (!typingInField) {
-          e.preventDefault();
-          patternRef.current?.focus();
-        }
-      }
-
-      // run (just feedback)
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        setStatusMsg("Re-ran pattern");
-        setTimeout(() => setStatusMsg(""), 800);
-      }
-
-      // cycle presets
-      if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-        e.preventDefault();
-        const idx = allPresets.findIndex((p) => p.id === presetId);
-        if (idx >= 0) {
-          const next =
-            e.key === "ArrowDown"
-              ? (idx + 1) % allPresets.length
-              : (idx - 1 + allPresets.length) % allPresets.length;
-          setPresetId(allPresets[next].id);
-        }
-      }
+  function exportCurrentAsJSON() {
+    const payload = {
+      presetId,
+      pattern,
+      flags,
+      sample,
+      matches,
+      ts: new Date().toISOString(),
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [presetId, allPresets]);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "regex-session.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatusMsg("Exported JSON");
+    setTimeout(() => setStatusMsg(""), 1000);
+  }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      {/* Controls */}
-      <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
-        {/* header + share */}
-         <div className="flex items-center justify-between gap-3">
-        <h1 className="text-base font-semibold">Regex Tester - Free Online Tool</h1>
-        <div className="flex gap-2">
-        <button
-         onClick={exportCurrentAsJSON}
-         className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+    <div className="flex flex-col gap-6">
+      {/* heading + actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-base font-semibold">
+          Regex Tester – Free Online Tool
+        </h1>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={exportCurrentAsJSON}
+            className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+            aria-label="Export this regex test as JSON"
           >
-         Export JSON
-         </button>
-         <button
-         onClick={handleShare}
-         className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
-      >
+            Export JSON
+          </button>
+          <button
+            onClick={handleShare}
+            className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+            aria-label="Copy shareable link for this regex test"
+          >
             Share
           </button>
         </div>
-        </div>
+      </div>
 
-        {/* Presets */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Presets</label>
-          <select
-            value={presetId}
-            onChange={(e) => setPresetId(e.target.value)}
-            className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-          >
-            <optgroup label="Built-in">
-              {BUILT_IN.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Custom">
-              {customPresets.length === 0 ? (
-                <option value="__none" disabled>
-                  (No custom presets yet)
-                </option>
-              ) : (
-                customPresets.map((p) => (
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Controls */}
+        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
+          {/* Presets */}
+          <div className="space-y-2">
+            <label
+              htmlFor="regex-presets"
+              className="block text-sm font-medium"
+            >
+              Presets
+            </label>
+            <select
+              id="regex-presets"
+              value={presetId}
+              onChange={(e) => setPresetId(e.target.value)}
+              className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+              aria-label="Choose a regex preset"
+            >
+              <optgroup label="Built-in">
+                {BUILT_IN.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.label}
                   </option>
-                ))
-              )}
-            </optgroup>
-          </select>
+                ))}
+              </optgroup>
+              <optgroup label="Custom">
+                {customPresets.length === 0 ? (
+                  <option value="__none" disabled>
+                    (No custom presets yet)
+                  </option>
+                ) : (
+                  customPresets.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))
+                )}
+              </optgroup>
+            </select>
 
-          {/* Save / rename */}
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <input
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              className="rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
-              placeholder="Preset name"
-            />
-            <button
-              onClick={handleSavePreset}
-              className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700"
-              title={isBuiltIn || saveAsNew ? "Save as new custom preset" : "Update this custom preset"}
-            >
-              {isBuiltIn || saveAsNew ? "Save as New" : "Save / Update"}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 text-sm">
-            <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={saveAsNew} onChange={(e) => setSaveAsNew(e.target.checked)} />
-              Save as new (duplicate)
-            </label>
-
-            {isCustom && (
-              <button
-                onClick={handleDeletePreset}
-                className="ml-auto rounded border px-3 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-              >
-                Delete preset
-              </button>
-            )}
-          </div>
-
-          {/* Import / Export */}
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <button onClick={exportPresets} className="rounded border px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800">
-              Export custom presets
-            </button>
-            <label className="rounded border px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800">
-              Import…
+            {/* Save / rename */}
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <input
-                type="file"
-                accept="application/json"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) importPresets(f);
-                  e.currentTarget.value = "";
-                }}
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                className="rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800"
+                placeholder="Preset name"
+                aria-label="Preset name"
               />
-            </label>
-            {importError && <span className="text-sm text-red-600">{importError}</span>}
-          </div>
-        </div>
-
-        {/* Pattern + Flags */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Pattern</label>
-          <div className="flex items-center gap-2">
-            <span className="rounded border px-2 py-1 bg-white/60 dark:bg-neutral-800">/</span>
-            <input
-              ref={patternRef}
-              value={pattern}
-              onChange={(e) => setPattern(e.target.value)}
-              spellCheck={false}
-              className="flex-1 rounded border px-2 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
-              placeholder="Enter regex pattern…"
-            />
-            <span className="rounded border px-2 py-1 bg-white/60 dark:bg-neutral-800">/</span>
-            <input
-              value={flags}
-              onChange={(e) => setFlags(e.target.value)}
-              spellCheck={false}
-              className="w-24 rounded border px-2 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
-              placeholder="flags"
-              aria-label="Regex flags"
-            />
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {(["i", "g", "m", "s", "u", "y"] as FlagKey[]).map((f) => (
               <button
-                key={f}
-                onClick={() => setFlags((curr) => (curr.includes(f) ? curr.replace(f, "") : (curr + f).split("").join("")))}
+                onClick={handleSavePreset}
+                className="rounded border px-3 py-2 bg-blue-600 text-white hover:bg-blue-700"
                 title={
-                  f === "i" ? "Ignore case" : f === "g" ? "Global" : f === "m" ? "Multiline" : f === "s" ? "DotAll" : f === "u" ? "Unicode" : "Sticky"
+                  isBuiltIn || saveAsNew
+                    ? "Save as new custom preset"
+                    : "Update this custom preset"
                 }
-                className={`rounded border px-2 py-1 text-sm ${
-                  flags.includes(f) ? "bg-blue-600 text-white" : "bg-white/60 dark:bg-neutral-800"
-                }`}
               >
-                {f}
+                {isBuiltIn || saveAsNew
+                  ? "Save as New"
+                  : "Save / Update"}
               </button>
-            ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={saveAsNew}
+                  onChange={(e) => setSaveAsNew(e.target.checked)}
+                  aria-label="Save this regex as a new preset"
+                />
+                Save as new (duplicate)
+              </label>
+
+              {isCustom && (
+                <button
+                  onClick={handleDeletePreset}
+                  className="ml-auto rounded border px-3 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  aria-label="Delete selected custom preset"
+                >
+                  Delete preset
+                </button>
+              )}
+            </div>
+
+            {/* Import / Export */}
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <button
+                onClick={exportPresets}
+                className="rounded border px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                Export custom presets
+              </button>
+              <label className="rounded border px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800">
+                Import…
+                <input
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) importPresets(f);
+                    e.currentTarget.value = "";
+                  }}
+                  aria-label="Import custom presets from JSON"
+                />
+              </label>
+              {importError && (
+                <span className="text-sm text-red-600">
+                  {importError}
+                </span>
+              )}
+            </div>
           </div>
-          {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">⚠️ {error}</p>}
-        </div>
 
-        {/* Sample text */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Test Text</label>
-          <textarea
-            ref={sampleRef}
-            value={sample}
-            onChange={(e) => setSample(e.target.value)}
-            rows={10}
-            className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
-            placeholder="Paste text to test…"
-          />
-          <div className="mt-1 text-xs text-gray-500">
-            Size: {prettyBytes(sample.length)} {softWarn && <span className="text-amber-600">• Large input may be slower.</span>}
-          </div>
-        </div>
-
-        <div className="text-xs text-gray-500">
-          Tips: `/` focuses pattern • <kbd>Ctrl/⌘ + Enter</kbd> re-runs • <kbd>Alt + ↑/↓</kbd> cycles presets • Share button copies permalink.
-        </div>
-      </div>
-
-      {/* Preview */}
-      <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
-        <div>
-          <div className="text-sm font-medium mb-2">Highlighted Preview</div>
-          <div className="rounded-lg border bg-white dark:bg-neutral-800 p-4 font-mono whitespace-pre-wrap leading-relaxed">
-            {parts.map((p, i) =>
-              p.hit ? (
-                <mark key={i} className="bg-yellow-200 dark:bg-yellow-600/60 rounded px-0.5">
-                  {p.text}
-                </mark>
-              ) : (
-                <span key={i}>{p.text}</span>
-              )
+          {/* Pattern + Flags */}
+          <div>
+            <label
+              htmlFor="regex-pattern"
+              className="block text-sm font-medium mb-1"
+            >
+              Pattern
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="rounded border px-2 py-1 bg-white/60 dark:bg-neutral-800">
+                /
+              </span>
+              <input
+                id="regex-pattern"
+                ref={patternRef}
+                value={pattern}
+                onChange={(e) => setPattern(e.target.value)}
+                spellCheck={false}
+                className="flex-1 rounded border px-2 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
+                placeholder="Enter regex pattern…"
+                aria-label="Enter regex pattern"
+              />
+              <span className="rounded border px-2 py-1 bg-white/60 dark:bg-neutral-800">
+                /
+              </span>
+              <input
+                value={flags}
+                onChange={(e) => setFlags(e.target.value)}
+                spellCheck={false}
+                className="w-24 rounded border px-2 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
+                placeholder="flags"
+                aria-label="Regex flags"
+              />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(["i", "g", "m", "s", "u", "y"] as FlagKey[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => toggleFlag(f)}
+                  title={
+                    f === "i"
+                      ? "Ignore case"
+                      : f === "g"
+                      ? "Global"
+                      : f === "m"
+                      ? "Multiline"
+                      : f === "s"
+                      ? "DotAll"
+                      : f === "u"
+                      ? "Unicode"
+                      : "Sticky"
+                  }
+                  className={`rounded border px-2 py-1 text-sm ${
+                    flags.includes(f)
+                      ? "bg-blue-600 text-white"
+                      : "bg-white/60 dark:bg-neutral-800"
+                  }`}
+                  aria-pressed={flags.includes(f)}
+                  aria-label={`Toggle ${f} flag`}
+                  type="button"
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+            {error && (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                ⚠️ {error}
+              </p>
             )}
           </div>
-        </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            {error
-              ? "Invalid regex"
-              : `Matches: ${matches.length} • Groups: ${matches.reduce((n, m) => n + Math.max(0, m.length - 1), 0)} • ${ms} ms`}
-            {statusMsg && <span className="ml-2 text-gray-500">— {statusMsg}</span>}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => copyMatches("csv")}
-              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+          {/* Sample text */}
+          <div>
+            <label
+              htmlFor="regex-sample"
+              className="block text-sm font-medium mb-1"
             >
-              Copy matches (CSV)
-            </button>
-            <button
-              onClick={() => copyMatches("tsv")}
-              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
-            >
-              TSV
-            </button>
-            <button
-              onClick={() => copyMatches("lines")}
-              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
-            >
-              Lines
-            </button>
-            <button
-              onClick={() => copyGroupsOnly("csv")}
-              className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
-            >
-              Copy groups
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <div className="text-sm font-medium mb-2">Matches {matches.length ? `(${matches.length})` : ""}</div>
-          {matches.length ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm border">
-                <thead className="bg-gray-50 dark:bg-neutral-800">
-                  <tr>
-                    <th className="px-2 py-1 border">#</th>
-                    <th className="px-2 py-1 border">Full match</th>
-                    <th className="px-2 py-1 border">Groups</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.map((m, idx) => (
-                    <tr
-                      key={idx}
-                      className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800"
-                    >
-                      <td className="px-2 py-1 border text-center">{idx + 1}</td>
-                      <td className="px-2 py-1 border font-mono break-all">{m[0]}</td>
-                      <td className="px-2 py-1 border font-mono break-all">
-                        {m.slice(1).length ? m.slice(1).join(" | ") : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              Test Text
+            </label>
+            <textarea
+              id="regex-sample"
+              ref={sampleRef}
+              value={sample}
+              onChange={(e) => setSample(e.target.value)}
+              rows={10}
+              className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 font-mono"
+              placeholder="Paste text to test…"
+              aria-label="Text to run the regex on"
+            />
+            <div className="mt-1 text-xs text-gray-500">
+              Size: {prettyBytes(sample.length)}{" "}
+              {softWarn && (
+                <span className="text-amber-600">
+                  • Large input may be slower.
+                </span>
+              )}
             </div>
-          ) : (
-            <div className="text-sm text-gray-500">No matches yet.</div>
-          )}
+          </div>
+
+          <div className="text-xs text-gray-500">
+            Tips: <kbd>/</kbd> focuses pattern •{" "}
+            <kbd>Ctrl/⌘ + Enter</kbd> re-runs •{" "}
+            <kbd>Alt + ↑/↓</kbd> cycles presets • Use{" "}
+            <code className="font-mono">g</code> to find all matches.
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
+          <div>
+            <div className="text-sm font-medium mb-2">
+              Highlighted Preview
+            </div>
+            <div
+              className="rounded-lg border bg-white dark:bg-neutral-800 p-4 font-mono whitespace-pre-wrap leading-relaxed min-h-[160px]"
+              aria-label="Preview of matches in the test text"
+            >
+              {parts.map((p, i) =>
+                p.hit ? (
+                  <mark
+                    key={i}
+                    className="bg-yellow-200 dark:bg-yellow-600/60 rounded px-0.5"
+                  >
+                    {p.text}
+                  </mark>
+                ) : (
+                  <span key={i}>{p.text}</span>
+                )
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-gray-600">
+              {error
+                ? "Invalid regex"
+                : `Matches: ${matches.length} • Groups: ${matches.reduce(
+                    (n, m) => n + Math.max(0, m.length - 1),
+                    0
+                  )} • ${ms} ms`}
+              {statusMsg && (
+                <span className="ml-2 text-gray-500">
+                  — {statusMsg}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => copyMatches("csv")}
+                className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                Copy matches (CSV)
+              </button>
+              <button
+                onClick={() => copyMatches("tsv")}
+                className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                TSV
+              </button>
+              <button
+                onClick={() => copyMatches("lines")}
+                className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                Lines
+              </button>
+              <button
+                onClick={() => copyGroupsOnly("csv")}
+                className="rounded border px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                Copy groups
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-medium mb-2">
+              Matches {matches.length ? `(${matches.length})` : ""}
+            </div>
+            {matches.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm border">
+                  <thead className="bg-gray-50 dark:bg-neutral-800">
+                    <tr>
+                      <th className="px-2 py-1 border">#</th>
+                      <th className="px-2 py-1 border">Full match</th>
+                      <th className="px-2 py-1 border">Groups</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matches.map((m, idx) => (
+                      <tr
+                        key={idx}
+                        className="odd:bg-white even:bg-gray-50 dark:odd:bg-neutral-900 dark:even:bg-neutral-800"
+                      >
+                        <td className="px-2 py-1 border text-center">
+                          {idx + 1}
+                        </td>
+                        <td className="px-2 py-1 border font-mono break-all">
+                          {m[0]}
+                        </td>
+                        <td className="px-2 py-1 border font-mono break-all">
+                          {m.slice(1).length
+                            ? m.slice(1).join(" | ")
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500">
+                No matches yet.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
