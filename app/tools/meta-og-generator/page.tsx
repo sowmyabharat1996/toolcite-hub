@@ -3,7 +3,8 @@
 
 /**
  * META-OG-GENERATOR v2 (sentinel OK)
- * Steps 1–9 done, Step 10: autosave + reset + clear
+ * Steps 1–10 done
+ * Step 11 added: URL-state / deep-link sharing
  */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -86,7 +87,7 @@ function sanitizeText(raw: string, max: number) {
   s = stripCodeyStuff(s);
   s = s.replace(/\s+/g, " ").trim();
   if (looksLikeCode(raw)) {
-    // hide code-y blobs
+    // hide code-y stuff from previews
     return "";
   }
   if (s.length > max) s = s.slice(0, max);
@@ -132,7 +133,7 @@ function download(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-/* tiny parser for step 9 import */
+/* simple <head> importer (step 9) */
 function parseImport(raw: string) {
   const out: Partial<{
     title: string;
@@ -143,27 +144,21 @@ function parseImport(raw: string) {
     author: string;
   }> = {};
 
-  // <title>..</title>
   const titleTag = raw.match(/<title>([^<]+)<\/title>/i);
   if (titleTag) out.title = titleTag[1].trim();
 
-  // description
   const descTag = raw.match(/name=["']description["']\s+content=["']([^"']+)["']/i);
   if (descTag) out.description = descTag[1].trim();
 
-  // canonical
   const canonTag = raw.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
   if (canonTag) out.url = canonTag[1].trim();
 
-  // og:image
   const ogImg = raw.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i);
   if (ogImg) out.image = ogImg[1].trim();
 
-  // og:site_name
   const ogSite = raw.match(/property=["']og:site_name["']\s+content=["']([^"']+)["']/i);
   if (ogSite) out.siteName = ogSite[1].trim();
 
-  // author
   const author = raw.match(/name=["']author["']\s+content=["']([^"']+)["']/i);
   if (author) out.author = author[1].trim();
 
@@ -182,7 +177,7 @@ export default function Page() {
   const [url, setUrl] = useState(p.url);
   const [siteName, setSiteName] = useState(p.siteName);
   const [author, setAuthor] = useState(p.author);
-  const [image, setImage] = useState(""); // input stays empty, preview uses fallback
+  const [image, setImage] = useState(""); // keep empty, preview uses fallback
 
   const [themeColor, setThemeColor] = useState("#0ea5e9");
   const [twitterCard, setTwitterCard] =
@@ -191,37 +186,80 @@ export default function Page() {
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
   const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
 
-  // step 9 pane
+  // step 9 panel
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
 
-  // ---------- load from localStorage once ----------
+  // used to avoid pushing URL before we finish initial hydration
+  const [hydrated, setHydrated] = useState(false);
+
+  // ---------- FIRST LOAD: querystring → localStorage → preset ----------
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      if (saved.preset) setPreset(saved.preset);
-      if (saved.titleInput !== undefined) setTitleInput(saved.titleInput);
-      if (saved.descInput !== undefined) setDescInput(saved.descInput);
-      if (saved.url !== undefined) setUrl(saved.url);
-      if (saved.siteName !== undefined) setSiteName(saved.siteName);
-      if (saved.author !== undefined) setAuthor(saved.author);
-      if (saved.image !== undefined) setImage(saved.image);
-      if (saved.themeColor !== undefined) setThemeColor(saved.themeColor);
-      if (saved.twitterCard !== undefined) setTwitterCard(saved.twitterCard);
-      if (saved.twitterSite !== undefined) setTwitterSite(saved.twitterSite);
-      if (saved.twitterCreator !== undefined) setTwitterCreator(saved.twitterCreator);
-      if (saved.tab !== undefined) setTab(saved.tab);
-    } catch (err) {
-      // ignore
+    const params = new URLSearchParams(window.location.search);
+    let loadedFromQuery = false;
+
+    if (params.toString().length > 0) {
+      // 1) from URL
+      const qpPreset = params.get("preset") as PresetId | null;
+      if (qpPreset && PRESETS[qpPreset]) {
+        setPreset(qpPreset);
+        const base = PRESETS[qpPreset];
+        setTitleInput(params.get("title") ?? base.title);
+        setDescInput(params.get("desc") ?? base.desc);
+        setUrl(params.get("url") ?? base.url);
+        setSiteName(params.get("site") ?? base.siteName);
+        setAuthor(params.get("author") ?? base.author);
+      } else {
+        // no valid preset in query → still try to load fields
+        if (params.get("title")) setTitleInput(params.get("title") || "");
+        if (params.get("desc")) setDescInput(params.get("desc") || "");
+        if (params.get("url")) setUrl(params.get("url") || "");
+        if (params.get("site")) setSiteName(params.get("site") || "");
+        if (params.get("author")) setAuthor(params.get("author") || "");
+      }
+
+      if (params.get("image")) setImage(params.get("image") || "");
+      if (params.get("theme")) setThemeColor(params.get("theme") || "#0ea5e9");
+      if (params.get("card")) setTwitterCard((params.get("card") as any) || "summary_large_image");
+      if (params.get("site_handle")) setTwitterSite(params.get("site_handle") || "@toolcite");
+      if (params.get("creator")) setTwitterCreator(params.get("creator") || "@bharat");
+      if (params.get("tab")) setTab((params.get("tab") as any) || "html");
+
+      loadedFromQuery = true;
     }
+
+    if (!loadedFromQuery) {
+      // 2) from localStorage
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved.preset) setPreset(saved.preset);
+          if (saved.titleInput !== undefined) setTitleInput(saved.titleInput);
+          if (saved.descInput !== undefined) setDescInput(saved.descInput);
+          if (saved.url !== undefined) setUrl(saved.url);
+          if (saved.siteName !== undefined) setSiteName(saved.siteName);
+          if (saved.author !== undefined) setAuthor(saved.author);
+          if (saved.image !== undefined) setImage(saved.image);
+          if (saved.themeColor !== undefined) setThemeColor(saved.themeColor);
+          if (saved.twitterCard !== undefined) setTwitterCard(saved.twitterCard);
+          if (saved.twitterSite !== undefined) setTwitterSite(saved.twitterSite);
+          if (saved.twitterCreator !== undefined) setTwitterCreator(saved.twitterCreator);
+          if (saved.tab !== undefined) setTab(saved.tab);
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    setHydrated(true);
   }, []);
 
-  // ---------- autosave ----------
+  // ---------- AUTOSAVE to localStorage ----------
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!hydrated) return; // wait for initial hydration
     const payload = {
       preset,
       titleInput,
@@ -238,6 +276,46 @@ export default function Page() {
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [
+    hydrated,
+    preset,
+    titleInput,
+    descInput,
+    url,
+    siteName,
+    author,
+    image,
+    themeColor,
+    twitterCard,
+    twitterSite,
+    twitterCreator,
+    tab,
+  ]);
+
+  // ---------- PUSH STATE TO URL (Step 11) ----------
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hydrated) return; // don't push while we're still loading
+    const params = new URLSearchParams();
+    params.set("preset", preset);
+    if (titleInput) params.set("title", titleInput);
+    if (descInput) params.set("desc", descInput);
+    if (url) params.set("url", url);
+    if (siteName) params.set("site", siteName);
+    if (author) params.set("author", author);
+    if (image) params.set("image", image);
+    if (themeColor && themeColor !== "#0ea5e9") params.set("theme", themeColor);
+    if (twitterCard && twitterCard !== "summary_large_image") params.set("card", twitterCard);
+    if (twitterSite && twitterSite !== "@toolcite") params.set("site_handle", twitterSite);
+    if (twitterCreator && twitterCreator !== "@bharat") params.set("creator", twitterCreator);
+    if (tab && tab !== "html") params.set("tab", tab);
+
+    const qs = params.toString();
+    const newUrl = qs
+      ? `${window.location.pathname}?${qs}`
+      : window.location.pathname;
+    window.history.replaceState(null, "", newUrl);
+  }, [
+    hydrated,
     preset,
     titleInput,
     descInput,
@@ -270,18 +348,16 @@ export default function Page() {
     setUrl(pp.url);
     setSiteName(pp.siteName);
     setAuthor(pp.author);
-    // keep image
+    // keep image field as user typed
   }
 
   function handleResetToPreset() {
-    // reset to current preset fields
     const pp = PRESETS[preset];
     setTitleInput(pp.title);
     setDescInput(pp.desc);
     setUrl(pp.url);
     setSiteName(pp.siteName);
     setAuthor(pp.author);
-    // do NOT change twitter or theme
   }
 
   function handleClearAll() {
@@ -291,7 +367,7 @@ export default function Page() {
     setSiteName("");
     setAuthor("");
     setImage("");
-    // keep twitter
+    // keep twitter + theme
   }
 
   function handleRunImport() {
@@ -305,7 +381,7 @@ export default function Page() {
     setShowImport(false);
   }
 
-  // ---------- build snippet ----------
+  // build snippet
   const htmlHead = useMemo(() => {
     const lines: string[] = [];
     if (safeTitle) lines.push(`<title>${escapeHtml(safeTitle)}</title>`);
@@ -320,7 +396,7 @@ export default function Page() {
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
     lines.push(meta("property", "og:type", "website"));
 
-    // image — option A (always)
+    // image (Option A - always)
     lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("property", "og:image:width", "1200"));
     lines.push(meta("property", "og:image:height", "630"));
@@ -353,7 +429,6 @@ export default function Page() {
     author,
   ]);
 
-  // ✅ checks
   const checks = [
     safeTitle
       ? { ok: true, text: "Title OK (≤ 60)." }
@@ -379,7 +454,6 @@ export default function Page() {
     <main className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Meta &amp; Social Tag Generator</h1>
-        {/* keep your existing global SHARE from layout; we don't add another one here */}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -403,7 +477,6 @@ export default function Page() {
             </div>
           </div>
 
-          {/* presets */}
           <div className="flex flex-wrap gap-2">
             {(Object.keys(PRESETS) as PresetId[]).map((id) => (
               <button
@@ -421,7 +494,6 @@ export default function Page() {
             ))}
           </div>
 
-          {/* title */}
           <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
             <input
               value={titleInput}
@@ -430,10 +502,9 @@ export default function Page() {
               placeholder="Awesome Tool — Do X in Seconds"
               aria-describedby="title-counter"
             />
-            <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
+            <Counter id="title-counter" raw={titleInput} safe={sanitizeText(titleInput, TITLE_MAX)} max={TITLE_MAX} />
           </Field>
 
-          {/* description */}
           <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
             <textarea
               rows={3}
@@ -443,10 +514,9 @@ export default function Page() {
               placeholder="Explain your page in one compelling sentence."
               aria-describedby="desc-counter"
             />
-            <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
+            <Counter id="desc-counter" raw={descInput} safe={sanitizeText(descInput, DESC_MAX)} max={DESC_MAX} />
           </Field>
 
-          {/* canonical */}
           <Field label="Canonical URL">
             <input
               value={url}
@@ -457,7 +527,6 @@ export default function Page() {
             />
           </Field>
 
-          {/* site + author */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Site Name">
               <input
@@ -475,7 +544,6 @@ export default function Page() {
             </Field>
           </div>
 
-          {/* image */}
           <Field label="Preview Image (OG/Twitter)">
             <input
               value={image}
@@ -484,12 +552,10 @@ export default function Page() {
               placeholder="/og-default.png"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave this empty → preview + snippet use <code>/og-default.png</code>. We don’t
-              pre-fill.
+              Leave this empty → preview + snippet use <code>/og-default.png</code>. We don’t pre-fill.
             </p>
           </Field>
 
-          {/* theme + twitter */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Theme Color">
               <input
@@ -511,7 +577,6 @@ export default function Page() {
             </Field>
           </div>
 
-          {/* twitter handles */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Twitter @site">
               <input
@@ -531,7 +596,6 @@ export default function Page() {
             </Field>
           </div>
 
-          {/* actions */}
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => navigator.clipboard.writeText(htmlHead)}
@@ -577,7 +641,6 @@ export default function Page() {
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
           <h3 className="text-lg font-semibold">Live Previews</h3>
 
-          {/* OG card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
@@ -593,7 +656,6 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Twitter card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {twitterCard === "summary_large_image" && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -613,7 +675,6 @@ export default function Page() {
             </div>
           </div>
 
-          {/* snippet tabs */}
           <div>
             <div className="flex gap-2 mb-2">
               {(["html", "next", "react", "social"] as const).map((t) => (
@@ -691,7 +752,6 @@ export default function Page() {
             </pre>
           </div>
 
-          {/* checks */}
           <div className="rounded-xl border bg-white/40 dark:bg-neutral-800 p-4 space-y-1 text-xs">
             <p className="font-medium mb-1">SEO &amp; Sharing Checks</p>
             {checks.map((c, i) => (
