@@ -4,11 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 
 export default function QrCodeGenerator() {
-  // 👇 keep what the user is typing as string
+  // keep user typing as string
   const [sizeInput, setSizeInput] = useState("256");
   const [marginInput, setMarginInput] = useState("2");
 
-  // actual values we feed to QR
   const size = Math.min(Math.max(Number(sizeInput || "256"), 128), 1024);
   const margin = Math.min(Math.max(Number(marginInput || "2"), 0), 16);
 
@@ -64,8 +63,23 @@ export default function QrCodeGenerator() {
     a.click();
   }
 
+  const canShare = typeof window !== "undefined";
+
+  function handleShare() {
+    if (!canShare) return;
+    const u = new URL(window.location.href);
+    u.searchParams.set("t", text || "https://toolcite.com");
+    u.searchParams.set("w", String(size));
+    u.searchParams.set("m", String(margin));
+    u.searchParams.set("e", errorLevel);
+    u.searchParams.set("fg", fg);
+    u.searchParams.set("bg", bg);
+    navigator.clipboard.writeText(u.toString());
+  }
+
   return (
     <div className="grid gap-6 md:grid-cols-2">
+      {/* Controls */}
       <div className="rounded-2xl border p-5 bg-white/70 dark:bg-neutral-900/80">
         <div className="mb-4">
           <label
@@ -98,7 +112,6 @@ export default function QrCodeGenerator() {
               inputMode="numeric"
               value={sizeInput}
               onChange={(e) => {
-                // allow empty while typing
                 const v = e.target.value;
                 if (v === "" || /^[0-9]+$/.test(v)) {
                   setSizeInput(v);
@@ -202,40 +215,38 @@ export default function QrCodeGenerator() {
           </button>
           <button
             onClick={() => download("png")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
+            className="rounded-lg bg-neutral-900/90 dark:bg-neutral-700 text-white px-4 py-2 text-sm"
           >
             PNG
           </button>
           <button
             onClick={() => download("jpg")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
+            className="rounded-lg bg-neutral-900/90 dark:bg-neutral-700 text-white px-4 py-2 text-sm"
           >
             JPG
           </button>
           <button
             onClick={() => download("webp")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
+            className="rounded-lg bg-neutral-900/90 dark:bg-neutral-700 text-white px-4 py-2 text-sm"
           >
             WEBP
           </button>
           <button
             onClick={() => download("svg")}
-            className="rounded-lg bg-neutral-900/90 text-white px-4 py-2 text-sm"
+            className="rounded-lg bg-neutral-900/90 dark:bg-neutral-700 text-white px-4 py-2 text-sm"
           >
             SVG
           </button>
+          {/* 👇 fixed contrast button */}
           <button
-            onClick={() => {
-              const u = new URL(window.location.href);
-              u.searchParams.set("t", text || "https://toolcite.com");
-              u.searchParams.set("w", String(size));
-              u.searchParams.set("m", String(margin));
-              u.searchParams.set("e", errorLevel);
-              u.searchParams.set("fg", fg);
-              u.searchParams.set("bg", bg);
-              navigator.clipboard.writeText(u.toString());
-            }}
-            className="rounded-lg border border-neutral-500/50 px-4 py-2 text-sm text-neutral-100 hover:bg-neutral-900/40"
+            type="button"
+            onClick={handleShare}
+            disabled={!canShare}
+            className={`rounded-lg border px-4 py-2 text-sm transition ${
+              canShare
+                ? "bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                : "bg-neutral-100 text-neutral-400 border-neutral-100 dark:bg-neutral-800 dark:text-neutral-500 dark:border-neutral-800 cursor-not-allowed"
+            }`}
           >
             Share Link
           </button>
