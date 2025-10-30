@@ -1,20 +1,12 @@
 // app/sitemap.ts
 import { MetadataRoute } from "next";
-import { TOOLS } from "@/lib/tools"; // keep your existing registry import
+import { TOOLS } from "@/lib/tools";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://toolcite.com";
   const now = new Date();
 
-  // Dynamic tool URLs (from your registry)
-  const toolUrls: MetadataRoute.Sitemap = TOOLS.map((t) => ({
-    url: `${baseUrl}/tools/${t.slug}`,
-    lastModified: now,
-    changeFrequency: "weekly",
-    priority: 0.8,
-  }));
-
-  // Static pages (added /tools index explicitly)
+  // 1) static pages
   const staticUrls: MetadataRoute.Sitemap = [
     {
       url: `${baseUrl}`,
@@ -40,7 +32,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "yearly",
       priority: 0.3,
     },
-    // Weather tool route inside /tools (keep)
+    // you said to keep weather explicitly
     {
       url: `${baseUrl}/tools/weather`,
       lastModified: now,
@@ -49,5 +41,31 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 
-  return [...staticUrls, ...toolUrls];
+  // 2) from your registry
+  const toolUrls: MetadataRoute.Sitemap = TOOLS.map((t) => ({
+    url: `${baseUrl}/tools/${t.slug}`,
+    lastModified: now,
+    changeFrequency: "weekly",
+    priority: 0.8,
+  }));
+
+  // 3) make sure speed-test is there even if missing from TOOLS
+  const forced: MetadataRoute.Sitemap = [
+    {
+      url: `${baseUrl}/tools/speed-test`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+  ];
+
+  // 4) merge + dedupe
+  const seen = new Set<string>();
+  const all = [...staticUrls, ...toolUrls, ...forced].filter((item) => {
+    if (seen.has(item.url)) return false;
+    seen.add(item.url);
+    return true;
+  });
+
+  return all;
 }
