@@ -2,7 +2,7 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v2 (a11y-polished)
+ * META-OG-GENERATOR v2 (a11y + mobile)
  */
 
 import React, { useMemo, useState } from "react";
@@ -188,7 +188,7 @@ export default function Page() {
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
     lines.push(meta("property", "og:type", "website"));
 
-    // image (Option A → always emit)
+    // image (we keep Option A)
     lines.push(meta("property", "og:image", resolvedImage));
     lines.push(meta("property", "og:image:width", "1200"));
     lines.push(meta("property", "og:image:height", "630"));
@@ -221,7 +221,6 @@ export default function Page() {
     author,
   ]);
 
-  // ✅ checks now use raw + sanitized
   const checks = [
     safeTitle
       ? { ok: true, text: "Title OK (≤ 60)." }
@@ -246,11 +245,10 @@ export default function Page() {
     { ok: !!twitterCreator || !!author, text: `@creator/author present.` },
   ];
 
-  // copy handler with a11y announce
   const handleCopy = () => {
     navigator.clipboard.writeText(htmlHead);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2400);
   };
 
   return (
@@ -263,21 +261,26 @@ export default function Page() {
         Skip to main content
       </a>
 
-      {/* sr-only announcer for screenreaders */}
+      {/* screenreader announce */}
       <div aria-live="polite" className="sr-only" role="status">
         {copied ? "Meta snippet copied to clipboard." : ""}
       </div>
 
-      <main id="main" className="max-w-6xl mx-auto px-4 py-8">
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* LEFT */}
-          <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
-            <h3 className="text-lg font-semibold flex items-center justify-between">
-              <span>Meta &amp; Social Fields</span>
-            </h3>
+      <main
+        id="main"
+        className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 md:py-10"
+      >
+        <div className="grid gap-5 md:grid-cols-2 items-start">
+          {/* LEFT PANEL */}
+          <div className="rounded-2xl border bg-white/80 dark:bg-neutral-900/90 p-4 sm:p-5 space-y-5">
+            <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
             {/* presets */}
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Meta tag presets">
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label="Meta tag presets"
+            >
               {(Object.keys(PRESETS) as PresetId[]).map((id) => (
                 <button
                   key={id}
@@ -300,7 +303,7 @@ export default function Page() {
               <input
                 value={titleInput}
                 onChange={(e) => setTitleInput(e.target.value)}
-                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 placeholder="Awesome Tool — Do X in Seconds"
                 aria-describedby="title-counter"
               />
@@ -313,7 +316,7 @@ export default function Page() {
                 rows={3}
                 value={descInput}
                 onChange={(e) => setDescInput(e.target.value)}
-                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="w-full rounded border px-3 py-2 min-h-[90px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 placeholder="Explain your page in one compelling sentence."
                 aria-describedby="desc-counter"
               />
@@ -325,7 +328,7 @@ export default function Page() {
               <input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 placeholder="https://toolcite.com/tools/meta-og-generator"
                 inputMode="url"
               />
@@ -337,14 +340,14 @@ export default function Page() {
                 <input
                   value={siteName}
                   onChange={(e) => setSiteName(e.target.value)}
-                  className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 />
               </Field>
               <Field label="Author">
                 <input
                   value={author}
                   onChange={(e) => setAuthor(e.target.value)}
-                  className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 />
               </Field>
             </div>
@@ -354,12 +357,12 @@ export default function Page() {
               <input
                 value={image}
                 onChange={(e) => setImage(e.target.value)}
-                className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 placeholder="/og-default.png"
                 aria-label="Open Graph / Twitter image URL"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Leave this empty → preview + snippet use <code>/og-default.png</code>. We don’t pre-fill.
+                Leave this empty → preview/snippet will use <code>/og-default.png</code>.
               </p>
             </Field>
 
@@ -371,14 +374,13 @@ export default function Page() {
                   value={themeColor}
                   onChange={(e) => setThemeColor(e.target.value)}
                   className="h-10 w-16 rounded border bg-white/60 dark:bg-neutral-800 p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                  aria-label="Theme color for meta tags"
                 />
               </Field>
               <Field label="Twitter Card Type">
                 <select
                   value={twitterCard}
                   onChange={(e) => setTwitterCard(e.target.value as any)}
-                  className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
                   <option value="summary_large_image">summary_large_image</option>
                   <option value="summary">summary</option>
@@ -392,7 +394,7 @@ export default function Page() {
                 <input
                   value={twitterSite}
                   onChange={(e) => setTwitterSite(e.target.value)}
-                  className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   placeholder="@toolcite"
                 />
               </Field>
@@ -400,7 +402,7 @@ export default function Page() {
                 <input
                   value={twitterCreator}
                   onChange={(e) => setTwitterCreator(e.target.value)}
-                  className="w-full rounded border px-3 py-2 bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="w-full rounded border px-3 py-2 min-h-[44px] bg-white/60 dark:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   placeholder="@bharat"
                 />
               </Field>
@@ -425,9 +427,13 @@ export default function Page() {
             </div>
           </div>
 
-          {/* RIGHT */}
-          <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
-            <h3 className="text-lg font-semibold">Live Previews</h3>
+          {/* RIGHT PANEL */}
+          <div className="rounded-2xl border bg-white/80 dark:bg-neutral-900/90 p-4 sm:p-5 space-y-6 order-first md:order-none">
+            <h3 className="text-lg font-semibold flex items-center justify-between gap-2">
+              <span>Live Previews</span>
+              {/* small scroll hint only on mobile */}
+              <span className="md:hidden text-[11px] text-gray-400">scroll ↓ for code</span>
+            </h3>
 
             {/* OG card */}
             <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
@@ -471,14 +477,18 @@ export default function Page() {
               </div>
             </div>
 
-            {/* snippet tabs */}
+            {/* snippet tabs + code */}
             <div>
-              <div className="flex gap-2 mb-2" role="tablist" aria-label="Meta snippet variants">
+              <div
+                className="flex gap-2 mb-2 overflow-x-auto no-scrollbar"
+                role="tablist"
+                aria-label="Meta snippet variants"
+              >
                 {(["html", "next", "react", "social"] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
-                    className={`px-3 py-1.5 rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       tab === t ? "bg-blue-600 text-white" : "bg-white/30 dark:bg-neutral-800"
                     }`}
                     type="button"
@@ -496,14 +506,19 @@ export default function Page() {
                 ))}
               </div>
 
-              <pre
-                className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto"
-                aria-label="Generated meta tag snippet"
-              >
-                {tab === "html" && htmlHead}
+              <div className="relative">
+                {/* scroll hint for mobile */}
+                <span className="pointer-events-none absolute right-3 top-3 text-[10px] text-gray-400 md:hidden">
+                  ← scroll →
+                </span>
+                <pre
+                  className="rounded-xl border bg-white dark:bg-neutral-800 p-4 text-xs overflow-auto min-h-[180px] max-h-72"
+                  aria-label="Generated meta tag snippet"
+                >
+                  {tab === "html" && htmlHead}
 
-                {tab === "next" &&
-                  `export const metadata = {
+                  {tab === "next" &&
+                    `export const metadata = {
   title: "${safeTitle || "ToolCite page"}",
   description: "${safeDesc}",
   alternates: { canonical: "${url}" },
@@ -524,8 +539,8 @@ export default function Page() {
   },
 };`}
 
-                {tab === "react" &&
-                  `<Head>
+                  {tab === "react" &&
+                    `<Head>
   <title>${escapeHtml(safeTitle || "ToolCite page")}</title>
   <meta name="description" content="${escapeAttr(safeDesc)}" />
   <link rel="canonical" href="${escapeAttr(url)}" />
@@ -540,19 +555,20 @@ export default function Page() {
   <meta name="twitter:creator" content="${ensureAt(twitterCreator)}" />
 </Head>`}
 
-                {tab === "social" &&
-                  [
-                    meta("property", "og:title", safeTitle || "ToolCite page"),
-                    meta("property", "og:description", safeDesc),
-                    meta("property", "og:image", resolvedImage),
-                    meta("name", "twitter:card", twitterCard),
-                    meta("name", "twitter:title", safeTitle || "ToolCite page"),
-                    meta("name", "twitter:description", safeDesc),
-                    meta("name", "twitter:image", resolvedImage),
-                    meta("name", "twitter:site", ensureAt(twitterSite)),
-                    meta("name", "twitter:creator", ensureAt(twitterCreator)),
-                  ].join("\n")}
-              </pre>
+                  {tab === "social" &&
+                    [
+                      meta("property", "og:title", safeTitle || "ToolCite page"),
+                      meta("property", "og:description", safeDesc),
+                      meta("property", "og:image", resolvedImage),
+                      meta("name", "twitter:card", twitterCard),
+                      meta("name", "twitter:title", safeTitle || "ToolCite page"),
+                      meta("name", "twitter:description", safeDesc),
+                      meta("name", "twitter:image", resolvedImage),
+                      meta("name", "twitter:site", ensureAt(twitterSite)),
+                      meta("name", "twitter:creator", ensureAt(twitterCreator)),
+                    ].join("\n")}
+                </pre>
+              </div>
             </div>
 
             {/* checks */}
