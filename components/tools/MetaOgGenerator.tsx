@@ -2,9 +2,7 @@
 "use client";
 
 /**
- * META-OG-GENERATOR v2 (sentinel)
- * If you don't see this comment in your built source (view-source),
- * you're still on an old bundle (likely a Service Worker cache).
+ * META-OG-GENERATOR v2 (sentinel OK)
  */
 
 import React, { useMemo, useState } from "react";
@@ -59,18 +57,22 @@ function stripHtml(s: string) {
   return s.replace(/<[^>]*>/g, " ");
 }
 function stripBackticks(s: string) {
-  // remove fenced blocks ```...``` and inline `...`
   return s.replace(/```[\s\S]*?```/g, " ").replace(/`[^`]*`/g, " ");
 }
 function looksLikeCode(raw: string) {
   const bad = (raw.match(/[{}[\];]/g) || []).length;
-  const kw = (raw.match(/\b(import|export|from|return|const|let|var|function|class|interface|type|enum|extends|implements|new)\b/gi) || []).length;
+  const kw =
+    (raw.match(
+      /\b(import|export|from|return|const|let|var|function|class|interface|type|enum|extends|implements|new)\b/gi
+    ) || []).length;
   return bad >= 3 || kw >= 1;
 }
 function stripCodeyStuff(s: string) {
-  // remove common codey tokens and punctuation
   s = s.replace(/\b(use client)\b/gi, " ");
-  s = s.replace(/\b(import|export|from|return|const|let|var|function|class|interface|type|enum|extends|implements|new)\b/gi, " ");
+  s = s.replace(
+    /\b(import|export|from|return|const|let|var|function|class|interface|type|enum|extends|implements|new)\b/gi,
+    " "
+  );
   s = s.replace(/[{}[\]();]/g, " ");
   return s;
 }
@@ -82,7 +84,7 @@ function sanitizeText(raw: string, max: number) {
   s = stripCodeyStuff(s);
   s = s.replace(/\s+/g, " ").trim();
   if (looksLikeCode(raw)) {
-    // too code-ish → hide instead of leaking TS/JS into previews
+    // we hide code from previews/snippets
     return "";
   }
   if (s.length > max) s = s.slice(0, max);
@@ -116,6 +118,17 @@ function absolutize(img: string) {
   }
   return img;
 }
+function download(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 /* ---------------- main ---------------- */
 
@@ -128,9 +141,7 @@ export default function Page() {
   const [url, setUrl] = useState(p.url);
   const [siteName, setSiteName] = useState(p.siteName);
   const [author, setAuthor] = useState(p.author);
-
-  // keep IMAGE INPUT EMPTY by default (no prefill)
-  const [image, setImage] = useState("");
+  const [image, setImage] = useState(""); // keep empty, we show fallback only in preview/snippet
 
   const [themeColor, setThemeColor] = useState("#0ea5e9");
   const [twitterCard, setTwitterCard] =
@@ -139,8 +150,14 @@ export default function Page() {
   const [twitterCreator, setTwitterCreator] = useState("@bharat");
   const [tab, setTab] = useState<"html" | "next" | "react" | "social">("html");
 
+  // sanitized for actual meta tags / previews
   const safeTitle = sanitizeText(titleInput, TITLE_MAX);
   const safeDesc = sanitizeText(descInput, DESC_MAX);
+
+  // raw presence (for checks) 👇
+  const hasDescRaw = descInput.trim().length > 0;
+  const descFilteredOut = hasDescRaw && !safeDesc;
+
   const resolvedImage = absolutize(image || FALLBACK_OG);
 
   function applyPreset(id: PresetId) {
@@ -151,7 +168,7 @@ export default function Page() {
     setUrl(pp.url);
     setSiteName(pp.siteName);
     setAuthor(pp.author);
-    // leave user's image as-is
+    // keep image field as user typed
   }
 
   const htmlHead = useMemo(() => {
@@ -161,24 +178,24 @@ export default function Page() {
     if (themeColor) lines.push(meta("name", "theme-color", themeColor));
     if (url) lines.push(`<link rel="canonical" href="${escapeAttr(url)}" />`);
 
-    // Open Graph
+    // OG
     if (safeTitle) lines.push(meta("property", "og:title", safeTitle));
     if (safeDesc) lines.push(meta("property", "og:description", safeDesc));
     if (url) lines.push(meta("property", "og:url", url));
     if (siteName) lines.push(meta("property", "og:site_name", siteName));
-    if (resolvedImage) {
-      lines.push(meta("property", "og:image", resolvedImage));
-      lines.push(meta("property", "og:image:width", "1200"));
-      lines.push(meta("property", "og:image:height", "630"));
-      lines.push(meta("property", "og:image:alt", safeTitle || "Open Graph image"));
-    }
     lines.push(meta("property", "og:type", "website"));
 
-    // Twitter (kept intact)
+    // image (Option A → always emit)
+    lines.push(meta("property", "og:image", resolvedImage));
+    lines.push(meta("property", "og:image:width", "1200"));
+    lines.push(meta("property", "og:image:height", "630"));
+    lines.push(meta("property", "og:image:alt", safeTitle || "Open Graph image"));
+
+    // Twitter
     lines.push(meta("name", "twitter:card", twitterCard));
     if (safeTitle) lines.push(meta("name", "twitter:title", safeTitle));
     if (safeDesc) lines.push(meta("name", "twitter:description", safeDesc));
-    if (resolvedImage && twitterCard === "summary_large_image") {
+    if (twitterCard === "summary_large_image") {
       lines.push(meta("name", "twitter:image", resolvedImage));
     }
     if (twitterSite) lines.push(meta("name", "twitter:site", ensureAt(twitterSite)));
@@ -201,12 +218,26 @@ export default function Page() {
     author,
   ]);
 
+  // ✅ checks now use raw + sanitized
   const checks = [
-    safeTitle ? { ok: true, text: "Title OK (≤ 60)." } : { ok: false, text: "Title empty." },
-    safeDesc ? { ok: true, text: "Description OK (≤ 160)." } : { ok: false, text: "Description empty (code filtered?)." },
+    safeTitle
+      ? { ok: true, text: "Title OK (≤ 60)." }
+      : { ok: false, text: "Title empty." },
+
+    // description logic:
+    !hasDescRaw
+      ? { ok: false, text: "Description empty." }
+      : descFilteredOut
+      ? {
+          ok: false,
+          text: "Description present but filtered (looked like code / JSX) — tweak wording.",
+        }
+      : { ok: true, text: "Description OK (≤ 160)." },
+
     url.startsWith("http")
       ? { ok: true, text: "Canonical URL absolute." }
       : { ok: false, text: "Canonical URL missing/relative." },
+
     { ok: true, text: "OG image present (custom or fallback)." },
     { ok: true, text: `Twitter card: ${twitterCard}.` },
     { ok: !!twitterSite, text: `@site: ${twitterSite || "—"}` },
@@ -220,6 +251,7 @@ export default function Page() {
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-5">
           <h3 className="text-lg font-semibold">Meta &amp; Social Fields</h3>
 
+          {/* presets */}
           <div className="flex flex-wrap gap-2">
             {(Object.keys(PRESETS) as PresetId[]).map((id) => (
               <button
@@ -237,6 +269,7 @@ export default function Page() {
             ))}
           </div>
 
+          {/* title */}
           <Field label="Page Title" hint={`Recommended ≤ ${TITLE_MAX} chars`}>
             <input
               value={titleInput}
@@ -248,6 +281,7 @@ export default function Page() {
             <Counter id="title-counter" raw={titleInput} safe={safeTitle} max={TITLE_MAX} />
           </Field>
 
+          {/* description */}
           <Field label="Description" hint={`Recommended ≤ ${DESC_MAX} chars`}>
             <textarea
               rows={3}
@@ -260,6 +294,7 @@ export default function Page() {
             <Counter id="desc-counter" raw={descInput} safe={safeDesc} max={DESC_MAX} />
           </Field>
 
+          {/* canonical */}
           <Field label="Canonical URL">
             <input
               value={url}
@@ -270,6 +305,7 @@ export default function Page() {
             />
           </Field>
 
+          {/* site + author */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Site Name">
               <input
@@ -287,6 +323,7 @@ export default function Page() {
             </Field>
           </div>
 
+          {/* image */}
           <Field label="Preview Image (OG/Twitter)">
             <input
               value={image}
@@ -295,11 +332,11 @@ export default function Page() {
               placeholder="/og-default.png"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave this empty if you want the preview to use{" "}
-              <code>/og-default.png</code>. We don’t pre-fill the input.
+              Leave this empty → preview + snippet use <code>/og-default.png</code>. We don’t pre-fill.
             </p>
           </Field>
 
+          {/* theme + twitter type */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Theme Color">
               <input
@@ -321,6 +358,7 @@ export default function Page() {
             </Field>
           </div>
 
+          {/* twitter handles */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Twitter @site">
               <input
@@ -360,7 +398,7 @@ export default function Page() {
         <div className="rounded-2xl border bg-white/70 dark:bg-neutral-900 p-5 space-y-6">
           <h3 className="text-lg font-semibold">Live Previews</h3>
 
-          {/* OG preview */}
+          {/* OG card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={resolvedImage} alt="Open Graph preview image" className="w-full h-40 object-cover" />
@@ -374,7 +412,7 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Twitter preview */}
+          {/* Twitter card */}
           <div className="rounded-xl border overflow-hidden bg-white dark:bg-neutral-800">
             {twitterCard === "summary_large_image" && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -418,7 +456,7 @@ export default function Page() {
               {tab === "html" && htmlHead}
 
               {tab === "next" &&
-`export const metadata = {
+                `export const metadata = {
   title: "${safeTitle || "ToolCite page"}",
   description: "${safeDesc}",
   alternates: { canonical: "${url}" },
@@ -440,7 +478,7 @@ export default function Page() {
 };`}
 
               {tab === "react" &&
-`<Head>
+                `<Head>
   <title>${escapeHtml(safeTitle || "ToolCite page")}</title>
   <meta name="description" content="${escapeAttr(safeDesc)}" />
   <link rel="canonical" href="${escapeAttr(url)}" />
@@ -487,7 +525,15 @@ export default function Page() {
 
 /* ------- small UI helpers ------- */
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
@@ -498,6 +544,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     </div>
   );
 }
+
 function Counter({ id, raw, safe, max }: { id: string; raw: string; safe: string; max: number }) {
   const over = raw.length > max;
   return (
@@ -505,18 +552,9 @@ function Counter({ id, raw, safe, max }: { id: string; raw: string; safe: string
       <span className={over ? "text-red-500" : "text-gray-500"}>
         {raw.length} / {max}
       </span>
-      {over && <span className="ml-2 text-red-500">Trimmed to {safe.length} in previews</span>}
+      {over && (
+        <span className="ml-2 text-red-500">Trimmed to {safe.length} in previews</span>
+      )}
     </div>
   );
-}
-function download(filename: string, text: string) {
-  const blob = new Blob([text], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
