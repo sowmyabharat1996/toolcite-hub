@@ -3,9 +3,8 @@
 import dynamic from "next/dynamic";
 import React from "react";
 
-// Optional: simple loading fallback for heavy tools
 const Loading = () => (
-  <div className="rounded-xl border p-6 text-sm text-gray-600 dark:text-gray-300">
+  <div className="rounded-xl border p-6 text-sm text-gray-600 dark:text-gray-300 min-h-[1100px] animate-pulse">
     Loading tool…
   </div>
 );
@@ -18,16 +17,26 @@ const REGISTRY: Record<string, React.ComponentType<any>> = {
   "image-compressor": dynamic(() => import("@/components/tools/ImageCompressor"), {
     ssr: false,
     loading: Loading,
-  }),  
+  }),
   "meta-og-generator": dynamic(() => import("@/components/tools/MetaOgGenerator"), {
     ssr: false,
     loading: Loading,
   }),
-  "speed-test": dynamic(() => import("@/components/tools/SpeedTest"), { ssr: false, loading: Loading }),
-  "color-palette-generator": dynamic(() => import("@/components/tools/ColorPaletteGenerator"), { ssr: false, loading: Loading }),
-  "keyword-research-basic": dynamic(() => import("@/components/tools/KeywordResearch"), { ssr: false, loading: Loading }),
-
-
+  "speed-test": dynamic(() => import("@/components/tools/SpeedTest"), {
+    ssr: false,
+    loading: Loading,
+  }),
+  "color-palette-generator": dynamic(
+    () => import("@/components/tools/ColorPaletteGenerator"),
+    {
+      ssr: false,
+      loading: Loading,
+    }
+  ),
+  "keyword-research-basic": dynamic(() => import("@/components/tools/KeywordResearch"), {
+    ssr: false,
+    loading: Loading,
+  }),
   "regex-tester": dynamic(() => import("@/components/tools/RegexTester"), {
     ssr: false,
     loading: Loading,
@@ -36,6 +45,7 @@ const REGISTRY: Record<string, React.ComponentType<any>> = {
 
 export default function ToolRenderer({ slug }: { slug: string }) {
   const Comp = REGISTRY[slug];
+
   if (!Comp) {
     return (
       <div className="rounded-xl border p-6">
@@ -45,5 +55,11 @@ export default function ToolRenderer({ slug }: { slug: string }) {
       </div>
     );
   }
-  return <Comp />;
+
+  // 👇 THIS is the CLS fix: we always reserve space
+  return (
+    <div className="min-h-[1100px]">
+      <Comp />
+    </div>
+  );
 }

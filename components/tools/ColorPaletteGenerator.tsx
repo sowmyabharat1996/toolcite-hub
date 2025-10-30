@@ -786,7 +786,7 @@ ${entries}
       </p>
 
       {/* Presets + CSS Vars */}
-      <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+      <div className="mb-4 min-h-[68px] flex flex-wrap items-center justify-center gap-3">
         <span className="text-sm text-gray-600">Presets:</span>
         {Object.keys(PRESETS).map((name) => (
           <button
@@ -1058,7 +1058,7 @@ ${entries}
       </div>
 
       {/* Step 8: Pro Exports */}
-      <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+      <div className="mb-6 min-h-[56px] flex flex-wrap items-center justify-center gap-3">
         <button
           onClick={copyAllHex}
           className="hit-44 px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
