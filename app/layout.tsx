@@ -3,6 +3,7 @@ import "./globals.css";
 import Script from "next/script";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import AdSenseClient from "@/components/AdSenseClient"; // ✅ new
 
 export const viewport: Viewport = {
   themeColor: [
@@ -39,10 +40,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    // Step 14: set real handles (adjust if you use a different one)
     site: "@ToolCite",
     creator: "@ToolCite",
-    images: ["/og-default.png"], // Dimensions are taken from OG
+    images: ["/og-default.png"],
   },
   icons: {
     icon: "/favicon.ico",
@@ -56,13 +56,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="h-full scroll-smooth antialiased">
       <head>
-        {/* Google AdSense */}
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4622190640183245"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
+        {/* 🔁 AdSense moved to client component (see bottom). 
+            Use ?noads=1 to disable for Lighthouse. */}
 
         {/* Step 14: Organization JSON-LD (global) */}
         <Script id="org-jsonld" type="application/ld+json" strategy="afterInteractive">
@@ -174,9 +169,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   live.textContent = 'Share dialog opened.';
                   return;
                 }
-              } catch (e) {
-                // fall through to clipboard
-              }
+              } catch (e) {}
               try {
                 await navigator.clipboard.writeText(url);
                 live.textContent = 'Link copied to clipboard.';
@@ -196,6 +189,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             });
           })();
         `}</Script>
+
+        {/* ✅ load ads at the very end, and only if ?noads=1 is NOT present */}
+        <AdSenseClient />
       </body>
     </html>
   );
