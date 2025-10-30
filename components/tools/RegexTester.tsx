@@ -360,33 +360,42 @@ export default function RegexTester() {
     doSet({ pattern, flags, sample });
   }, [pattern, flags, sample]);
 
-  const t0 = performance.now();
-  const { re, error } = useMemo(
-    () => buildRegex(debounced.pattern, debounced.flags),
-    [debounced.pattern, debounced.flags]
-  );
-  const parts = useMemo(
-    () => highlightMatches(debounced.sample, error ? null : re),
-    [debounced.sample, re, error]
-  );
-  const matches = useMemo(() => {
-    if (error || !re) return [];
-    const out: string[][] = [];
-    if (!re.global) {
-      const m = debounced.sample.match(re);
-      if (m) out.push([...m]);
-    } else {
-      re.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(debounced.sample))) {
-        out.push([...m]);
-        if (m[0].length === 0) re.lastIndex++;
-      }
+  // measure only if we’re in the browser
+// measure only in browser
+const canMeasure = typeof performance !== "undefined";
+const t0 = canMeasure ? performance.now() : 0;
+
+const { re, error } = useMemo(
+  () => buildRegex(debounced.pattern, debounced.flags),
+  [debounced.pattern, debounced.flags]
+);
+
+const parts = useMemo(
+  () => highlightMatches(debounced.sample, error ? null : re),
+  [debounced.sample, re, error]
+);
+
+const matches = useMemo(() => {
+  if (error || !re) return [];
+  const out: string[][] = [];
+  if (!re.global) {
+    const m = debounced.sample.match(re);
+    if (m) out.push([...m]);
+  } else {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(debounced.sample))) {
+      out.push([...m]);
+      if (m[0].length === 0) re.lastIndex++;
     }
-    return out;
-  }, [re, debounced.sample, error]);
-  const t1 = performance.now();
-  const ms = Math.max(0, Math.round(t1 - t0));
+  }
+  return out;
+}, [re, debounced.sample, error]);
+
+const t1 = canMeasure ? performance.now() : t0;
+const ms = Math.max(0, Math.round(t1 - t0));
+
+
 
   // Flag toggler
   const toggleFlag = (f: FlagKey) =>
